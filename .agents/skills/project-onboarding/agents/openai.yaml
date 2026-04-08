@@ -1,0 +1,3 @@
+display_name: Project Onboarding
+short_description: Load Xidea's current scope, norms, memory, and next tasks before starting work.
+default_prompt: Onboard into the Xidea repo by reading the current operating docs and summarize scope, status, risks, and likely next actions.

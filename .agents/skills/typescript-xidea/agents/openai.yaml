@@ -1,0 +1,3 @@
+display_name: TypeScript Xidea
+short_description: Model Xidea's learner, planner, and study concepts with explicit TypeScript types.
+default_prompt: Implement this TypeScript change with explicit learning-domain types, readonly data, and explainable planner outputs.

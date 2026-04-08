@@ -1,0 +1,4 @@
+display_name: Frontend Design
+short_description: Design Xidea interfaces that express adaptive learning, not generic dashboards.
+default_prompt: Design or refine this Xidea UI so it clearly shows learner state, teaching strategy, and dynamic study paths.
+

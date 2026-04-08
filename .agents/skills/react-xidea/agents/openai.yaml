@@ -1,0 +1,4 @@
+display_name: React Xidea
+short_description: Build React screens for Xidea with clear domain boundaries and demo-friendly state flows.
+default_prompt: Implement this Xidea React task using thin UI composition, explicit learner concepts, and domain-first structure.
+
