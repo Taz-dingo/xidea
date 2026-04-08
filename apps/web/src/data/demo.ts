@@ -60,9 +60,14 @@ export const learnerProfiles: ReadonlyArray<{
     role: "能复述概念，但迁移到真实访谈时容易卡住",
     state: {
       mastery: 38,
+      understandingLevel: 42,
+      memoryStrength: 33,
       confusion: 52,
       preferredModes: ["guided-qa", "scenario-sim"],
       weakSignals: ["不会追问", "容易问成确认式问题"],
+      lastReviewedAt: "2026-04-05",
+      nextReviewAt: "2026-04-09",
+      recommendedAction: "teach",
     },
   },
   {
@@ -71,9 +76,14 @@ export const learnerProfiles: ReadonlyArray<{
     role: "理解过基础知识，但系统设计边界模糊",
     state: {
       mastery: 64,
+      understandingLevel: 58,
+      memoryStrength: 61,
       confusion: 76,
       preferredModes: ["contrast-drill", "socratic"],
       weakSignals: ["概念混淆", "不能解释为何这样设计"],
+      lastReviewedAt: "2026-04-07",
+      nextReviewAt: "2026-04-10",
+      recommendedAction: "clarify",
     },
   },
   {
@@ -82,9 +92,14 @@ export const learnerProfiles: ReadonlyArray<{
     role: "记住过图形特征，但实战识别不稳定",
     state: {
       mastery: 55,
+      understandingLevel: 57,
+      memoryStrength: 49,
       confusion: 81,
       preferredModes: ["image-recall", "contrast-drill"],
       weakSignals: ["视觉记忆不稳", "关键差异抓不住"],
+      lastReviewedAt: "2026-04-06",
+      nextReviewAt: "2026-04-08",
+      recommendedAction: "review",
     },
   },
 ];

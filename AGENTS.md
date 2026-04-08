@@ -41,10 +41,11 @@
 
 ## Repo Conventions
 
-- 页面编排层放在 `src/app`
-- 通用组件放在 `src/components`
-- demo 数据放在 `src/data`
-- 纯类型和纯逻辑放在 `src/domain`
+- Web 页面编排层放在 `apps/web/src/app`
+- Web 通用组件放在 `apps/web/src/components`
+- Web demo 数据放在 `apps/web/src/data`
+- Web 纯类型和纯逻辑放在 `apps/web/src/domain`
+- Python agent 核心放在 `apps/agent/src/xidea_agent`
 - 长期记忆文档放在 `docs/memory`
 
 ## Collaboration Rules
