@@ -74,14 +74,35 @@
 - 常见错误类型
 - 最有效训练方式
 
+## 当前分层
+
+### `apps/web`
+
+负责：
+
+- 页面
+- 交互
+- 学习状态可视化
+- planner 输出展示
+
+### `apps/agent`
+
+负责：
+
+- 输入理解
+- 用户画像更新
+- 路径编排
+- 训练动作选择
+- 记忆回写
+
 ## MVP 建议边界
 
 比赛版先做：
 
 - 文本 / PDF / 网页输入
-- 概念拆解与学习单元生成
+- 学习者状态建模
 - 2 到 3 种训练模式切换
-- 一条动态学习路径 demo
+- 一条能解释“为什么这样安排”的动态学习路径 demo
 
 先不做：
 
@@ -90,10 +111,15 @@
 - 完整 spaced repetition 引擎
 - 多人协作学习社区
 
-## 前端目录建议
+## Web 目录建议
 
-- `src/app`: 页面和编排层
-- `src/components`: 复用组件
-- `src/data`: demo 数据
-- `src/domain`: 类型与纯函数
+- `apps/web/src/app`: 页面和编排层
+- `apps/web/src/components`: 复用组件
+- `apps/web/src/data`: demo 数据
+- `apps/web/src/domain`: 类型与纯函数
 
+## Agent 目录建议
+
+- `apps/agent/src/xidea_agent/state.py`: 核心状态模型
+- `apps/agent/src/xidea_agent/graph.py`: 编排节点和图定义
+- `apps/agent/src/xidea_agent/api.py`: 对外服务接口
