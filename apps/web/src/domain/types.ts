@@ -24,9 +24,19 @@ export interface LearningUnit {
 
 export interface LearnerState {
   readonly mastery: number;
+  readonly understandingLevel: number;
+  readonly memoryStrength: number;
   readonly confusion: number;
   readonly preferredModes: ReadonlyArray<LearningMode>;
   readonly weakSignals: ReadonlyArray<string>;
+  readonly lastReviewedAt: string | null;
+  readonly nextReviewAt: string | null;
+  readonly recommendedAction:
+    | "teach"
+    | "clarify"
+    | "practice"
+    | "review"
+    | "apply";
 }
 
 export interface StudyPlanStep {

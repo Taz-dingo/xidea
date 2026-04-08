@@ -30,10 +30,7 @@ function createStep(
   };
 }
 
-export function buildStudyPlan(
-  unit: LearningUnit,
-  learner: LearnerState,
-): StudyPlan {
+export function buildStudyPlan(unit: LearningUnit, learner: LearnerState): StudyPlan {
   const steps: StudyPlanStep[] = [];
 
   if (learner.confusion >= 70) {
@@ -47,13 +44,22 @@ export function buildStudyPlan(
     );
   }
 
-  if (learner.mastery <= 40) {
+  if (learner.understandingLevel <= 45 || learner.recommendedAction === "teach") {
     steps.push(
       createStep(
         "guided",
         "guided-qa",
-        "当前理解深度不够，先由导师引导建模，不直接上强测试。",
-        "补足核心框架，形成可被提取的解释能力。",
+        "系统判断当前主要问题是没真正理解，先由导师引导建模。",
+        "先补理解框架，再决定是否进入练习或复习。",
+      ),
+    );
+  } else if (learner.memoryStrength <= 50 || learner.recommendedAction === "review") {
+    steps.push(
+      createStep(
+        "review",
+        "audio-recall",
+        "用户已经基本理解，但记忆强度偏弱，适合进入回忆型训练。",
+        "把短时掌握转成更稳定的长期记忆。",
       ),
     );
   } else {
@@ -76,8 +82,8 @@ export function buildStudyPlan(
       createStep(
         "preferred",
         preferredCandidate,
-        "使用对当前用户更有效的练习形式，提高完成率和记忆保持。",
-        "把内容转成更贴近个人习惯的训练体验。",
+        "使用对当前用户更有效的训练形式，提高完成率和保持率。",
+        "把训练动作和个人状态对齐，而不是统一安排。",
       ),
     );
   }
@@ -87,15 +93,15 @@ export function buildStudyPlan(
       createStep(
         "scenario",
         "scenario-sim",
-        "用真实场景做迁移测试，确认是否能在应用层面使用知识。",
-        "从会背升级到会用，形成闭环。",
+        "最后用真实场景做迁移测试，确认知识能否被应用。",
+        "从会答题升级到会用。",
       ),
     );
   }
 
   return {
     headline: `围绕「${unit.title}」生成的动态学习路径`,
-    summary: `系统根据掌握度 ${learner.mastery}% 和混淆风险 ${learner.confusion}%，优先安排更适合当前状态的训练顺序。`,
+    summary: `系统综合理解水平 ${learner.understandingLevel}% 、记忆强度 ${learner.memoryStrength}% 和混淆风险 ${learner.confusion}% 来安排当前学习动作。`,
     steps,
   };
 }

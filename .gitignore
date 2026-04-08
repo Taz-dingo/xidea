@@ -8,3 +8,7 @@ coverage
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+.venv
+__pycache__
+.pytest_cache
+.python-version

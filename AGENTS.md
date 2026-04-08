@@ -6,7 +6,7 @@
 
 当前阶段优先级：
 
-1. 先把“动态学习路径”这个核心差异点讲清楚
+1. 先把“AI 学习编排系统”这个核心差异点讲清楚
 2. 先让 demo 可讲、可演示、可协作
 3. 再逐步接真实 AI、多模态与学习引擎能力
 
@@ -19,7 +19,7 @@
 
 ## Project Skills
 
-本项目维护了 3 个项目级 skill：
+本项目维护了 4 个项目级 skill：
 
 - `project-onboarding`
 - `frontend-design`
@@ -41,10 +41,11 @@
 
 ## Repo Conventions
 
-- 页面编排层放在 `src/app`
-- 通用组件放在 `src/components`
-- demo 数据放在 `src/data`
-- 纯类型和纯逻辑放在 `src/domain`
+- Web 页面编排层放在 `apps/web/src/app`
+- Web 通用组件放在 `apps/web/src/components`
+- Web demo 数据放在 `apps/web/src/data`
+- Web 纯类型和纯逻辑放在 `apps/web/src/domain`
+- Python agent 核心放在 `apps/agent/src/xidea_agent`
 - 长期记忆文档放在 `docs/memory`
 
 ## Collaboration Rules

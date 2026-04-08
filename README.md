@@ -1,18 +1,19 @@
 # Xidea
 
-Xidea 是一个面向内部比赛的 AI 学习系统 demo 仓库。目标不是做另一个静态卡片工具，而是把科学复习、多模态练习和 AI 1v1 导师整合成一个完整学习闭环。
+Xidea 是一个面向内部比赛的 AI 学习编排系统 demo 仓库。目标不是做另一个静态卡片工具，而是让系统接住多样输入，理解用户状态，并决定接下来该怎么学。
 
 ## Current Scope
 
 - 只做比赛当前阶段必要的 demo 和协作文档
 - 当前核心只验证一件事: 系统会根据学习状态安排下一步学习动作
+- 输入形式和训练形式都可以多样，但核心判断逻辑是一套
 - 所有复杂能力先用 mock 数据和规则表达，不急着接真实多模态链路
 
 ## Quick Start
 
 ```bash
 pnpm install
-pnpm dev
+pnpm dev:web
 ```
 
 ## Team Split
@@ -26,7 +27,8 @@ pnpm dev
 
 ## Repo Structure
 
-- `src/`: demo 应用
+- `apps/web`: React + Tailwind + shadcn/ui-oriented frontend
+- `apps/agent`: Python + LangChain + LangGraph orchestration core
 - `docs/`: 产品、架构、协作、记忆文档
 - `.agents/skills/`: 项目级 skills
 
@@ -38,6 +40,12 @@ pnpm dev
 - `docs/memory/`: 长期记忆与决策
 
 默认从项目级 skill `project-onboarding` 开始进入仓库上下文。
+
+## Tech Direction
+
+- 前端 UI 和样式: TypeScript / React / Tailwind CSS / shadcn-friendly structure
+- 核心编排和 agent: Python / LangChain / LangGraph
+- 当前仓库优先把前后端边界、状态模型和编排骨架搭稳
 
 ## Collaboration
 
