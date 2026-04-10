@@ -6,7 +6,13 @@
 
 - [ ] 锁定比赛主案例和讲述顺序
   - owner: 产品 owner
-- [ ] 稳定编排模型的输入输出结构
+- [ ] 稳定单 pedagogical agent 的输入输出结构
+  - owner: 学习引擎 owner
+- [ ] 划清 `Review Engine / Agent Memory / Consolidation` 的边界
+  - owner: 学习引擎 owner
+- [ ] 定义 agent 的 state / action / tool / guardrail schema
+  - owner: 学习引擎 owner
+- [ ] 搭出 LangGraph 最小 graph 骨架
   - owner: 学习引擎 owner
 - [ ] 保持 web demo 简洁可演示
   - owner: 前端 owner
@@ -17,7 +23,7 @@
 
 ### P1
 
-- [ ] 细化最小编排路径
+- [ ] 细化 agent 决策路径与 evaluation 维度
   - owner: 学习引擎 owner
 - [ ] 补 1 到 2 个能支撑主叙事的 demo surface
   - owner: 前端 owner / 产品 owner

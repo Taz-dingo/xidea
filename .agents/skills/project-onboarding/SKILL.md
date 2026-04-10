@@ -97,3 +97,6 @@ For project setup, collaboration, or context handoff:
 
 - stay anchored to this skill and the docs above
 
+For doc structure, source-of-truth decisions, or documentation maintenance:
+
+- also use `docs-governance`

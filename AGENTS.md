@@ -19,9 +19,10 @@
 
 ## Project Skills
 
-本项目维护了 4 个项目级 skill：
+本项目维护了 5 个项目级 skill：
 
 - `project-onboarding`
+- `docs-governance`
 - `frontend-design`
 - `react-xidea`
 - `typescript-xidea`
@@ -31,6 +32,7 @@
 ### When to Use
 
 - 开始接手项目、隔一段时间重新进入、或 agent 需要快速建立上下文时，用 `project-onboarding`
+- 需要理解文档结构、判断该读哪几份、决定信息该写到哪里、或清理重复文档时，用 `docs-governance`
 - 设计或改版页面时，用 `frontend-design`
 - 写 React 页面、组件、状态流转时，用 `react-xidea`
 - 设计类型、domain model、planner 逻辑时，用 `typescript-xidea`
