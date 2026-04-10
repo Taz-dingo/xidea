@@ -1,5 +1,44 @@
 # Decision Log
 
+## 2026-04-10
+
+### 决策
+
+当前比赛 demo 的编排核心采用受约束的单 pedagogical agent，并在第一版就接入 LangChain / LangGraph 的最小 runtime。
+
+### 原因
+
+- 当前阶段更重要的是把“系统会决定你该怎么学”讲清楚
+- 产品愿景更接近“agent 在约束下做教学决策”，而不是固定 workflow
+- LangChain / LangGraph 生态值得尽早接入，便于团队边做边学习
+- 复杂 graph、tool routing 和多节点 runtime 会提前引入工程噪声
+- 团队现在更需要可讲、可演示、可协作的最小闭环
+
+### 影响
+
+- 当前主链路先收敛为“读取状态/上下文 -> agent 决策 -> 必要时调用工具 -> 生成学习动作 -> 回写”
+- 第一版就定义清楚 agent 的 `state / action / tool / guardrail`，而不是把主逻辑写成固定 workflow
+- LangGraph 先承载一个最小 graph，不急着堆叠多 agent 和复杂节点图
+- 只有在多输入链路、多工具调用、中断恢复等需求明确后，再升级到更完整 graph
+
+## 2026-04-10
+
+### 决策
+
+科学复习系统、agent memory 和定时整理系统是三层能力，不能混成同一层。
+
+### 原因
+
+- 科学复习服务学习者，本质是学习域模型与调度逻辑
+- agent memory 服务系统本身，用于保存项目上下文、用户偏好和历史决策
+- 定时整理系统负责压缩、强化和清理记忆，不直接替代前两者
+
+### 影响
+
+- 后续统一用 `Review Engine / Agent Memory / Consolidation` 三层来描述记忆相关能力
+- 复习调度围绕 `learning item` 和掌握状态展开，而不是退化成固定卡片 UI
+- agent 可以读取复习结果，但不把复习系统本身建模为 agent memory
+
 ## 2026-04-08
 
 ### 决策
