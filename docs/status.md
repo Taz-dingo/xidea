@@ -26,6 +26,7 @@
 - 将 web demo 数据统一收敛到 RAG 主案例，不再并列展示跨学科样例
 - 将主案例映射成更可信的状态来源、诊断信号和回写预览
 - 将编排证据链做成默认可见输出，并把 planner explanation 结构化为主决策与写回预览
+- 初版架构讨论已收敛到可开工状态，并明确 SQLite 状态层与启发式 `Review Engine v0`
 
 ### In Progress
 
@@ -37,6 +38,8 @@
 - 写清 agent 层的 state / action / tool / guardrail 结构
 - 写清 LangGraph 最小 graph 的节点与边
 - 定义 web 与 agent 之间的最小 API contract
+- 搭出 SQLite + repository 的最小状态持久化骨架
+- 搭出 `Review Engine v0` 的启发式调度逻辑
 - 决定第一版“状态来源”后续是规则计算、半结构化日志提取，还是接模型 explanation
 - 决定“定时整理记忆”第一版是讲法还是可视化 demo
 
