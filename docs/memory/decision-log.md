@@ -4,6 +4,42 @@
 
 ### 决策
 
+第一版采用“真实持久化状态 + 轻量数据库”的策略，优先把 `projects / threads / thread_messages / learner_unit_state / review_state` 跑成真实读写闭环。
+
+### 原因
+
+- 当前比赛版需要证明系统真的会读取状态、做判断、回写状态，而不只是消费静态 mock
+- 数据状态是编排闭环的一部分，但第一版也不值得为此提前建完整数据平台
+- 先把状态做真、把内容半真半假，可以在真实流程和实现成本之间取得更合适的平衡
+
+### 影响
+
+- 第一版推荐用 `SQLite` 加轻量 repository 层承接持久化
+- `source_assets` 和 `learning_units` 仍可先使用 seed / fixture
+- 后续后端实现优先围绕状态真源，而不是围绕内容 CMS 设计
+
+## 2026-04-13
+
+### 决策
+
+第一版 `Review Engine` 采用轻量启发式规则，不实现完整 spaced repetition 算法，但必须作为独立能力层存在。
+
+### 原因
+
+- 科学复习系统在 Xidea 中是重要子能力，但不是当前比赛版的全部
+- 当前阶段需要的是“能解释为什么现在该复习、为什么现在不该复习”的真实逻辑，而不是复杂算法表演
+- 轻量启发式规则已经足够支撑 diagnosis、plan、review-context 和 state-patch
+
+### 影响
+
+- 第一版 review 主要围绕 `memoryStrength / lastReviewedAt / nextReviewAt / reviewCount / lapseCount`
+- `understandingLevel` 和 `confusion` 会参与判断是否应该进入 review
+- 完整 Anki / FSRS 级算法留到后续，不作为第一版前提
+
+## 2026-04-13
+
+### 决策
+
 “比赛版主案例收敛”只作用于当前证明路径，不改变 Xidea 长期作为 AI 学习编排系统的产品边界。
 
 ### 原因

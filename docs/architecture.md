@@ -714,6 +714,168 @@ type StatePatch = {
 - 第一版优先做读取型、轻量型、结构化型工具
 - 如果某个能力会让系统滑向“开放式 agent”，第一版先不做
 
+## Data State v0
+
+第一版不追求完整数据平台，但要有真实持久化状态，确保学习状态、thread 连续性和 review 调度不是一次性假数据。
+
+### Storage Strategy
+
+第一版建议：
+
+- 使用 `SQLite` 作为轻量持久化层
+- 在 `apps/agent` 中通过很薄的 repository 层访问数据
+- 内容数据可以继续部分 seed / mock
+- 状态数据必须真实可读写
+
+### State Layers
+
+第一版优先持久化这几类状态：
+
+1. `projects`
+   - 当前学习任务所属项目
+   - 用于承接 `project-backed learning`
+2. `threads`
+   - 当前学习会话
+   - 用于承接连续上下文和本轮聚焦的学习单元
+3. `thread_messages`
+   - 最近消息历史
+   - 用于支撑真实多轮对话而不是一次性请求
+4. `learner_unit_state`
+   - 学习者在某个 `unit` 上的理解与记忆状态
+   - 用于支撑 diagnosis、plan 和 writeback
+5. `review_state`
+   - review 调度相关状态
+   - 用于支撑轻量 `Review Engine`
+
+### Minimal Tables
+
+第一版建议最小表结构围绕以下对象收敛：
+
+```text
+projects
+- id
+- name
+- goal
+- success_signal
+- created_at
+- updated_at
+
+threads
+- id
+- project_id
+- title
+- current_unit_id
+- latest_summary
+- created_at
+- updated_at
+
+thread_messages
+- id
+- thread_id
+- role
+- content
+- created_at
+
+learner_unit_state
+- id
+- thread_id
+- unit_id
+- understanding_level
+- memory_strength
+- confusion
+- mastery
+- recommended_action
+- weak_signals_json
+- last_reviewed_at
+- next_review_at
+- updated_at
+
+review_state
+- id
+- thread_id
+- unit_id
+- memory_strength
+- last_reviewed_at
+- next_review_at
+- review_count
+- lapse_count
+- updated_at
+```
+
+### What Can Stay Seeded For v0
+
+第一版可以先不急着做正式持久化的对象：
+
+- `source_assets`
+- `learning_units`
+
+原因：
+
+- 当前阶段更重要的是把状态闭环跑通，而不是把内容平台建完整
+- 这些内容对象可以先用 seed / fixture 驱动 demo
+
+### Data Guardrails
+
+- 第一版优先保证状态真实，而不是内容全量建模
+- 不为了“像产品”而提前做复杂数据库 schema
+- 所有持久化对象都要直接服务于 diagnosis、plan、writeback 或 review
+
+## Review Engine v0
+
+科学复习系统在第一版采用轻量启发式规则，不追求完整 spaced repetition 算法，但必须作为独立能力层存在。
+
+### Role
+
+- `Review Engine` 解决“什么时候复习”
+- LangGraph 编排层解决“现在该怎么学”
+- 两者协同，但不互相替代
+
+### Minimal Review State
+
+第一版 review 层至少维护：
+
+- `memoryStrength`
+- `lastReviewedAt`
+- `nextReviewAt`
+- `reviewCount`
+- `lapseCount`
+
+### Heuristic Rules v0
+
+第一版先采用简单规则：
+
+1. 如果 `understandingLevel < 60`
+   - 不进入 `review`
+   - 优先 `teach` 或 `clarify`
+2. 如果 `confusion > 70`
+   - 不进入 `review`
+   - 优先 `clarify`
+3. 如果 `understandingLevel >= 60` 且 `memoryStrength < 65`
+   - 可以进入 `review`
+4. 如果 `nextReviewAt <= now`
+   - 提高 `review` 优先级
+5. 一次回忆成功
+   - `memoryStrength` 上升
+   - `nextReviewAt` 往后推
+   - `reviewCount + 1`
+6. 一次回忆失败
+   - `memoryStrength` 下降
+   - `nextReviewAt` 提前
+   - `lapseCount + 1`
+
+### Why This Is Enough For v0
+
+- 足够表达“系统不会把所有内容都直接变成卡片”
+- 足够表达“理解没建立时不该直接进入复习”
+- 足够支撑 `review-context` 和 `reviewPatch`
+- 不会把第一版拖进复杂 SRS 算法设计
+
+### Review Guardrails
+
+- 第一版不实现完整 Anki / FSRS 级算法
+- 第一版不把 `Review Engine` 和 `Agent Memory` 混成一套状态
+- review 规则优先服务于编排主线，而不是独立做成记忆产品
+
 ## MVP 建议边界
 
 比赛版先做：
