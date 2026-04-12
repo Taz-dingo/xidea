@@ -196,6 +196,145 @@
 - 只要先让 web 稳定接收这 5 类事件并完成展示即可
 - 如果后续 LangGraph 节点变复杂，再扩展事件种类
 
+## LangGraph Minimal Graph v0
+
+第一版 graph 先收敛为一条最小可讲、可演示、可扩展的主链路：
+
+```text
+load_context
+  -> diagnose
+  -> decide_action
+  -> maybe_tool
+  -> compose_response
+  -> writeback
+```
+
+这条链路的目标不是做复杂多 agent，而是把“系统先判断，再决定怎么学，再解释并回写”的主逻辑讲清楚。
+
+### Node 1: `load_context`
+
+职责：
+
+- 读取本轮请求里的 `project / thread / learner / unit / assets / recent messages`
+- 把 web 传入的快照整理成统一 state
+- 做必要的默认值填充和格式归一化
+
+不负责：
+
+- 不做教学判断
+- 不生成学习路径
+- 不更新长期状态
+
+输入：
+
+- `AgentRequest`
+
+输出：
+
+- `GraphState.context`
+- `GraphState.request`
+
+### Node 2: `diagnose`
+
+职责：
+
+- 判断当前轮最主要的学习问题是什么
+- 识别当前更适合 `teach / clarify / practice / review / apply` 中哪一类动作
+- 产出结构化诊断，而不是长篇回答
+
+建议输出字段：
+
+- `recommendedAction`
+- `reason`
+- `confidence`
+- `focusUnitId`
+- `needsTool`
+
+不负责：
+
+- 不直接生成最终回复文案
+- 不直接写回状态
+
+### Node 3: `decide_action`
+
+职责：
+
+- 基于诊断结果决定当前轮学习动作
+- 生成一个轻量 `StudyPlan` 草稿
+- 明确当前轮优先做澄清、追问、练习、复习还是迁移
+
+建议输出字段：
+
+- `studyPlan`
+- `selectedMode`
+- `toolIntent`
+
+不负责：
+
+- 不直接读外部工具
+- 不负责包装成前端事件
+
+### Node 4: `maybe_tool`
+
+职责：
+
+- 只有在 `needsTool` 或 `toolIntent` 明确时才执行
+- 补充当前轮缺失但必要的上下文
+- 第一版可以只做轻量 lookup，而不是复杂 tool orchestration
+
+第一版可接受的工具职责：
+
+- 读取 source asset 摘要
+- 读取 learning unit 详情
+- 读取 thread memory 或最近学习记录
+- 读取 review 相关调度信息
+
+不负责：
+
+- 不重新决定整体教学策略
+- 不承担复杂工具路由系统
+
+### Node 5: `compose_response`
+
+职责：
+
+- 把前面节点的结构化结果整理成前端消费的事件流
+- 生成当前轮 assistant explanation
+- 输出 `text-delta / diagnosis / plan / state-patch / done`
+
+不负责：
+
+- 不重新做诊断
+- 不重新规划路径
+
+### Node 6: `writeback`
+
+职责：
+
+- 把本轮结果回写到 learner state、thread state 和必要的记忆字段
+- 产出 `state-patch`
+- 为下一轮保留最小连续性
+
+第一版建议只回写：
+
+- `LearnerState` 的增量变化
+- 当前轮 `recommendedAction`
+- 最近一次 plan / step 结果
+- 必要的 review 调度变化
+
+不负责：
+
+- 不做复杂 consolidation
+- 不把所有长期记忆系统都塞进第一版
+
+## First-Version Graph Principles
+
+- 保持单 agent 主链路，不扩成多 agent graph
+- 节点按职责拆分，不按“看起来完整”拆分
+- `diagnose` 和 `decide_action` 分开，确保“判断”和“编排”可以单独讲清楚
+- `maybe_tool` 保持可选和轻量，不把工具系统做成第一版前提
+- `compose_response` 与 `writeback` 分开，避免展示逻辑和状态更新逻辑缠在一起
+
 ## MVP 建议边界
 
 比赛版先做：

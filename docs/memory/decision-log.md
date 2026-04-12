@@ -4,6 +4,24 @@
 
 ### 决策
 
+LangGraph 第一版采用 6 节点最小主链路：`load_context -> diagnose -> decide_action -> maybe_tool -> compose_response -> writeback`。
+
+### 原因
+
+- 当前阶段更重要的是把“系统如何先判断、再编排、再回写”讲清楚，而不是堆复杂 graph
+- 这条链路正好覆盖读取上下文、做诊断、决定动作、必要时补工具、输出结果和状态回写
+- 把 `diagnose` 与 `decide_action` 拆开，有助于在答辩和协作中清楚表达“判断”和“编排”的区别
+
+### 影响
+
+- `apps/agent` 后续优先围绕这 6 个节点定义最小 `GraphState`
+- 第一版工具调用保持在 `maybe_tool` 节点内，不提前扩成复杂 tool routing
+- 后续 schema、API contract 和前端展示都围绕这条主链路收敛
+
+## 2026-04-13
+
+### 决策
+
 `apps/web` 与 `apps/agent` 的第一版返回协议采用事件流，统一发送 `text-delta / diagnosis / plan / state-patch / done` 五类事件。
 
 ### 原因
