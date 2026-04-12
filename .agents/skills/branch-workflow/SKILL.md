@@ -42,8 +42,9 @@ When the user says they want a branch mainly to discuss, align, or document arch
 ## Choose The Owner
 
 - use the explicitly named owner if the user gave one
-- otherwise default to the active executor for the session, typically `codex`, and state that assumption
+- otherwise default to the human collaborator identifier already used in the repo or local git setup, and state that assumption
 - if the task is clearly being prepared for a known teammate, prefer that teammate's identifier over a role name
+- do not use tool names like `codex` as the branch owner unless the repo explicitly adopts that convention
 
 ## Choose The Topic
 
