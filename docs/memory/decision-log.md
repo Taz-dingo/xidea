@@ -1,5 +1,65 @@
 # Decision Log
 
+## 2026-04-12
+
+### 决策
+
+使用 LangGraph StateGraph 搭建最小编排图，5 个节点全部使用规则逻辑 mock 实现。
+
+### 原因
+
+- `plan.md` P0 要求搭出 LangGraph 最小 graph 骨架
+- state / action / tool / guardrail 已定义完毕，具备搭建条件
+- 规则 mock 足够支撑 demo 演示，不急着接真实模型
+
+### 影响
+
+- `graph.py` 从节点列表升级为可运行的 LangGraph StateGraph
+- 5 个节点可独立测试，通过 `compile_graph()` 编译后直接 `invoke()`
+- `generate_plan` 节点的规则逻辑与前端 `planner.ts` 保持对齐
+- `write_back_memory` 节点集成了 guardrail 检查
+- 后续接真实模型只需替换各节点内部实现
+
+## 2026-04-12
+
+### 决策
+
+定义 agent 的 tool 和 guardrail schema，作为受约束单 agent 的行为边界。
+
+### 原因
+
+- `plan.md` P0 要求定义 agent 的 state / action / tool / guardrail
+- state 和 action 已有枚举，但 agent 还不知道能调用什么工具、不能做什么
+- 文档明确要求"受约束"，guardrail 是约束的代码化表达
+
+### 影响
+
+- 新增 `tools.py`：4 个最小必要工具（状态读取、单元读取、上下文读取、状态回写），全部 mock 实现
+- 新增 `guardrails.py`：5 条行为约束规则（诊断优先、不懂不复习、高混淆先澄清、模式匹配、必须解释）
+- 后续 LangGraph 节点可直接使用 `TOOL_REGISTRY` 查找工具、在关键节点后调用 `run_all_guardrails` 检查
+
+## 2026-04-12
+
+### 决策
+
+完善 `apps/agent/src/xidea_agent/state.py` 数据模型，使 Python 端与前端 `types.ts` 对齐，并落地文档中要求的双轨状态模型。
+
+### 原因
+
+- Python 端只有 4 字段骨架，无法支撑后续 LangGraph 节点逻辑
+- 前端已有完整的 LearningMode / LearnerState / LearningUnit / StudyPlan 类型定义
+- `scientific-review-integration.md` 明确要求理解状态和记忆状态分开建模
+- agent 的 action 和 mode 需要枚举约束，防止编排行为不可控
+
+### 影响
+
+- 新增 `LearningMode`（6 种训练模式）和 `TrainingAction`（5 种高层动作）两个枚举
+- `LearnerState` 扩展为 9 字段，同时覆盖理解状态和记忆状态
+- 新增 `SourceAsset`、`LearningUnit`、`StudyPlanStep`、`StudyPlan` 四个模型
+- `GraphState` 改为三层结构：输入层 / 诊断层 / 编排输出层
+- 后续 LangGraph 各节点可直接读写 `GraphState` 中的对应字段
+- Python ↔ 前端通过 snake_case ↔ camelCase 转换保持字段一一对应
+
 ## 2026-04-10
 
 ### 决策
