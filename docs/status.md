@@ -1,6 +1,6 @@
 # Status
 
-## As Of 2026-04-10
+## As Of 2026-04-13
 
 ### Done
 
@@ -16,6 +16,7 @@
 - 明确 `Review Engine / Agent Memory / Consolidation` 三层边界
 - 明确学习上下文按 `project / thread` 组织
 - 明确技术方向切到“受约束单 agent + LangChain / LangGraph 最小接入”
+- 新增 `branch-workflow` 项目级 skill，把开分支、改分支名和 PR 协作约束变成可触发流程
 
 ### In Progress
 
