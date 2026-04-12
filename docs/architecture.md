@@ -335,6 +335,385 @@ load_context
 - `maybe_tool` 保持可选和轻量，不把工具系统做成第一版前提
 - `compose_response` 与 `writeback` 分开，避免展示逻辑和状态更新逻辑缠在一起
 
+## GraphState v0
+
+第一版 `GraphState` 只承载本轮真正必要的信息，不提前扩成完整长期记忆容器。
+
+建议结构：
+
+```ts
+type GraphState = {
+  request: {
+    projectId: string;
+    threadId: string;
+    userId?: string;
+    entryMode: "chat" | "ingest";
+    userMessage: string;
+    sourceAssetIds: string[];
+    targetUnitId?: string;
+    responseMode: "stream";
+  };
+
+  context: {
+    sourceAssets: SourceAsset[];
+    currentUnit: LearningUnit | null;
+    learnerState: LearnerState | null;
+    recentMessages: Array<{
+      role: "user" | "assistant" | "system";
+      content: string;
+    }>;
+  };
+
+  diagnosis?: {
+    recommendedAction: "teach" | "clarify" | "practice" | "review" | "apply";
+    reason: string;
+    confidence: number;
+    focusUnitId?: string;
+    needsTool: boolean;
+  };
+
+  action?: {
+    selectedMode?: LearningMode;
+    studyPlan?: StudyPlan;
+    toolIntent?:
+      | "asset-summary"
+      | "unit-detail"
+      | "thread-memory"
+      | "review-context"
+      | null;
+  };
+
+  toolResult?: {
+    kind: string;
+    payload: unknown;
+  };
+
+  response?: {
+    assistantMessage: string;
+    events: Array<unknown>;
+  };
+
+  writeback?: {
+    learnerStatePatch?: Partial<LearnerState>;
+    lastAction?: string;
+    reviewPatch?: Record<string, unknown>;
+  };
+};
+```
+
+### Why This Shape
+
+- `request` 保留原始输入，方便追踪和调试
+- `context` 只放本轮需要消费的上下文快照
+- `diagnosis` 与 `action` 分开，避免把“判断”和“编排”混成一个 blob
+- `toolResult` 保持轻量，只承接 `maybe_tool` 的结果
+- `response` 和 `writeback` 分开，避免展示逻辑和状态更新逻辑缠在一起
+
+### Decision 1: Keep `recentMessages`
+
+第一版保留 `recentMessages`，但只保留最近一小段消息历史。
+
+建议：
+
+- 默认只带最近 `3` 到 `8` 条消息
+- 用于帮助 agent 理解当前轮是否在延续上一轮
+- 不把整条 thread 全量塞进 `GraphState`
+
+### Decision 2: Fixed `toolIntent`
+
+第一版 `toolIntent` 采用固定枚举，不使用自由文本。
+
+当前允许值：
+
+- `asset-summary`
+- `unit-detail`
+- `thread-memory`
+- `review-context`
+
+这样做的原因：
+
+- 更容易约束第一版工具边界
+- 更容易联调和测试
+- 避免过早变成开放式 tool routing
+
+### Decision 3: Patch-Only `writeback`
+
+第一版 `writeback` 只允许小范围 patch，不做整块全量状态重写。
+
+建议只回写：
+
+- `learnerStatePatch`
+- `lastAction`
+- `reviewPatch`
+
+这样做的原因：
+
+- 更安全
+- 更容易判断本轮到底改了什么
+- 能保持最小闭环，而不提前做成复杂记忆系统
+
+### GraphState Guardrails
+
+- 不在 `GraphState` 里保存完整长期记忆对象
+- 不把 UI 展示状态直接混进 agent state
+- 不让 `toolResult` 反向重写 `diagnosis`
+- 不让 `writeback` 在第一版承接复杂 consolidation 逻辑
+
+## Diagnosis Schema v0
+
+第一版 `diagnosis` 采用增强版结构，不只返回推荐动作，还要明确问题类型、置信度和是否需要补工具信息。
+
+建议结构：
+
+```ts
+type Diagnosis = {
+  recommendedAction: "teach" | "clarify" | "practice" | "review" | "apply";
+  reason: string;
+  confidence: number;
+  focusUnitId?: string;
+  primaryIssue:
+    | "insufficient-understanding"
+    | "concept-confusion"
+    | "weak-recall"
+    | "poor-transfer"
+    | "missing-context";
+  needsTool: boolean;
+};
+```
+
+### Field Meanings
+
+- `recommendedAction`
+  - 当前轮最适合优先执行的学习动作
+  - 必须与 `teach / clarify / practice / review / apply` 保持一致
+- `reason`
+  - 对当前判断的简短解释
+  - 第一版建议控制在 `1` 到 `2` 句以内
+- `confidence`
+  - 当前判断的把握度
+  - 第一版可先使用 `0` 到 `1` 的启发式数值
+- `focusUnitId`
+  - 当前轮主要聚焦的学习单元
+  - 如果是开放式聊天且没有明确 unit，可以为空
+- `primaryIssue`
+  - 当前最主要的问题类型
+  - 用来区分“没理解”“概念混淆”“记忆不稳”“不会迁移”“上下文不足”
+- `needsTool`
+  - 当前信息是否不足，需要进入 `maybe_tool` 补充上下文
+
+### Why This Shape
+
+- 只返回 `recommendedAction` 不足以体现 Xidea 的诊断能力
+- `primaryIssue` 能把理解问题、记忆问题和迁移问题拆开，贴合产品核心价值
+- `confidence` 和 `needsTool` 配合后，可以帮助决定是否需要进一步查上下文
+- `focusUnitId` 能让后续 `plan` 更稳定地围绕具体学习单元展开
+
+### Diagnosis Guardrails
+
+- `reason` 只解释判断，不承担完整 assistant reply
+- `diagnosis` 只表达当前轮判断，不直接写回状态
+- `needsTool` 为真时，优先进入 `maybe_tool`，而不是在 `diagnose` 内硬补信息
+- `primaryIssue` 采用固定枚举，不使用自由文本
+
+## Plan Schema v0
+
+第一版 `plan` 保持增强但克制，既能体现“系统在编排”，又不提前扩成复杂课程执行系统。
+
+建议结构：
+
+```ts
+type StudyPlan = {
+  headline: string;
+  summary: string;
+  selectedMode: LearningMode;
+  expectedOutcome: string;
+  steps: Array<{
+    id: string;
+    title: string;
+    mode: LearningMode;
+    reason: string;
+    outcome: string;
+  }>;
+};
+```
+
+### Field Meanings
+
+- `headline`
+  - 当前轮学习安排的标题
+  - 用于前端最显眼的 plan 标题区
+- `summary`
+  - 对当前轮整体安排的简短解释
+  - 用来回答“为什么这轮要这样排”
+- `selectedMode`
+  - 当前轮的主训练模式
+  - 用于表达这一轮的主策略，而不是替代 step 级别的 mode
+- `expectedOutcome`
+  - 当前轮完成后希望达到的整体学习结果
+  - 用来表达本轮不是只完成步骤，而是有明确教学目标
+- `steps`
+  - 当前轮的结构化步骤列表
+  - 每一步都要能回答“为什么这样安排”和“希望带来什么结果”
+
+### Plan Constraints
+
+- 第一步版默认只允许 `1` 到 `3` 步
+- 每一步都必须带 `reason`
+- 每一步都必须带 `outcome`
+- `selectedMode` 是轮级主策略，`step.mode` 是步骤级执行形式
+
+### Why This Shape
+
+- 比只有文本 explanation 更适合展示“系统在编排”
+- 比复杂 workflow schema 更适合比赛版 demo
+- `headline + summary + expectedOutcome` 能让计划不仅是步骤列表，而是可讲的教学安排
+- 结构上与当前 web demo 的 `StudyPlan / StudyPlanStep` 已有模型接近，迁移成本低
+
+### Plan Guardrails
+
+- 第一版不增加 `priority`、`estimatedTime`、`dependsOn` 等复杂执行字段
+- `plan` 负责表达教学安排，不替代最终 assistant reply
+- `plan.summary` 解释安排逻辑，`diagnosis.reason` 解释判断逻辑，两者不要混写
+
+## State-Patch Schema v0
+
+第一版 `state-patch` 只表达本轮的增量变化，不重发整份状态，也不承接复杂长期记忆同步。
+
+建议结构：
+
+```ts
+type StatePatch = {
+  learnerStatePatch?: Partial<{
+    mastery: number;
+    understandingLevel: number;
+    memoryStrength: number;
+    confusion: number;
+    recommendedAction: "teach" | "clarify" | "practice" | "review" | "apply";
+    weakSignals: string[];
+    lastReviewedAt: string | null;
+    nextReviewAt: string | null;
+  }>;
+
+  lastAction?: {
+    action: "teach" | "clarify" | "practice" | "review" | "apply";
+    mode?: LearningMode;
+    unitId?: string;
+  };
+
+  reviewPatch?: {
+    dueUnitIds?: string[];
+    scheduledAt?: string | null;
+    reviewReason?: string;
+  };
+};
+```
+
+### Field Meanings
+
+- `learnerStatePatch`
+  - 当前轮对 `LearnerState` 的增量更新
+  - 只传本轮真正变化的字段
+- `lastAction`
+  - 当前轮最终实际执行的学习动作
+  - 用来区分诊断建议和最终执行结果
+- `reviewPatch`
+  - 当前轮对 review 调度层产生的最小影响
+  - 第一版只保留轻量接口位置，不扩成完整复习引擎数据结构
+
+### Why This Shape
+
+- 比整份状态回写更适合最小闭环，也更容易调试
+- `learnerStatePatch + lastAction + reviewPatch` 已经足够表达“学到了什么、做了什么、后续是否要复习”
+- 这套结构和当前 `LearnerState` 以及 `Review Engine` 的概念边界能够自然衔接
+
+### State-Patch Guardrails
+
+- 只回写增量变化，不重发整份 `LearnerState`
+- 如果本轮没有变化，对应字段可以省略
+- 第一版不回写完整 thread memory、完整 learner profile 或 consolidation 结果
+- `lastAction` 表达执行结果，不替代 `diagnosis`
+
+## Maybe-Tool Boundary v0
+
+第一版 `maybe_tool` 只承担“补上下文”的职责，不承担重新决策、复杂工具路由或开放式能力扩张。
+
+### Allowed Tool Intents
+
+第一版只允许以下 4 类固定工具意图：
+
+- `asset-summary`
+- `unit-detail`
+- `thread-memory`
+- `review-context`
+
+### Tool 1: `asset-summary`
+
+职责：
+
+- 读取某个 `SourceAsset` 的摘要、主题和关键点
+- 在材料导入场景下为当前轮补充最小内容上下文
+
+边界：
+
+- 第一版只读取已有摘要或结构化提炼结果
+- 不在这一层跑完整 PDF / 网页 / 多模态解析流程
+- 不让工具本身直接生成学习计划
+
+### Tool 2: `unit-detail`
+
+职责：
+
+- 读取某个 `LearningUnit` 的完整详情
+- 帮助 `plan` 和 `focusUnitId` 更稳定地围绕具体学习单元展开
+
+边界：
+
+- 只做读取，不负责诊断和编排
+- 不在这里更新 learner state
+
+### Tool 3: `thread-memory`
+
+职责：
+
+- 读取当前 thread 最近几轮的关键记录或摘要
+- 帮助 agent 理解当前轮是不是对上一轮的延续
+
+边界：
+
+- 第一版只读取最近摘要或最近关键记录
+- 不读取整条 thread 的全量长期历史
+- 不做复杂召回、排序或通用知识库搜索
+
+### Tool 4: `review-context`
+
+职责：
+
+- 读取当前与 review 调度相关的轻量上下文
+- 帮助判断当前是否适合进入 review 或安排后续复习
+
+边界：
+
+- 只读 review 相关轻量信息
+- 不运行完整 spaced repetition engine
+- 不生成复杂复习排程系统
+
+### Explicitly Out Of Scope
+
+第一版明确不做：
+
+- 真实多模态解析工具
+- 开放式搜索或浏览器搜索
+- 通用知识库检索系统
+- 任意写操作型工具
+- 多工具串联的复杂 routing 系统
+
+### Tool Guardrails
+
+- 工具只补上下文，不替代 `diagnose` 和 `decide_action`
+- 工具默认不是主链路，只有 `needsTool` 或 `toolIntent` 明确时才运行
+- 第一版优先做读取型、轻量型、结构化型工具
+- 如果某个能力会让系统滑向“开放式 agent”，第一版先不做
+
 ## MVP 建议边界
 
 比赛版先做：
