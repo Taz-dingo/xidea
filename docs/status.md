@@ -19,24 +19,31 @@
 - 新增 `branch-workflow` 项目级 skill，把开分支、改分支名和 PR 协作约束变成可触发流程
 - 明确 Vercel AI SDK 属于 web 交互层，Python + LangGraph 继续作为核心编排层
 - 明确 web 与 agent 第一版采用事件流协议，先收敛 `text-delta / diagnosis / plan / state-patch / done`
+- 锁定当前比赛版主案例为“AI 工程师围绕真实项目学习 RAG 系统设计”
+- 明确当前比赛叙事只服务于 project-backed learning，而不是泛化 all-in-one 学习平台
+- 明确第一版 demo 必须让编排过程可见：至少展示输入上下文、学习状态、动作理由、路径输出和状态回写
+- 明确比赛版主案例只是证明路径，不改变长期产品的扩展方向
+- 将 web demo 数据统一收敛到 RAG 主案例，不再并列展示跨学科样例
+- 将主案例映射成更可信的状态来源、诊断信号和回写预览
+- 将编排证据链做成默认可见输出，并把 planner explanation 结构化为主决策与写回预览
 
 ### In Progress
 
 - 收敛单 pedagogical agent 的输入输出结构、状态回写、streaming contract 和 API contract
-- 锁定比赛主案例与最小 demo surface
+- 保持 web demo 简洁可演示，同时继续对齐后续 agent runtime 接口
 
 ### Next
 
 - 写清 agent 层的 state / action / tool / guardrail 结构
 - 写清 LangGraph 最小 graph 的节点与边
 - 定义 web 与 agent 之间的最小 API contract
-- 决定第一版是否只保留问答与做题两种输出
+- 决定第一版“状态来源”后续是规则计算、半结构化日志提取，还是接模型 explanation
 - 决定“定时整理记忆”第一版是讲法还是可视化 demo
 
 ### Risks
 
-- 如果主案例迟迟不定，demo 很容易横向发散
 - 如果过早引入复杂 graph 或多 agent，当前 demo 容易被工程结构拖慢
 - 如果 `Review Engine` 与 `Agent Memory` 边界不清，后续模型和数据结构会混乱
 - 如果 agent 的 action space 和 guardrails 不清，行为会不稳定且难以评估
 - 如果 demo 展示很多能力但没有主线，差异点会不明显
+- 如果主案例虽然锁定，但状态来源和动作理由不够可信，评委仍会把它看成概念样机

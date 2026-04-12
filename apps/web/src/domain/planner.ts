@@ -3,7 +3,9 @@ import type {
   LearningMode,
   LearningUnit,
   StudyPlan,
+  StudyPlanDecision,
   StudyPlanStep,
+  WritebackPreview,
 } from "./types";
 
 const MODE_LABELS: Record<LearningMode, string> = {
@@ -30,11 +32,78 @@ function createStep(
   };
 }
 
+function pushUniqueStep(steps: StudyPlanStep[], step: StudyPlanStep): void {
+  if (steps.some((item) => item.mode === step.mode)) {
+    return;
+  }
+
+  steps.push(step);
+}
+
+function buildDecision(steps: ReadonlyArray<StudyPlanStep>): StudyPlanDecision {
+  const primaryStep = steps[0];
+
+  if (primaryStep === undefined) {
+    return {
+      title: "等待主动作",
+      reason: "当前还没有可解释的训练动作。",
+      objective: "先补全状态后再决定下一步。",
+    };
+  }
+
+  return {
+    title: primaryStep.title,
+    reason: primaryStep.reason,
+    objective: primaryStep.outcome,
+  };
+}
+
+function buildWriteback(unit: LearningUnit, learner: LearnerState): ReadonlyArray<WritebackPreview> {
+  const previews: WritebackPreview[] = [
+    {
+      id: "thread-memory",
+      target: "Project Thread",
+      change: `记录这次围绕「${unit.title}」的学习动作和后续待验证问题。`,
+    },
+  ];
+
+  if (learner.confusion >= 70) {
+    previews.push({
+      id: "confusion-patch",
+      target: "LearnerState.confusion",
+      change: "把容易混淆的 RAG 概念边界写回线程，作为下一轮辨析依据。",
+    });
+  }
+
+  if (learner.understandingLevel <= 55 || learner.recommendedAction === "teach") {
+    previews.push({
+      id: "understanding-patch",
+      target: "LearnerState.understandingLevel",
+      change: "根据导师引导后的回答质量，更新用户是否真正建立了设计框架。",
+    });
+  } else {
+    previews.push({
+      id: "application-patch",
+      target: "LearnerState.mastery",
+      change: "根据情境模拟里的方案解释质量，更新是否具备项目落地能力。",
+    });
+  }
+
+  previews.push({
+    id: "review-patch",
+    target: "Review Engine",
+    change: "根据本轮表现决定是否安排下一次 RAG 关键概念复盘。",
+  });
+
+  return previews;
+}
+
 export function buildStudyPlan(unit: LearningUnit, learner: LearnerState): StudyPlan {
   const steps: StudyPlanStep[] = [];
 
   if (learner.confusion >= 70) {
-    steps.push(
+    pushUniqueStep(
+      steps,
       createStep(
         "contrast",
         "contrast-drill",
@@ -45,7 +114,8 @@ export function buildStudyPlan(unit: LearningUnit, learner: LearnerState): Study
   }
 
   if (learner.understandingLevel <= 45 || learner.recommendedAction === "teach") {
-    steps.push(
+    pushUniqueStep(
+      steps,
       createStep(
         "guided",
         "guided-qa",
@@ -53,22 +123,14 @@ export function buildStudyPlan(unit: LearningUnit, learner: LearnerState): Study
         "先补理解框架，再决定是否进入练习或复习。",
       ),
     );
-  } else if (learner.memoryStrength <= 50 || learner.recommendedAction === "review") {
-    steps.push(
-      createStep(
-        "review",
-        "audio-recall",
-        "用户已经基本理解，但记忆强度偏弱，适合进入回忆型训练。",
-        "把短时掌握转成更稳定的长期记忆。",
-      ),
-    );
   } else {
-    steps.push(
+    pushUniqueStep(
+      steps,
       createStep(
-        "socratic",
-        "socratic",
-        "已有一定掌握度，适合通过追问暴露真实理解缺口。",
-        "把“好像懂了”转成可以稳定表达和迁移的理解。",
+        "scenario",
+        "scenario-sim",
+        "当前更值得验证的是能否把 RAG 判断迁移到真实项目场景。",
+        "从概念理解升级到能解释具体设计取舍。",
       ),
     );
   }
@@ -78,7 +140,8 @@ export function buildStudyPlan(unit: LearningUnit, learner: LearnerState): Study
   );
 
   if (preferredCandidate !== undefined) {
-    steps.push(
+    pushUniqueStep(
+      steps,
       createStep(
         "preferred",
         preferredCandidate,
@@ -89,9 +152,10 @@ export function buildStudyPlan(unit: LearningUnit, learner: LearnerState): Study
   }
 
   if (steps.length < 3) {
-    steps.push(
+    pushUniqueStep(
+      steps,
       createStep(
-        "scenario",
+        "fallback-scenario",
         "scenario-sim",
         "最后用真实场景做迁移测试，确认知识能否被应用。",
         "从会答题升级到会用。",
@@ -101,8 +165,9 @@ export function buildStudyPlan(unit: LearningUnit, learner: LearnerState): Study
 
   return {
     headline: `围绕「${unit.title}」生成的动态学习路径`,
-    summary: `系统综合理解水平 ${learner.understandingLevel}% 、记忆强度 ${learner.memoryStrength}% 和混淆风险 ${learner.confusion}% 来安排当前学习动作。`,
+    summary: `系统综合理解水平 ${learner.understandingLevel}%、记忆强度 ${learner.memoryStrength}% 和混淆风险 ${learner.confusion}%，决定当前先澄清边界、补理解，还是进入项目情境验证。`,
+    decision: buildDecision(steps),
     steps,
+    writeback: buildWriteback(unit, learner),
   };
 }
-

@@ -4,6 +4,168 @@
 
 ### 决策
 
+“比赛版主案例收敛”只作用于当前证明路径，不改变 Xidea 长期作为 AI 学习编排系统的产品边界。
+
+### 原因
+
+- 团队需要在比赛版上极度收敛，但又不能误伤长期愿景
+- 如果不显式说明，后续协作中很容易把“当前只讲一个场景”误读成“产品以后只做这个场景”
+- 把证明路径和长期边界拆开，有助于同时保持答辩锋利度和产品扩展性
+
+### 影响
+
+- 当前文档和 demo 默认围绕 RAG 主案例展开，但长期叙事仍保留多输入、多训练、多项目任务的扩展空间
+- 新增比赛版相关收敛时，要明确标注它属于当前证明路径还是长期产品边界
+
+## 2026-04-13
+
+### 决策
+
+当前比赛版 demo 锁定一个主案例：
+AI 工程师围绕正在推进的项目学习 RAG 系统设计，用它来承载第一版“AI 学习编排系统”的叙事。
+
+### 原因
+
+- 现阶段最大的风险不是功能不够，而是主线过散
+- RAG 系统设计既有真实项目上下文，也天然存在“没懂 / 混淆 / 需要应用”的多种学习状态
+- 当前 web demo、学习主题和默认样例已经与这一主案例最接近，收敛成本最低
+
+### 影响
+
+- 比赛展示、文档和默认 demo 都优先围绕这一主案例组织
+- 其他学科和输入形式保留为扩展方向，不再作为第一版主叙事的证明对象
+- 后续如果增加第二案例，也只能作为辅助证明，不与主案例并列抢主线
+
+## 2026-04-13
+
+### 决策
+
+Xidea 当前比赛版聚焦 `project-backed learning`，不把自己讲成面向所有场景的广义 AI tutor。
+
+### 原因
+
+- `project / thread` 是当前产品定义里最有辨识度的部分，必须被放到叙事中心
+- 如果把产品讲成泛化学习助手，评委会自然拿它与 ChatGPT、Khanmigo 等即时 tutor 直接比较
+- 真实项目学习更能体现持续上下文、状态回写和动作切换的必要性
+
+### 影响
+
+- 对外讲述时，默认强调“围绕真实项目持续学习”的任务，而不是泛化 all-in-one 学习平台
+- 当前 demo 的价值判断标准变成：是否能说明为什么这个任务需要 orchestration，而不是一次性回答
+- 没有项目目标、没有持续上下文的陪聊式学习，不作为第一版核心目标
+
+## 2026-04-13
+
+### 决策
+
+第一版 demo 必须把编排过程做成可见证据链，至少展示：输入上下文、学习状态、动作理由、路径输出和状态回写。
+
+### 原因
+
+- “编排”天然抽象，只靠口头讲述不够有说服力
+- 如果评委只能看到答案或训练结果，就会把产品误解成普通 AI tutor 或练习工具
+- 可见证据链能把系统判断从概念层变成可检视的产品体验
+
+### 影响
+
+- web 侧后续优先把 diagnosis、plan 和 state-patch 渲染成默认可见内容
+- agent 侧 explanation 要尽量结构化，不能只返回笼统结论
+- 每次新增 demo surface 时，都要先检查这条证据链是否完整
+
+## 2026-04-13
+
+### 决策
+
+第一版 `maybe_tool` 只允许 `asset-summary / unit-detail / thread-memory / review-context` 四类上下文补充型工具。
+
+### 原因
+
+- 当前阶段工具的作用是帮助 agent 补足上下文，而不是替代诊断和编排
+- 如果过早引入开放式搜索、复杂 routing 或写操作工具，系统很容易偏离“受约束单 agent”的主线
+- 这四类工具已经足够覆盖材料、学习单元、thread 连续性和 review 调度四个核心上下文来源
+
+### 影响
+
+- `maybe_tool` 第一版保持读取型、轻量型、结构化型
+- 第一版不做真实多模态解析、开放式搜索、通用知识库检索和复杂工具链路
+- 后续如果要增加新工具，必须先证明它服务于学习编排主线，而不是扩展能力表演
+
+## 2026-04-13
+
+### 决策
+
+第一版 `state-patch` 收敛为 `learnerStatePatch / lastAction / reviewPatch` 三部分，只表达本轮增量变化。
+
+### 原因
+
+- 这套结构已经足够支撑“状态更新 + 动作记录 + review 调度变化”的最小闭环
+- 全量状态回写会让第一版过早进入复杂同步问题
+- 与当前 `LearnerState` 和 `Review Engine` 的边界相比，这种 patch 形式更清晰
+
+### 影响
+
+- `writeback` 节点后续优先围绕这三部分产出结果
+- 前端展示和后端回写都以“本轮变化”而不是“全量状态”来理解返回值
+- 第一版不在 `state-patch` 中承接复杂长期记忆对象
+
+## 2026-04-13
+
+### 决策
+
+第一版 `plan` 采用轻量结构，包含 `headline / summary / selectedMode / expectedOutcome / steps`，并把步骤数限制在 `1` 到 `3` 步。
+
+### 原因
+
+- 比赛版 demo 需要让“系统如何安排学习路径”一眼可讲清楚
+- 太轻的 plan 只会退化成一句推荐，太重的 plan 又会提前变成复杂 workflow 系统
+- 当前 web demo 已经有 `StudyPlan / StudyPlanStep` 的基础表达，沿着这条线扩展最自然
+
+### 影响
+
+- `plan` 事件后续围绕这套字段收敛
+- `selectedMode` 作为轮级主策略保留，`step.mode` 继续表达步骤级执行方式
+- 第一版不引入 `priority`、`estimatedTime` 等复杂调度字段
+
+## 2026-04-13
+
+### 决策
+
+第一版 `diagnosis` 采用增强版结构，包含 `recommendedAction / reason / confidence / focusUnitId / primaryIssue / needsTool`。
+
+### 原因
+
+- Xidea 需要展示的不只是“推荐做什么”，还要展示“当前到底卡在哪里”
+- 只有 `recommendedAction` 会让诊断层过薄，难以体现系统的教学判断能力
+- `primaryIssue`、`confidence` 和 `needsTool` 能更自然地衔接后续 `plan`、`maybe_tool` 和前端 explanation
+
+### 影响
+
+- `diagnosis` 事件和 `GraphState.diagnosis` 后续统一围绕这套字段收敛
+- `reason` 保持短解释，避免和最终 assistant message 重复
+- `primaryIssue` 第一版收敛为固定枚举，而不是开放文本
+
+## 2026-04-13
+
+### 决策
+
+第一版 `GraphState` 保留最近少量消息历史、使用固定 `toolIntent` 枚举，并只允许 patch 形式的 `writeback`。
+
+### 原因
+
+- 最近少量消息历史能支持真实多轮对话，但不会把 thread 全量状态塞进 graph
+- 固定 `toolIntent` 更适合比赛版 demo 的边界控制和联调
+- patch-only `writeback` 能让状态变化更清晰，避免第一版过早演化成复杂记忆同步系统
+
+### 影响
+
+- `context.recentMessages` 默认只带最近 `3` 到 `8` 条消息
+- `toolIntent` 第一版收敛为 `asset-summary / unit-detail / thread-memory / review-context`
+- `writeback` 第一版只围绕 `learnerStatePatch / lastAction / reviewPatch` 设计
+
+## 2026-04-13
+
+### 决策
+
 LangGraph 第一版采用 6 节点最小主链路：`load_context -> diagnose -> decide_action -> maybe_tool -> compose_response -> writeback`。
 
 ### 原因
