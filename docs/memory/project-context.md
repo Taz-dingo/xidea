@@ -16,6 +16,8 @@
 - 前端采用 React + Tailwind 的快速演示栈
 - 核心编排采用 Python + LangChain + LangGraph，但第一版只使用最小必要能力
 - 优先支撑团队讨论和比赛讲述
+- 当前比赛版用“AI 工程师围绕真实项目学习 RAG 系统设计”作为第一证明场景
+- 这个主案例只服务于比赛版证明，不改变 Xidea 长期面向多种项目型学习任务的方向
 
 ## Out Of Scope For Now
 
