@@ -1,0 +1,3 @@
+display_name: Branch Workflow
+short_description: Create or rename Xidea branches with the repo's type/owner/topic convention and PR guardrails.
+default_prompt: Handle this Xidea branch or PR workflow request using the repo's naming rules, short-branch discipline, and required doc update checks.

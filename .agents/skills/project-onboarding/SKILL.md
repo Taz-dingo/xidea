@@ -23,15 +23,15 @@ This skill is the default entrypoint when someone needs to understand:
 
 Read these files in order:
 
-1. [../../AGENTS.md](../../AGENTS.md)
-2. [../../docs/spec.md](../../docs/spec.md)
-3. [../../docs/status.md](../../docs/status.md)
-4. [../../docs/plan.md](../../docs/plan.md)
-5. [../../docs/agent-memory.md](../../docs/agent-memory.md)
-6. [../../docs/memory/project-context.md](../../docs/memory/project-context.md)
-7. [../../docs/memory/decision-log.md](../../docs/memory/decision-log.md)
-8. [../../docs/memory/open-questions.md](../../docs/memory/open-questions.md)
-9. [../../CONTRIBUTING.md](../../CONTRIBUTING.md)
+1. [../../../AGENTS.md](../../../AGENTS.md)
+2. [../../../docs/spec.md](../../../docs/spec.md)
+3. [../../../docs/status.md](../../../docs/status.md)
+4. [../../../docs/plan.md](../../../docs/plan.md)
+5. [../../../docs/agent-memory.md](../../../docs/agent-memory.md)
+6. [../../../docs/memory/project-context.md](../../../docs/memory/project-context.md)
+7. [../../../docs/memory/decision-log.md](../../../docs/memory/decision-log.md)
+8. [../../../docs/memory/open-questions.md](../../../docs/memory/open-questions.md)
+9. [../../../CONTRIBUTING.md](../../../CONTRIBUTING.md)
 
 Only read older or broader docs like `product-brief.md` and `architecture.md` if the current task truly needs them.
 
@@ -96,6 +96,10 @@ For learning logic, planner, or domain modeling:
 For project setup, collaboration, or context handoff:
 
 - stay anchored to this skill and the docs above
+
+For branch creation, branch renaming, or PR-scoped collaboration work:
+
+- also use `branch-workflow`
 
 For doc structure, source-of-truth decisions, or documentation maintenance:
 

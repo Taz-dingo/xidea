@@ -19,9 +19,10 @@
 
 ## Project Skills
 
-本项目维护了 5 个项目级 skill：
+本项目维护了 6 个项目级 skill：
 
 - `project-onboarding`
+- `branch-workflow`
 - `docs-governance`
 - `frontend-design`
 - `react-xidea`
@@ -32,6 +33,7 @@
 ### When to Use
 
 - 开始接手项目、隔一段时间重新进入、或 agent 需要快速建立上下文时，用 `project-onboarding`
+- 需要拉分支、改分支名、检查分支命名、决定 `type/owner/topic`、或准备符合规范的 PR 时，用 `branch-workflow`
 - 需要理解文档结构、判断该读哪几份、决定信息该写到哪里、或清理重复文档时，用 `docs-governance`
 - 设计或改版页面时，用 `frontend-design`
 - 写 React 页面、组件、状态流转时，用 `react-xidea`
@@ -39,7 +41,7 @@
 
 如果一个任务同时涉及 UI、React 和类型设计，可以组合使用。
 
-默认建议先运行 `project-onboarding`，再进入具体技能。
+默认建议先运行 `project-onboarding`；涉及开分支、重命名分支或 PR 协作时，再加 `branch-workflow`。
 
 ## Repo Conventions
 
