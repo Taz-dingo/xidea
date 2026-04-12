@@ -82,8 +82,17 @@
 
 - 页面
 - 交互
+- 对话输入与消息状态
+- 流式输出展示
+- 工具调用结果展示
 - 学习状态可视化
 - planner 输出展示
+
+技术角色：
+
+- 这是 interaction shell
+- 优先使用 TypeScript / React / Vercel AI SDK 承接 chat UI 和 streaming 体验
+- 不在这一层承接教学编排主逻辑
 
 ### `apps/agent`
 
@@ -94,6 +103,98 @@
 - 路径编排
 - 训练动作选择
 - 记忆回写
+
+技术角色：
+
+- 这是 orchestration brain
+- 优先使用 Python / LangChain / LangGraph 承接受约束单 pedagogical agent
+- Tutor runtime 的核心决策、状态迁移和 guardrail 执行都在这一层
+
+## 当前推荐运行形态
+
+1. 用户在 `apps/web` 发起问题、材料导入或训练请求
+2. `apps/web` 用 Vercel AI SDK 管理会话状态、消息协议和流式渲染
+3. 请求通过 API contract 发到 `apps/agent`
+4. `apps/agent` 读取 `project / thread / learner state`，通过 LangGraph 做路径判断
+5. agent 返回学习动作、解释信息和必要的增量消息
+6. `apps/web` 把这些结果渲染成聊天内容、学习面板和 planner explanation
+
+## 当前边界原则
+
+- Vercel AI SDK 属于 web 交互层，不替代 LangGraph
+- LangGraph 属于核心编排层，不直接负责前端消息展示
+- 如果后续接入 AI Gateway，它是独立网关层，不改变 web / agent 的主边界
+- 第一版先把 web 与 agent 的 streaming contract 讲清楚，再决定是否扩展更多节点和 provider
+
+## Web-Agent Contract v0
+
+第一版采用事件流，而不是一次性 JSON 返回。
+
+目标：
+
+- 保留前端流式体验
+- 同时传递结构化诊断、学习路径和状态更新
+- 让比赛 demo 展示“系统正在判断和编排”，而不只是聊天输出
+
+### Request
+
+`apps/web` 发给 `apps/agent` 的最小请求建议包含：
+
+- `projectId`: 当前项目上下文
+- `threadId`: 当前会话上下文
+- `userId`: 可选，后续接真实用户时使用
+- `entryMode`: `chat | ingest`
+- `userMessage`: 当前轮用户输入
+- `sourceAssetIds`: 可选，本轮相关材料
+- `targetUnitId`: 可选，本轮聚焦的学习单元
+- `learnerState`: 可选，当前前端已知的学习者状态快照
+- `contextSnapshot`: 可选，当前前端已知的材料、主题和最近消息
+- `responseMode`: 第一版默认 `stream`
+
+### Stream Events
+
+第一版先收敛为 5 类事件：
+
+1. `text-delta`
+   - 增量文本片段
+   - 用于在前端逐步显示 assistant 输出
+2. `diagnosis`
+   - 当前轮的判断结果
+   - 包含 `recommendedAction` 和简要原因
+3. `plan`
+   - 当前轮生成的学习路径
+   - 对应 `StudyPlan`
+4. `state-patch`
+   - 对学习者状态的增量更新
+   - 只传本轮变化，不要求整份状态重发
+5. `done`
+   - 流结束信号
+   - 表示本轮结构化结果已经完整送达
+
+### Event Shape
+
+可以统一成如下结构：
+
+```json
+{ "type": "text-delta", "text": "我先帮你把这个概念边界拉清楚。" }
+{ "type": "diagnosis", "data": { "recommendedAction": "clarify", "reason": "当前混淆风险高" } }
+{ "type": "plan", "data": { "headline": "先辨析再迁移", "summary": "先澄清，再追问，再迁移", "steps": [] } }
+{ "type": "state-patch", "data": { "confusion": 72, "recommendedAction": "clarify" } }
+{ "type": "done" }
+```
+
+### Why This Shape
+
+- 比纯文本流更适合 Xidea，因为系统不仅要“回答”，还要“判断和编排”
+- 比一次性 JSON 更适合前端 demo，因为用户能看到系统逐步生成内容
+- 前端可以把 `text-delta` 渲染成聊天内容，把 `diagnosis / plan / state-patch` 渲染成学习面板
+
+### First-Version Constraint
+
+- 第一版不追求通用事件系统
+- 不急着支持复杂 tool-call protocol
+- 只要先让 web 稳定接收这 5 类事件并完成展示即可
+- 如果后续 LangGraph 节点变复杂，再扩展事件种类
 
 ## MVP 建议边界
 
@@ -123,3 +224,4 @@
 - `apps/agent/src/xidea_agent/state.py`: 核心状态模型
 - `apps/agent/src/xidea_agent/graph.py`: 编排节点和图定义
 - `apps/agent/src/xidea_agent/api.py`: 对外服务接口
+- `apps/agent/src/xidea_agent/runtime.py`: LangGraph runtime 与流式输出适配

@@ -17,10 +17,12 @@
 - 明确学习上下文按 `project / thread` 组织
 - 明确技术方向切到“受约束单 agent + LangChain / LangGraph 最小接入”
 - 新增 `branch-workflow` 项目级 skill，把开分支、改分支名和 PR 协作约束变成可触发流程
+- 明确 Vercel AI SDK 属于 web 交互层，Python + LangGraph 继续作为核心编排层
+- 明确 web 与 agent 第一版采用事件流协议，先收敛 `text-delta / diagnosis / plan / state-patch / done`
 
 ### In Progress
 
-- 收敛单 pedagogical agent 的输入输出结构、状态回写和 API contract
+- 收敛单 pedagogical agent 的输入输出结构、状态回写、streaming contract 和 API contract
 - 锁定比赛主案例与最小 demo surface
 
 ### Next

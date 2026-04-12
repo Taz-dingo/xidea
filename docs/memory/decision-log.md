@@ -4,6 +4,42 @@
 
 ### 决策
 
+`apps/web` 与 `apps/agent` 的第一版返回协议采用事件流，统一发送 `text-delta / diagnosis / plan / state-patch / done` 五类事件。
+
+### 原因
+
+- Xidea 需要展示的不只是聊天文本，还包括系统判断、学习路径和状态变化
+- 纯文本流不利于承载结构化编排结果，一次性 JSON 又不利于 demo 的流式体验
+- 事件流能让 Vercel AI SDK 前端层与 Python LangGraph 后端层自然衔接
+
+### 影响
+
+- `apps/web` 后续按事件类型分别渲染聊天内容、诊断卡片、学习路径和状态变化
+- `apps/agent` 需要把 LangGraph 输出包装成统一事件，而不是只返回最终文本
+- 第一版先收敛事件种类，不提前设计复杂通用协议
+
+## 2026-04-13
+
+### 决策
+
+前端交互层接入 Vercel AI SDK，但核心学习编排仍保持在 Python + LangChain + LangGraph。
+
+### 原因
+
+- 项目已经明确把受约束单 pedagogical agent 作为核心差异点，核心决策不适合在当前阶段迁到 TS
+- Vercel AI SDK 很适合承接 chat state、流式输出、消息协议和工具结果展示，能增强 demo 的可讲性
+- 把两者分层使用，可以同时保留 Python agent 生态优势和前端 AI 交互体验优势
+
+### 影响
+
+- `apps/web` 统一承担 interaction shell，优先负责消息流、对话体验和结果展示
+- `apps/agent` 继续承担 orchestration brain，负责 state、action、tool、guardrail 和 LangGraph runtime
+- 后续如果接入 AI Gateway，也作为独立网关层处理 provider 路由与观测，不替代主编排层
+
+## 2026-04-13
+
+### 决策
+
 项目的分支命名与 PR 协作规范通过独立的 `branch-workflow` skill 暴露，而不是只散落在协作文档里。
 
 ### 原因
