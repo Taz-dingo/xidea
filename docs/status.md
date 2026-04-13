@@ -32,6 +32,11 @@
 - 定义 agent guardrail schema：5 条行为约束规则 + 统一检查入口
 - 搭建 LangGraph 最小编排图：5 个节点 + StateGraph + 规则 mock 实现
 - 生成 `docs/agent-state-design.md` 设计文档
+- 将 `learn-engine` 分支上的 agent contract 对齐到 `AgentRequest / diagnosis / plan / state-patch / StreamEvent`
+- 在 `apps/agent` 补上 v0 runtime、SQLite repository 与 FastAPI `/runs/v0` / `/schemas` / storage endpoints
+- LangGraph 编排图已切到 `load_context -> diagnose -> decide_action -> maybe_tool -> compose_response -> writeback`
+- `load_context` 已可读取 SQLite 中的 recent messages 与 prior learner state 作为本轮基线
+- 为 runtime、graph、API、repository roundtrip 补上 10 个测试，当前全部通过
 
 ### In Progress
 
@@ -40,11 +45,10 @@
 
 ### Next
 
-- 定义 web 与 agent 之间的最小 API contract
-- 搭出 SQLite + repository 的最小状态持久化骨架
-- 搭出 `Review Engine v0` 的启发式调度逻辑
-- 决定第一版"状态来源"后续是规则计算、半结构化日志提取，还是接模型 explanation
-- 决定"定时整理记忆"第一版是讲法还是可视化 demo
+- 把 web demo 接到真实 `/runs/v0` 返回的 `diagnosis / plan / state-patch` 结构
+- 继续丰富 `maybe_tool` 的真实上下文来源，而不只返回轻量 stub payload
+- 把 `Review Engine v0` 从 patch 级回写推进到独立启发式调度层
+- 决定第一版 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
 
 ### Risks
 

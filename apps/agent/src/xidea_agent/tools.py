@@ -1,205 +1,215 @@
-"""Agent 可调用的工具定义。
-
-第一版只提供最小必要的读写工具，全部使用 mock 数据。
-后续接入真实存储后，只需替换每个工具的内部实现，接口不变。
-"""
-
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Any
 
-from xidea_agent.state import LearnerState, LearningMode, LearningUnit, TrainingAction
-
-
-# ---------------------------------------------------------------------------
-# Tool 输入 / 输出 schema
-# ---------------------------------------------------------------------------
-
-
-class RetrieveLearnerStateInput(BaseModel):
-    learner_id: str
-    unit_id: str
+from xidea_agent.repository import SQLiteRepository
+from xidea_agent.state import (
+    AgentRequest,
+    LearningUnit,
+    SourceAsset,
+    ToolIntent,
+    ToolResult,
+)
 
 
-class RetrieveLearningUnitInput(BaseModel):
-    unit_id: str
-
-
-class ProjectContext(BaseModel):
-    """项目上下文：材料列表 + 最近训练历史。"""
-
-    project_id: str
-    source_titles: list[str] = Field(default_factory=list)
-    recent_actions: list[str] = Field(default_factory=list)
-
-
-class RetrieveProjectContextInput(BaseModel):
-    project_id: str
-
-
-class WriteBackStateInput(BaseModel):
-    learner_id: str
-    unit_id: str
-    updated_state: LearnerState
-
-
-class WriteBackResult(BaseModel):
-    success: bool
-    message: str
-
-
-# ---------------------------------------------------------------------------
-# Mock 实现
-# ---------------------------------------------------------------------------
-
-_MOCK_LEARNER_STATES: dict[str, LearnerState] = {
-    "profile-1": LearnerState(
-        mastery=38,
-        understanding_level=42,
-        memory_strength=33,
-        confusion=52,
-        preferred_modes=[LearningMode.GUIDED_QA, LearningMode.SCENARIO_SIM],
-        weak_signals=["不会追问", "容易问成确认式问题"],
-        last_reviewed_at="2026-04-05",
-        next_review_at="2026-04-09",
-        recommended_action=TrainingAction.TEACH,
+_ASSET_CATALOG: dict[str, SourceAsset] = {
+    "asset-1": SourceAsset(
+        id="asset-1",
+        title="RAG 系统设计评审记录.pdf",
+        kind="pdf",
+        topic="当前项目方案",
     ),
-    "profile-2": LearnerState(
-        mastery=64,
-        understanding_level=58,
-        memory_strength=61,
-        confusion=76,
-        preferred_modes=[LearningMode.CONTRAST_DRILL, LearningMode.SOCRATIC],
-        weak_signals=["概念混淆", "不能解释为何这样设计"],
-        last_reviewed_at="2026-04-07",
-        next_review_at="2026-04-10",
-        recommended_action=TrainingAction.CLARIFY,
+    "asset-2": SourceAsset(
+        id="asset-2",
+        title="检索召回与重排对比笔记",
+        kind="note",
+        topic="概念边界",
     ),
-    "profile-3": LearnerState(
-        mastery=55,
-        understanding_level=57,
-        memory_strength=49,
-        confusion=81,
-        preferred_modes=[LearningMode.IMAGE_RECALL, LearningMode.CONTRAST_DRILL],
-        weak_signals=["视觉记忆不稳", "关键差异抓不住"],
-        last_reviewed_at="2026-04-06",
-        next_review_at="2026-04-08",
-        recommended_action=TrainingAction.REVIEW,
+    "asset-3": SourceAsset(
+        id="asset-3",
+        title="线上 bad case 复盘网页",
+        kind="web",
+        topic="真实项目反馈",
     ),
 }
 
-_MOCK_UNITS: dict[str, LearningUnit] = {
-    "unit-1": LearningUnit(
-        id="unit-1",
+_UNIT_CATALOG: dict[str, LearningUnit] = {
+    "unit-rag-retrieval": LearningUnit(
+        id="unit-rag-retrieval",
+        title="什么时候需要重排，而不是只做向量召回",
+        summary="理解召回命中和回答质量之间的断层，以及重排的作用。",
+        weakness_tags=["概念边界", "方案取舍", "容易误配"],
+        candidate_modes=["contrast-drill", "guided-qa", "scenario-sim"],
+        difficulty=3,
+    ),
+    "unit-rag-core": LearningUnit(
+        id="unit-rag-core",
         title="RAG 为什么不是简单检索 + 拼接",
         summary="理解召回、重排、上下文构造与回答质量之间的关系。",
         weakness_tags=["概念边界", "系统设计", "容易混淆"],
-        candidate_modes=[
-            LearningMode.GUIDED_QA,
-            LearningMode.CONTRAST_DRILL,
-            LearningMode.SCENARIO_SIM,
-        ],
+        candidate_modes=["guided-qa", "contrast-drill", "scenario-sim"],
         difficulty=4,
     ),
-    "unit-2": LearningUnit(
-        id="unit-2",
-        title="用户访谈中的开放式追问",
-        summary="识别封闭式问题，并把问题重写成能挖出真实动机的提问。",
-        weakness_tags=["表达迁移", "场景应用"],
-        candidate_modes=[
-            LearningMode.SOCRATIC,
-            LearningMode.SCENARIO_SIM,
-            LearningMode.AUDIO_RECALL,
-        ],
-        difficulty=3,
-    ),
-    "unit-3": LearningUnit(
-        id="unit-3",
-        title="心电图里房颤与房扑的区别",
-        summary="用节律、波形与临床判断线索建立稳定区分。",
-        weakness_tags=["视觉辨识", "高混淆"],
-        candidate_modes=[
-            LearningMode.CONTRAST_DRILL,
-            LearningMode.IMAGE_RECALL,
-            LearningMode.GUIDED_QA,
-        ],
-        difficulty=5,
+    "unit-rag-explain": LearningUnit(
+        id="unit-rag-explain",
+        title="如何把 RAG 方案解释给产品和评审",
+        summary="把技术设计转换成业务可理解的取舍说明和实施路径。",
+        weakness_tags=["表达迁移", "真实应用", "答辩压力"],
+        candidate_modes=["scenario-sim", "guided-qa", "contrast-drill"],
+        difficulty=4,
     ),
 }
 
 
-def retrieve_learner_state(inp: RetrieveLearnerStateInput) -> LearnerState:
-    """获取学习者当前状态（mock）。"""
-    state = _MOCK_LEARNER_STATES.get(inp.learner_id)
-    if state is None:
-        return LearnerState(
-            mastery=50,
-            understanding_level=50,
-            memory_strength=50,
-            confusion=30,
-            recommended_action=TrainingAction.TEACH,
+def retrieve_source_assets(asset_ids: list[str]) -> list[SourceAsset]:
+    assets: list[SourceAsset] = []
+
+    for asset_id in asset_ids:
+        asset = _ASSET_CATALOG.get(asset_id)
+        if asset is None:
+            assets.append(
+                SourceAsset(
+                    id=asset_id,
+                    title=f"Imported asset {asset_id}",
+                    kind="note",
+                    topic="未分类材料",
+                )
+            )
+        else:
+            assets.append(asset)
+
+    return assets
+
+
+def retrieve_learning_unit(unit_id: str | None, topic: str) -> LearningUnit:
+    if unit_id and unit_id in _UNIT_CATALOG:
+        return _UNIT_CATALOG[unit_id]
+
+    lowered = topic.lower()
+    if "重排" in topic or "rerank" in lowered:
+        return _UNIT_CATALOG["unit-rag-retrieval"]
+    if "答辩" in topic or "评审" in topic:
+        return _UNIT_CATALOG["unit-rag-explain"]
+
+    return _UNIT_CATALOG["unit-rag-core"]
+
+
+def resolve_tool_result(
+    tool_intent: ToolIntent,
+    request: AgentRequest,
+    repository: SQLiteRepository | None = None,
+) -> ToolResult | None:
+    if tool_intent == "none":
+        return None
+
+    if tool_intent == "asset-summary":
+        return ToolResult(
+            kind=tool_intent,
+            payload=_build_asset_summary_payload(request.source_asset_ids),
         )
-    return state
 
-
-def retrieve_learning_unit(inp: RetrieveLearningUnitInput) -> LearningUnit:
-    """获取学习单元详情（mock）。"""
-    unit = _MOCK_UNITS.get(inp.unit_id)
-    if unit is None:
-        return LearningUnit(
-            id=inp.unit_id,
-            title="未知学习单元",
-            summary="",
+    if tool_intent == "thread-memory":
+        return ToolResult(
+            kind=tool_intent,
+            payload=_build_thread_memory_payload(request.thread_id, repository),
         )
-    return unit
 
+    if tool_intent == "review-context":
+        return ToolResult(
+            kind=tool_intent,
+            payload=_build_review_context_payload(
+                request.thread_id,
+                request.target_unit_id or "rag-core-unit",
+                repository,
+            ),
+        )
 
-def retrieve_project_context(inp: RetrieveProjectContextInput) -> ProjectContext:
-    """获取项目上下文（mock）。"""
-    return ProjectContext(
-        project_id=inp.project_id,
-        source_titles=[
-            "RAG 系统设计速览.pdf",
-            "产品经理的用户访谈网页收藏",
-            "心电图判读入门笔记",
-        ],
-        recent_actions=["guided-qa on unit-1", "contrast-drill on unit-3"],
+    unit = retrieve_learning_unit(request.target_unit_id, request.topic)
+    return ToolResult(
+        kind=tool_intent,
+        payload={
+            "focusUnitId": unit.id,
+            "title": unit.title,
+            "summary": unit.summary,
+            "candidateModes": unit.candidate_modes,
+            "weaknessTags": unit.weakness_tags,
+        },
     )
 
 
-def write_back_state(inp: WriteBackStateInput) -> WriteBackResult:
-    """训练结束后回写学习者状态（mock：只返回成功）。"""
-    _MOCK_LEARNER_STATES[inp.learner_id] = inp.updated_state
-    return WriteBackResult(success=True, message="state updated (mock)")
+def describe_tool_registry() -> dict[str, dict[str, Any]]:
+    return {
+        "asset-summary": {
+            "description": "Summarize imported source assets for the current turn.",
+            "returns": ["assetIds", "assetTitles", "summary"],
+        },
+        "unit-detail": {
+            "description": "Return structured detail for the current learning unit.",
+            "returns": ["focusUnitId", "title", "summary", "candidateModes"],
+        },
+        "thread-memory": {
+            "description": "Return recent thread messages to preserve multi-turn continuity.",
+            "returns": ["threadId", "recentMessages", "summary"],
+        },
+        "review-context": {
+            "description": "Return latest review scheduling context for the current unit.",
+            "returns": ["focusUnitId", "dueUnitIds", "scheduledAt", "summary"],
+        },
+    }
 
 
-# ---------------------------------------------------------------------------
-# Tool 注册表 — 供 graph 节点查找可用工具
-# ---------------------------------------------------------------------------
+def _build_asset_summary_payload(asset_ids: list[str]) -> dict[str, Any]:
+    assets = retrieve_source_assets(asset_ids)
+    return {
+        "assetIds": [asset.id for asset in assets],
+        "assetTitles": [asset.title for asset in assets],
+        "summary": "需要先读取导入材料，提取与当前问题最相关的项目背景和概念片段。",
+    }
 
-TOOL_REGISTRY: dict[str, dict[str, object]] = {
-    "retrieve_learner_state": {
-        "fn": retrieve_learner_state,
-        "input_schema": RetrieveLearnerStateInput.model_json_schema(),
-        "output_schema": LearnerState.model_json_schema(),
-        "description": "获取学习者当前状态",
-    },
-    "retrieve_learning_unit": {
-        "fn": retrieve_learning_unit,
-        "input_schema": RetrieveLearningUnitInput.model_json_schema(),
-        "output_schema": LearningUnit.model_json_schema(),
-        "description": "获取学习单元详情",
-    },
-    "retrieve_project_context": {
-        "fn": retrieve_project_context,
-        "input_schema": RetrieveProjectContextInput.model_json_schema(),
-        "output_schema": ProjectContext.model_json_schema(),
-        "description": "获取项目上下文（材料列表、历史训练记录）",
-    },
-    "write_back_state": {
-        "fn": write_back_state,
-        "input_schema": WriteBackStateInput.model_json_schema(),
-        "output_schema": WriteBackResult.model_json_schema(),
-        "description": "训练结束后回写学习者状态",
-    },
-}
+
+def _build_thread_memory_payload(
+    thread_id: str, repository: SQLiteRepository | None
+) -> dict[str, Any]:
+    if repository is None:
+        return {
+            "threadId": thread_id,
+            "recentMessages": [],
+            "summary": "当前没有持久化 thread memory，先按本轮消息继续诊断。",
+        }
+
+    messages = repository.list_recent_messages(thread_id, limit=5)
+    return {
+        "threadId": thread_id,
+        "recentMessages": [message.model_dump() for message in messages],
+        "summary": "已补充最近几轮 thread message，供当前轮保持连续教学。",
+    }
+
+
+def _build_review_context_payload(
+    thread_id: str,
+    unit_id: str,
+    repository: SQLiteRepository | None,
+) -> dict[str, Any]:
+    if repository is None:
+        return {
+            "focusUnitId": unit_id,
+            "dueUnitIds": [unit_id],
+            "scheduledAt": None,
+            "summary": "当前没有持久化 review state，先按本轮记忆风险安排复盘。",
+        }
+
+    review_state = repository.get_review_state(thread_id, unit_id)
+    if review_state is None:
+        return {
+            "focusUnitId": unit_id,
+            "dueUnitIds": [unit_id],
+            "scheduledAt": None,
+            "summary": "当前 unit 暂无既有 review 记录，本轮将作为新的复盘依据。",
+        }
+
+    return {
+        "focusUnitId": unit_id,
+        "dueUnitIds": review_state.due_unit_ids,
+        "scheduledAt": review_state.scheduled_at,
+        "summary": review_state.review_reason or "已读取最近一次 review 调度信息。",
+    }
