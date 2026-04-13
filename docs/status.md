@@ -69,6 +69,7 @@
 - `apps/web` 的 agent 输出已默认收成核心摘要，长解释与证据链需要显式展开，用户输入与系统输出的视觉层级已拉开
 - `apps/web` 的右栏已重构为监控型高信息密度面板，当前聚焦 session、learner、review 和 materials 四组状态
 - `apps/web` 中栏已进一步收敛到“只有用户输入保留卡片，系统输出与诊断改走无边框信息流”，同时空白 session 不再显示解释性提示文案
+- `apps/web` 现已在页面加载时主动探测 agent `/health`，并会为已选 session 尝试回读持久化 learner state；顶部状态徽标不再把“未 hydrate 的前端 fallback”误显示成后端断连
 
 ### In Progress
 

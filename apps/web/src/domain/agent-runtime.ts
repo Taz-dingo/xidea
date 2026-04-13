@@ -439,6 +439,41 @@ export function buildMockRuntimeSnapshot(
   };
 }
 
+export function hydrateRuntimeSnapshotFromLearnerState(
+  learnerState: AgentLearnerUnitState,
+  fallbackSnapshot: RuntimeSnapshot,
+): RuntimeSnapshot {
+  const signalCards =
+    learnerState.based_on.length > 0
+      ? learnerState.based_on.slice(0, 3).map((reason, index) => ({
+          id: `persisted-based-on-${index}`,
+          label: `判断依据 ${index + 1}`,
+          observation: reason,
+          implication: "这条依据来自已落库 learner state，会继续影响下一轮判断。",
+        }))
+      : fallbackSnapshot.signalCards;
+
+  return {
+    ...fallbackSnapshot,
+    source: "live-agent",
+    state: {
+      mastery: learnerState.mastery,
+      understandingLevel: learnerState.understanding_level,
+      memoryStrength: learnerState.memory_strength,
+      confusion: learnerState.confusion_level,
+      transferReadiness: learnerState.transfer_readiness,
+      weakSignals: learnerState.weak_signals,
+      recommendedAction: learnerState.recommended_action ?? fallbackSnapshot.state.recommendedAction,
+      lastReviewedAt: fallbackSnapshot.state.lastReviewedAt,
+      nextReviewAt: fallbackSnapshot.state.nextReviewAt,
+    },
+    stateSource: learnerState.based_on.length > 0
+      ? `来源：真实 learner state。${learnerState.based_on.join(" / ")}`
+      : "来源：真实 learner state。",
+    signalCards,
+  };
+}
+
 export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot {
   const diagnosis = result.graph_state.diagnosis;
   const learnerState = result.graph_state.learner_unit_state;

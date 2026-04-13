@@ -27,11 +27,17 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { learnerProfiles, learningUnits, projectContext, sourceAssets } from "@/data/demo";
-import { buildDefaultAgentPrompt, buildMockRuntimeSnapshot, type AgentEntryMode, type RuntimeSnapshot } from "@/domain/agent-runtime";
+import {
+  buildDefaultAgentPrompt,
+  buildMockRuntimeSnapshot,
+  hydrateRuntimeSnapshotFromLearnerState,
+  type AgentEntryMode,
+  type RuntimeSnapshot,
+} from "@/domain/agent-runtime";
 import { MODE_LABELS } from "@/domain/planner";
 import type { LearnerProfile, LearningMode } from "@/domain/types";
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
-import { getAgentBaseUrl } from "@/lib/agent-client";
+import { getAgentBaseUrl, getAgentHealth, getLearnerUnitState } from "@/lib/agent-client";
 
 const entryModes = [
   { id: "chat-question" as const, icon: MessageSquareText, title: "问答进入" },
@@ -525,6 +531,9 @@ export function App(): ReactElement {
     buildDefaultAgentPrompt(initialProfile, initialUnit, projectContext),
   );
   const [sessionSnapshots, setSessionSnapshots] = useState<Record<string, RuntimeSnapshot>>({});
+  const [agentConnectionState, setAgentConnectionState] = useState<"checking" | "ready" | "offline">(
+    "checking",
+  );
   const [sessionMessagesById, setSessionMessagesById] = useState<Record<string, UIMessage[]>>(
     () => Object.fromEntries(initialSessions.map((session) => [session.id, []])),
   );
@@ -623,6 +632,32 @@ export function App(): ReactElement {
   const errorMessage = getErrorMessage(error);
 
   useEffect(() => {
+    if (agentBaseUrl === null) {
+      setAgentConnectionState("offline");
+      return;
+    }
+
+    const abortController = new AbortController();
+    setAgentConnectionState("checking");
+
+    void getAgentHealth({ signal: abortController.signal })
+      .then((healthy) => {
+        if (!abortController.signal.aborted) {
+          setAgentConnectionState(healthy ? "ready" : "offline");
+        }
+      })
+      .catch(() => {
+        if (!abortController.signal.aborted) {
+          setAgentConnectionState("offline");
+        }
+      });
+
+    return () => {
+      abortController.abort();
+    };
+  }, [agentBaseUrl]);
+
+  useEffect(() => {
     setDraftPrompt(
       selectedSession?.unitId === null
         ? ""
@@ -670,8 +705,48 @@ export function App(): ReactElement {
               }
           : session,
       ),
-    );
+      );
   }, [error, selectedSession?.id]);
+
+  useEffect(() => {
+    if (
+      agentConnectionState !== "ready" ||
+      selectedSession === undefined ||
+      selectedUnit === undefined ||
+      sessionSnapshots[selectedSession.id] !== undefined
+    ) {
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    void getLearnerUnitState(selectedSession.id, selectedUnit.id, {
+      signal: abortController.signal,
+    })
+      .then((learnerState) => {
+        if (abortController.signal.aborted || learnerState === null) {
+          return;
+        }
+
+        setSessionSnapshots((current) => ({
+          ...current,
+          [selectedSession.id]: hydrateRuntimeSnapshotFromLearnerState(learnerState, mockRuntime),
+        }));
+      })
+      .catch(() => {
+        // Keep the local fallback snapshot when no persisted state exists yet.
+      });
+
+    return () => {
+      abortController.abort();
+    };
+  }, [
+    agentConnectionState,
+    mockRuntime,
+    selectedSession,
+    selectedUnit,
+    sessionSnapshots,
+  ]);
 
   function handleSelectProject(projectId: string): void {
     setSelectedProjectId(projectId);
@@ -862,11 +937,13 @@ export function App(): ReactElement {
                 >
                   {status === "streaming" || status === "submitted"
                     ? "Streaming"
-                    : activeRuntime.source === "live-agent"
+                    : agentConnectionState === "offline"
+                      ? "Offline"
+                      : activeRuntime.source === "live-agent"
                       ? "Live Agent"
-                      : agentBaseUrl
-                        ? "Mock Fallback"
-                        : "Mock Demo"}
+                      : agentConnectionState === "ready"
+                        ? "Agent Ready"
+                        : "Checking"}
                 </Badge>
               </div>
             </CardHeader>

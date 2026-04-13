@@ -22,6 +22,22 @@ export function getAgentBaseUrl(): string | null {
   return null;
 }
 
+export async function getAgentHealth(
+  options?: { signal?: AbortSignal },
+): Promise<boolean> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    return false;
+  }
+
+  const response = await fetch(`${baseUrl}/health`, {
+    method: "GET",
+    signal: options?.signal,
+  });
+
+  return response.ok;
+}
+
 export async function runAgentV0(
   request: AgentRequest,
   options?: { signal?: AbortSignal },
