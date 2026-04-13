@@ -33,6 +33,7 @@
 - `apps/web` 已正式接入 `shadcn/ui` 基础组件，当前 workspace 的按钮、卡片、徽标、滚动区和输入区不再是纯手写 primitive
 - `apps/web` 已正式接入 Vercel AI SDK 的 `useChat + custom transport`，中间 thread 区开始按消息流方式承接 `/runs/v0` 返回，而不是只靠本地面板状态拼接
 - 为本地前后端联调补上 Vite `/agent-api` 代理与 agent CORS 默认配置
+- 前端 v0 已收尾到可提 PR 状态：当前 workspace 支持 `project -> sessions` 导航、`新建 project / 新建 session`、project 展开收起、宽屏三栏稳定布局，以及 agent `500` 时的非崩溃错误态
 - 初版架构讨论已收敛到可开工状态，并明确 SQLite 状态层与启发式 `Review Engine v0`
 - 完善 `state.py` 数据模型：双轨 LearnerState + 6 个领域模型 + 2 个枚举
 - 定义 agent tool schema：4 个最小必要工具 + mock 实现 + TOOL_REGISTRY
