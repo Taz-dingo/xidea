@@ -4,17 +4,17 @@
 
 ### 决策
 
-当前 v0 实现默认按两条主线并行推进：学习引擎 owner 负责 `apps/agent` 与 agent contract，前端 owner 负责 `apps/web` 与 demo 展示；每次新任务开始前，必须先判断所属分工和主 owner，再继续实现。
+当前 v0 实现默认按三条主线并行推进：学习引擎 owner 负责 `apps/agent` 与 agent contract，前端 owner 负责 `apps/web` 与 demo 展示，产品 / demo 叙事 owner 负责比赛故事线、范围取舍与答辩表述；每次新任务开始前，必须先判断所属分工和主 owner，再继续实现。
 
 ### 原因
 
-- 当前项目已经进入并行开发阶段，如果不先判断任务归属，两边很容易同时改 contract、页面结构或联调边界
-- `learn-engine` 已经收敛为 agent v0 的实现主线，`apps/web` 也需要单独稳定 demo 接入路径，适合按两条主线拆开推进
+- 当前项目已经进入并行开发阶段，如果不先判断任务归属，几条主线很容易同时改 contract、页面结构或 demo 讲法
+- `learn-engine` 已经收敛为 agent v0 的实现主线，`apps/web` 也需要单独稳定 demo 接入路径，同时比赛叙事本身也需要独立 owner 持续收敛
 - 把“先路由再开工”写成显式规则，能减少多人协作时的重复实现和边界漂移
 
 ### 影响
 
-- 新任务默认先判断是学习引擎主线、前端主线，还是跨 owner 协作
+- 新任务默认先判断是学习引擎主线、前端主线、产品 / demo 叙事主线，还是跨 owner 协作
 - 涉及跨 owner 的改动，PR 需要说明主 owner、配合 owner 和边界
 - onboarding 和协作文档都要把这一步作为默认开工检查
 

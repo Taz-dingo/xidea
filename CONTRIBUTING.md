@@ -30,7 +30,7 @@
 
 ## Ownership
 
-- 产品 owner 改 story、范围、文案、答辩材料
+- 产品 / demo 叙事 owner 改 story、范围、文案、答辩材料和 demo script
 - 学习引擎 owner 改 `apps/agent/src/xidea_agent`、agent contract、LangGraph runtime、SQLite repository、后端 API 与测试
 - 前端 owner 改 `apps/web/src/app`、`apps/web/src/components`、交互和展示，并消费稳定的 agent contract
 

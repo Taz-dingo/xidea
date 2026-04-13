@@ -28,15 +28,17 @@
 
 ## Current Workstream Split
 
-当前 v0 默认按两条主线并行：
+当前 v0 默认按三条主线并行：
 
 - 学习引擎主线：稳定 `apps/agent` 的 schema、runtime、storage、guardrails、tests 和 `/runs/v0`
 - 前端主线：稳定 `apps/web` 的 demo flow、证据链展示，并接入真实 agent 返回
+- 产品 / demo 叙事主线：稳定比赛故事线、页面讲述顺序、范围取舍、答辩表述和 demo script
 
-这两条主线的默认边界是：
+这三条主线的默认边界是：
 
 - 学习引擎 owner 不主动改前端展示结构，除非为了联调修复明确的小接口问题
 - 前端 owner 不主动改 agent contract，除非先和学习引擎 owner 对齐字段变化
+- 产品 / demo 叙事 owner 可以调整 story、文案、演示顺序和证明重点，但涉及代码边界变化时要先同步相关技术 owner
 
 ## Start-Of-Task Check
 

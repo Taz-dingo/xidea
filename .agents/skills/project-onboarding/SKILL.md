@@ -68,7 +68,7 @@ Treat `docs/memory/` as durable memory that survives across sessions.
 
 Before proposing edits or writing code, answer these questions:
 
-1. Is the task primarily owned by the learning-engine workstream, the frontend workstream, or shared across both
+1. Is the task primarily owned by the learning-engine workstream, the frontend workstream, the product-demo workstream, or shared across them
 2. Which directories are the main edit surface for this task
 3. Which adjacent areas should stay untouched unless the task explicitly requires cross-owner coordination
 
@@ -100,6 +100,7 @@ Current default split:
 
 - learning-engine workstream: `apps/agent/src/xidea_agent`, agent contract, runtime, repository, guardrails, API, backend tests
 - frontend workstream: `apps/web/src/app`, `apps/web/src/components`, evidence-chain UI, demo orchestration, agent API consumption
+- product-demo workstream: `docs/spec.md`, `docs/status.md`, `docs/plan.md`, `docs/product-brief.md`, demo script, story framing, copy and judging narrative
 
 For UI simplification or presentation work:
 
