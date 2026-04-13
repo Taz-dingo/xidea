@@ -50,18 +50,21 @@
 - 独立化 `Review Engine v0`：从 runtime 内联逻辑拆为独立模块，实现 6 条启发式规则 + 间隔调度 + 回忆成功/失败处理
 - `ReviewPatch` 和 `review_state` 表增加 `review_count / lapse_count`
 - 新增 25 个测试（12 tools + 13 review engine），总计 35 个全部通过
+- 将 `diagnose_state()` 从 if-elif 瀑布升级为综合 action scoring 评分模型
+- `build_signals()` 支持多轮信号累积 + prior state 趋势检测
+- `estimate_learner_state()` 改为 confidence 加权 delta + 动态 confidence
+- 新增效果评估：检测上一轮动作是否改善对应指标，无效动作自动降权
+- 新增 `POST /runs/v0/stream` SSE streaming endpoint，事件序列 text-delta → diagnosis → plan → state-patch → done
+- 新增 19 个测试（15 决策路径 + 4 SSE），总计 54 个全部通过
 
 ### In Progress
 
-- 把 `/runs/v0` 从同步返回改为真正的 SSE streaming endpoint
-- 前端 v0 三栏 workspace 已开出 PR #8，正在对接 agent API
+- 保持 web demo 简洁可演示，同时继续对齐后续 agent runtime 接口
 
 ### Next
 
-- 把 web demo 接到真实 `/runs/v0` 返回的 `diagnosis / plan / state-patch` 结构
-- 实现 FastAPI SSE streaming，让前端能流式展示编排过程
 - 决定第一版 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
-- 细化 agent 决策路径与 evaluation 维度
+- 前端切换到 SSE 消费 `/runs/v0/stream`，实现流式渲染
 
 ### Risks
 
