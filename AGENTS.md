@@ -19,12 +19,13 @@
 
 ## Project Skills
 
-本项目维护了 6 个项目级 skill：
+本项目维护了 7 个项目级 skill：
 
 - `project-onboarding`
 - `branch-workflow`
 - `docs-governance`
 - `frontend-design`
+- `pr-description`
 - `react-xidea`
 - `typescript-xidea`
 
@@ -36,12 +37,13 @@
 - 需要拉分支、改分支名、检查分支命名、决定 `type/owner/topic`、或准备符合规范的 PR 时，用 `branch-workflow`
 - 需要理解文档结构、判断该读哪几份、决定信息该写到哪里、或清理重复文档时，用 `docs-governance`
 - 设计或改版页面时，用 `frontend-design`
+- 需要起 PR、填写 PR 描述、整理 `Summary / Screenshots / Risks` 时，用 `pr-description`
 - 写 React 页面、组件、状态流转时，用 `react-xidea`
 - 设计类型、domain model、planner 逻辑时，用 `typescript-xidea`
 
 如果一个任务同时涉及 UI、React 和类型设计，可以组合使用。
 
-默认建议先运行 `project-onboarding`；涉及开分支、重命名分支或 PR 协作时，再加 `branch-workflow`。
+默认建议先运行 `project-onboarding`；涉及开分支、重命名分支或 PR 协作时，再加 `branch-workflow`；需要补 PR 描述时，再加 `pr-description`。
 
 ## Repo Conventions
 

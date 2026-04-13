@@ -4,6 +4,25 @@
 
 ### 决策
 
+项目默认用统一模板来填写 PR 描述，并为此维护独立的 `pr-description` skill：
+当用户说“提 PR”或要求补 PR 描述时，默认按 `Summary / Screenshots / Demo / Risks / Open Questions` 结构输出，而不是临时发挥。
+
+### 原因
+
+- 这轮协作里已经出现重复手动补 PR 描述模板的场景，适合收敛成固定流程
+- PR 描述属于协作交付面，不只是写作细节；统一结构能降低 review 成本
+- 将其拆成独立 skill 后，比继续塞进 `branch-workflow` 更清晰，也更容易触发
+
+### 影响
+
+- 以后在 Xidea repo 里，用户提到“提 PR”“填 desc”“写 PR 描述”时，默认应用这个模板
+- `branch-workflow` 继续负责分支与 PR 流程，`pr-description` 负责描述内容本身
+- 前端分支的 PR 描述默认还应补浏览器验证或 demo 说明，而不是只列 commit
+
+## 2026-04-13
+
+### 决策
+
 项目级前端 skill 需要把 UI 浏览器验证也纳入默认工作流：
 前端任务默认不能只以 `build` 通过或 JSX 目测为完成，应该补做真实浏览器验证，并检查页面结构、关键交互和 console 状态。
 
