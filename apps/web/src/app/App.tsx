@@ -349,7 +349,7 @@ export function App(): ReactElement {
   return (
     <main className="xidea-shell min-h-screen bg-[var(--xidea-parchment)] text-[var(--xidea-near-black)]">
       <div className="relative mx-auto min-h-screen max-w-[1600px] px-4 py-4 md:px-5 md:py-5 xl:h-screen xl:min-h-0">
-        <div className="grid items-start gap-4 xl:h-full xl:grid-cols-[320px_minmax(0,1fr)_340px] xl:items-stretch">
+        <div className="grid items-start gap-4 xl:h-full xl:grid-cols-[340px_minmax(0,1fr)] xl:items-stretch 2xl:grid-cols-[340px_minmax(0,1fr)_320px]">
           <Card className="overflow-hidden rounded-[1.6rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none xl:h-full">
             <CardContent className="flex h-full flex-col p-4">
               <Button
@@ -611,7 +611,7 @@ export function App(): ReactElement {
             </CardContent>
           </Card>
 
-          <div className="min-h-0 xl:h-full">
+          <div className="min-h-0 xl:col-span-2 2xl:col-span-1 2xl:h-full">
             <ScrollArea className="h-full pr-1">
               <div className="flex flex-col gap-3 pb-1">
                 <InspectorCard description="当前 session 绑定哪个学习者阶段。" title="学习画像">

@@ -35,6 +35,8 @@
   - owner: 学习引擎 owner
 - [ ] 准备答辩素材和对比竞品摘要
   - owner: 产品 owner
+- [ ] 整理 `docs/memory/decision-log.md` 与文档分层，控制长期记忆体积
+  - owner: 全员
 
 ## Implementation Checklist v0
 
