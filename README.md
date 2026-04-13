@@ -16,6 +16,101 @@ pnpm install
 pnpm dev:web
 ```
 
+## Local Development
+
+### Prerequisites
+
+- Node.js 22 with `pnpm`
+- `uv`
+- Python 3.11
+
+If your shell does not load `node` or `pnpm` by default, you can temporarily add the local nvm path:
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.22.0/bin:$PATH"
+```
+
+If your shell does not load `uv` by default, use:
+
+```bash
+$HOME/.local/bin/uv --version
+```
+
+### Run the Agent
+
+In one terminal:
+
+```bash
+cd "/Users/chenguang/Dingo Projetcts/xidea"
+
+export XIDEA_AGENT_DB_PATH="$PWD/output/xidea-agent.db"
+
+$HOME/.local/bin/uv --native-tls run \
+  --directory apps/agent \
+  --python 3.11 \
+  python -m xidea_agent
+```
+
+After startup, the agent API should be available at:
+
+- `http://127.0.0.1:8000/health`
+- `http://127.0.0.1:8000/schemas`
+
+### Run the Web App
+
+In another terminal:
+
+```bash
+cd "/Users/chenguang/Dingo Projetcts/xidea"
+
+export PATH="$HOME/.nvm/versions/node/v22.22.0/bin:$PATH"
+
+pnpm install
+pnpm dev:web
+```
+
+Then open:
+
+- `http://127.0.0.1:5173`
+
+In local development, Vite proxies `/agent-api/*` to `http://127.0.0.1:8000`, so the web app will call the local agent by default.
+
+### Verify the Backend
+
+You can verify the agent separately with:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+You can also send one real demo request:
+
+```bash
+curl -X POST http://127.0.0.1:8000/runs/v0 \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "project_id": "rag-demo",
+    "thread_id": "thread-local-1",
+    "entry_mode": "chat-question",
+    "topic": "RAG retrieval design",
+    "target_unit_id": "unit-rag-retrieval",
+    "messages": [
+      { "role": "user", "content": "我分不清 retrieval 和 reranking 的职责" }
+    ]
+  }'
+```
+
+### Notes
+
+- If `uv` fails to download Python with a certificate error, keep `--native-tls` in the command.
+- If you prefer not to rely on local shell config, the absolute-path commands above are the most stable way to run this repo on this machine.
+
 ## Team Split
 
 - 成员 A: 产品与学习设计
