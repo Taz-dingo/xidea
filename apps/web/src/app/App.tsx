@@ -42,7 +42,13 @@ const sessionMetaByUnitId: Record<string, { updatedAt: string; status: string }>
   "unit-3": { updatedAt: "2d", status: "待答辩" },
 };
 
-const demoProjects = [
+interface ProjectItem {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+}
+
+const initialProjects: ReadonlyArray<ProjectItem> = [
   {
     id: "project-rag-demo",
     name: projectContext.name,
@@ -52,7 +58,7 @@ const demoProjects = [
 
 interface SessionItem {
   readonly id: string;
-  readonly projectId: (typeof demoProjects)[number]["id"];
+  readonly projectId: string;
   readonly unitId: string;
   readonly title: string;
   readonly summary: string;
@@ -107,7 +113,7 @@ function getMessageText(message: UIMessage): string {
   return text === "" ? "当前消息没有文本内容。" : text;
 }
 
-function SessionButton({
+function SessionCard({
   active,
   title,
   summary,
@@ -123,40 +129,131 @@ function SessionButton({
   onClick: () => void;
 }): ReactElement {
   return (
-    <Button
+    <Card
       className={
         active
-          ? "h-auto w-full justify-start rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-4 py-3 text-left text-[var(--xidea-near-black)] hover:bg-[var(--xidea-selection)]"
-          : "h-auto w-full justify-start rounded-[1rem] border border-transparent bg-transparent px-4 py-3 text-left text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-white)]"
+          ? "rounded-[1rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none transition-colors"
+          : "rounded-[1rem] border-transparent bg-transparent shadow-none transition-colors hover:border-[var(--xidea-border)] hover:bg-[var(--xidea-white)]"
       }
-      onClick={onClick}
-      type="button"
-      variant="ghost"
     >
-      <div className="min-w-0 w-full">
-        <div className="flex items-center justify-between gap-3">
-          <p className="truncate text-sm font-medium">{title}</p>
-          <span className={active ? "shrink-0 text-xs text-[var(--xidea-selection-text)]" : "shrink-0 text-xs text-[var(--xidea-stone)]"}>
-            {updatedAt}
-          </span>
-        </div>
-        <p className={active ? "mt-2 truncate text-sm text-[var(--xidea-charcoal)]" : "mt-2 truncate text-sm text-[var(--xidea-stone)]"}>
-          {summary}
-        </p>
-        <div className="mt-3">
-          <Badge
-            className={
-              active
-                ? "border-transparent bg-[var(--xidea-white)] text-[var(--xidea-selection-text)] shadow-none"
-                : "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)] shadow-none"
-            }
-            variant="outline"
-          >
-            {status}
-          </Badge>
-        </div>
-      </div>
-    </Button>
+      <CardContent className="p-0">
+        <button
+          className="block w-full rounded-[1rem] px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
+          onClick={onClick}
+          type="button"
+        >
+          <div className="min-w-0 w-full">
+            <div className="flex items-center justify-between gap-3">
+              <p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
+              <span className={active ? "shrink-0 text-xs text-[var(--xidea-selection-text)]" : "shrink-0 text-xs text-[var(--xidea-stone)]"}>
+                {updatedAt}
+              </span>
+            </div>
+            <p
+              className={
+                active
+                  ? "mt-2 line-clamp-2 text-sm leading-6 text-[var(--xidea-charcoal)]"
+                  : "mt-2 line-clamp-2 text-sm leading-6 text-[var(--xidea-stone)]"
+              }
+            >
+              {summary}
+            </p>
+            <div className="mt-3">
+              <Badge
+                className={
+                  active
+                    ? "border-transparent bg-[var(--xidea-white)] text-[var(--xidea-selection-text)] shadow-none"
+                    : "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)] shadow-none"
+                }
+                variant="outline"
+              >
+                {status}
+              </Badge>
+            </div>
+          </div>
+        </button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProjectCard({
+  active,
+  expanded,
+  name,
+  description,
+  sessionCount,
+  onClick,
+}: {
+  active: boolean;
+  expanded: boolean;
+  name: string;
+  description: string;
+  sessionCount: number;
+  onClick: () => void;
+}): ReactElement {
+  return (
+    <Card
+      className={
+        active
+          ? "rounded-[1rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] shadow-none transition-colors"
+          : "rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7]"
+      }
+    >
+      <CardContent className="p-0">
+        <button
+          className="block w-full rounded-[1rem] px-4 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
+          onClick={onClick}
+          type="button"
+        >
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 text-[var(--xidea-stone)]">
+              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <p className="min-w-0 flex-1 truncate text-sm font-medium">{name}</p>
+                <span className="shrink-0 text-xs text-[var(--xidea-stone)]">{sessionCount}</span>
+              </div>
+              <p className="mt-2 line-clamp-1 text-sm leading-6 text-[var(--xidea-stone)]">{description}</p>
+            </div>
+          </div>
+        </button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProfileCard({
+  active,
+  name,
+  role,
+  onClick,
+}: {
+  active: boolean;
+  name: string;
+  role: string;
+  onClick: () => void;
+}): ReactElement {
+  return (
+    <Card
+      className={
+        active
+          ? "rounded-[1rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none transition-colors"
+          : "rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7]"
+      }
+    >
+      <CardContent className="p-0">
+        <button
+          className="block w-full rounded-[1rem] px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-white)]"
+          onClick={onClick}
+          type="button"
+        >
+          <p className="text-sm font-medium leading-6">{name}</p>
+          <p className="mt-2 text-sm leading-6 text-[var(--xidea-stone)]">{role}</p>
+        </button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -180,19 +277,39 @@ function InspectorCard({
   );
 }
 
+function getErrorMessage(error: Error | undefined): string | null {
+  if (error === undefined) {
+    return null;
+  }
+
+  const message = error.message.trim();
+  if (message === "") {
+    return "Agent 当前不可用，请稍后重试。";
+  }
+
+  if (message.startsWith("{")) {
+    return "Agent 当前不可用，请检查本地服务或代理配置。";
+  }
+
+  return message;
+}
+
 export function App(): ReactElement {
   const initialProfile = learnerProfiles[1] ?? learnerProfiles[0];
   const initialUnit = learningUnits[0];
+  const initialProject = initialProjects[0];
 
-  if (initialProfile === undefined || initialUnit === undefined) {
-    throw new Error("Demo data must contain at least one learner profile and one learning unit.");
+  if (initialProfile === undefined || initialUnit === undefined || initialProject === undefined) {
+    throw new Error("Demo data must contain at least one learner profile, learning unit, and project.");
   }
 
   const [selectedProfileId, setSelectedProfileId] = useState(initialProfile.id);
+  const [projects, setProjects] = useState<ReadonlyArray<ProjectItem>>(initialProjects);
   const [sessions, setSessions] = useState<ReadonlyArray<SessionItem>>(initialSessions);
   const [expandedProjectIds, setExpandedProjectIds] = useState<ReadonlyArray<string>>([
-    demoProjects[0].id,
+    initialProject.id,
   ]);
+  const [selectedProjectId, setSelectedProjectId] = useState(initialSessions[0]?.projectId ?? initialProject.id);
   const [selectedSessionId, setSelectedSessionId] = useState(initialSessions[0]?.id ?? "");
   const [selectedEntryMode, setSelectedEntryMode] = useState<AgentEntryMode>("chat-question");
   const [draftPrompt, setDraftPrompt] = useState(() =>
@@ -205,11 +322,11 @@ export function App(): ReactElement {
 
   const selectedProfile =
     learnerProfiles.find((profile) => profile.id === selectedProfileId) ?? initialProfile;
-  const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? sessions[0];
+  const selectedSession = sessions.find((session) => session.id === selectedSessionId);
   const selectedUnit =
     learningUnits.find((unit) => unit.id === selectedSession?.unitId) ?? initialUnit;
   const selectedProject =
-    demoProjects.find((project) => project.id === selectedSession?.projectId) ?? demoProjects[0];
+    projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? initialProject;
   const agentBaseUrl = getAgentBaseUrl();
   const mockRuntime = buildMockRuntimeSnapshot(selectedProfile, selectedUnit);
   const activeRuntime =
@@ -248,11 +365,13 @@ export function App(): ReactElement {
     [selectedEntryMode, selectedProfile, selectedSession, selectedUnit],
   );
 
-  const { messages, sendMessage, status, error } = useChat({
-    id: selectedSession?.id,
+  const { clearError, messages, sendMessage, status, error } = useChat({
+    id: selectedSession?.id ?? selectedProject?.id ?? "project",
     messages: selectedSession ? sessionMessagesById[selectedSession.id] ?? [] : [],
     transport,
   });
+
+  const errorMessage = getErrorMessage(error);
 
   useEffect(() => {
     setDraftPrompt(buildDefaultAgentPrompt(selectedProfile, selectedUnit, projectContext));
@@ -281,15 +400,17 @@ export function App(): ReactElement {
     setSessions((current) =>
       current.map((session) =>
         session.id === selectedSession.id
-          ? {
-              ...session,
-              status: "错误",
-              updatedAt: "刚刚",
-            }
+          ? session.status === "错误"
+            ? session
+            : {
+                ...session,
+                status: "错误",
+                updatedAt: "刚刚",
+              }
           : session,
       ),
     );
-  }, [error, selectedSession]);
+  }, [error, selectedSession?.id]);
 
   function toggleProject(projectId: string): void {
     setExpandedProjectIds((current) =>
@@ -299,11 +420,39 @@ export function App(): ReactElement {
     );
   }
 
-  function handleCreateSession(): void {
-    const nextIndex = sessions.filter((session) => session.projectId === selectedProject.id).length + 1;
+  function handleSelectProject(projectId: string): void {
+    setSelectedProjectId(projectId);
+
+    const firstProjectSession = sessions.find((session) => session.projectId === projectId);
+    setSelectedSessionId(firstProjectSession?.id ?? "");
+  }
+
+  function handleCreateProject(): void {
+    const nextIndex = projects.length + 1;
+    const createdProject: ProjectItem = {
+      id: `project-${Date.now()}`,
+      name: `新项目 ${nextIndex}`,
+      description: "围绕一个新的答辩主题组织 session。",
+    };
+
+    setProjects((current) => [createdProject, ...current]);
+    setSelectedProjectId(createdProject.id);
+    setSelectedSessionId("");
+    setExpandedProjectIds((current) => [createdProject.id, ...current]);
+  }
+
+  function handleCreateSession(projectId: string): void {
+    const targetProject =
+      projects.find((project) => project.id === projectId) ?? selectedProject ?? projects[0];
+
+    if (targetProject === undefined) {
+      return;
+    }
+
+    const nextIndex = sessions.filter((session) => session.projectId === targetProject.id).length + 1;
     const createdSession: SessionItem = {
       id: `session-${Date.now()}`,
-      projectId: selectedProject.id,
+      projectId: targetProject.id,
       unitId: selectedUnit.id,
       title: `${selectedUnit.title} / 新对话 ${nextIndex}`,
       summary: "等待本轮输入",
@@ -313,9 +462,10 @@ export function App(): ReactElement {
 
     setSessions((current) => [createdSession, ...current]);
     setSessionMessagesById((current) => ({ ...current, [createdSession.id]: [] }));
+    setSelectedProjectId(targetProject.id);
     setSelectedSessionId(createdSession.id);
     setExpandedProjectIds((current) =>
-      current.includes(selectedProject.id) ? current : [...current, selectedProject.id],
+      current.includes(targetProject.id) ? current : [...current, targetProject.id],
     );
   }
 
@@ -353,66 +503,77 @@ export function App(): ReactElement {
           <Card className="overflow-hidden rounded-[1.6rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none xl:h-full">
             <CardContent className="flex h-full flex-col p-4">
               <Button
-                className="justify-start rounded-[1rem] bg-[var(--xidea-white)] text-[var(--xidea-near-black)] shadow-none hover:bg-[var(--xidea-white)]"
-                onClick={handleCreateSession}
+                className="justify-start rounded-[1rem] border-[var(--xidea-charcoal)] bg-[var(--xidea-white)] text-[var(--xidea-near-black)] shadow-none transition-colors hover:bg-[#f8f6f1]"
+                onClick={handleCreateProject}
                 type="button"
                 variant="outline"
               >
                 <Plus className="h-4 w-4" />
-                新建 session
+                新建 project
               </Button>
 
               <Separator className="my-5 bg-[var(--xidea-border)]" />
 
               <div className="flex min-h-0 flex-1 flex-col space-y-3">
                 <p className="xidea-kicker">Projects</p>
-                <ScrollArea className="min-h-0 flex-1 pr-2">
-                  <div className="space-y-3">
-                    {demoProjects.map((project) => {
+                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                  <div className="space-y-3 pr-2">
+                    {projects.map((project) => {
                       const projectSessions = sessions.filter((session) => session.projectId === project.id);
                       const expanded = expandedProjectIds.includes(project.id);
+                      const activeProject = project.id === selectedProject?.id;
 
                       return (
                         <div key={project.id}>
-                          <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                            <CardContent className="p-0">
-                              <Button
-                                className="h-auto w-full justify-start rounded-[1rem] px-4 py-4 text-left text-[var(--xidea-near-black)] shadow-none hover:bg-[var(--xidea-white)]"
-                                onClick={() => {
-                                  toggleProject(project.id);
-                                }}
-                                type="button"
-                                variant="ghost"
-                              >
-                                <div className="mr-3 text-[var(--xidea-stone)]">
-                                  {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center justify-between gap-3">
-                                    <p className="truncate text-sm font-medium">{project.name}</p>
-                                    <span className="shrink-0 text-xs text-[var(--xidea-stone)]">
-                                      {projectSessions.length}
-                                    </span>
-                                  </div>
-                                  <p className="mt-2 truncate text-sm text-[var(--xidea-stone)]">{project.description}</p>
-                                </div>
-                              </Button>
-                            </CardContent>
-                          </Card>
+                          <ProjectCard
+                            active={activeProject}
+                            description={project.description}
+                            expanded={expanded}
+                            name={project.name}
+                            onClick={() => {
+                              handleSelectProject(project.id);
+                              toggleProject(project.id);
+                            }}
+                            sessionCount={projectSessions.length}
+                          />
 
                           {expanded ? (
-                            <div className="mt-2 ml-3 border-l border-[var(--xidea-sand)] pl-3">
-                              <div className="mb-2 flex items-center justify-between">
-                                <p className="xidea-kicker">Sessions</p>
-                                <span className="text-xs text-[var(--xidea-stone)]">{projectSessions.length}</span>
+                            <div className="mt-2 ml-3 box-border w-[calc(100%-0.75rem)] border-l border-[var(--xidea-sand)] pl-3">
+                              <div className="mb-3 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="xidea-kicker">Sessions</p>
+                                  <span className="shrink-0 text-xs text-[var(--xidea-stone)]">
+                                    {projectSessions.length}
+                                  </span>
+                                </div>
+                                <Button
+                                  className="w-full justify-start rounded-full px-3 text-xs shadow-none transition-colors hover:bg-[var(--xidea-white)]"
+                                  onClick={() => {
+                                    handleCreateSession(project.id);
+                                  }}
+                                  size="sm"
+                                  type="button"
+                                  variant="ghost"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                  新建 session
+                                </Button>
                               </div>
-                              <div className="space-y-1">
+                              <div className="space-y-2">
+                                {projectSessions.length === 0 ? (
+                                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
+                                    <CardContent className="px-4 py-3 text-sm text-[var(--xidea-stone)]">
+                                      这个 project 还没有 session。
+                                    </CardContent>
+                                  </Card>
+                                ) : null}
                                 {projectSessions.map((session) => (
-                                  <SessionButton
+                                  <SessionCard
                                     active={session.id === selectedSession?.id}
                                     key={session.id}
                                     onClick={() => {
                                       startTransition(() => {
+                                        setSelectedProjectId(project.id);
                                         setSelectedSessionId(session.id);
                                       });
                                     }}
@@ -429,7 +590,7 @@ export function App(): ReactElement {
                       );
                     })}
                   </div>
-                </ScrollArea>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -439,10 +600,10 @@ export function App(): ReactElement {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                   <CardTitle className="truncate text-sm font-medium text-[var(--xidea-near-black)]">
-                    {selectedSession?.title ?? selectedUnit.title}
+                    {selectedSession?.title ?? `${selectedProject.name} / 暂无 session`}
                   </CardTitle>
                   <CardDescription className="mt-1 text-sm text-[var(--xidea-stone)]">
-                    {selectedProject.name} / {selectedSession?.status ?? "进行中"}
+                    {selectedProject.name} / {selectedSession?.status ?? "等待创建 session"}
                   </CardDescription>
                 </div>
                 <Badge
@@ -469,13 +630,17 @@ export function App(): ReactElement {
 
                     return (
                       <Button
-                        className="rounded-full"
+                        className={
+                          active
+                            ? "rounded-full border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] hover:bg-[#f2e6df]"
+                            : "rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
+                        }
                         key={entry.id}
                         onClick={() => {
                           setSelectedEntryMode(entry.id);
                         }}
                         type="button"
-                        variant={active ? "secondary" : "outline"}
+                        variant="outline"
                       >
                         <Icon className="h-4 w-4" />
                         {entry.title}
@@ -490,7 +655,17 @@ export function App(): ReactElement {
               <div className="min-h-0 flex-1 px-5 md:px-6">
                 <ScrollArea className="h-full pr-3">
                   <div className="space-y-3 pb-4">
-                    {messages.length === 0 ? (
+                    {selectedSession === undefined ? (
+                      <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">当前 project</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3 text-sm leading-7 text-[var(--xidea-charcoal)]">
+                          <p>这个 project 还没有 session。</p>
+                          <p>先在左侧当前 project 下新建 session，再开始这一轮 agent 运行。</p>
+                        </CardContent>
+                      </Card>
+                    ) : messages.length === 0 ? (
                       <>
                         <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                           <CardHeader className="pb-3">
@@ -586,19 +761,35 @@ export function App(): ReactElement {
                     <Textarea
                       className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
                       onChange={(event) => {
+                        if (error !== undefined) {
+                          clearError();
+                        }
                         setDraftPrompt(event.target.value);
                       }}
                       placeholder="输入这一轮你想推进的问题或材料。"
                       value={draftPrompt}
                     />
 
+                    {errorMessage ? (
+                      <Card className="mt-4 rounded-[1rem] border-[#ebd5cc] bg-[#f9efea] shadow-none">
+                        <CardContent className="px-4 py-3 text-sm leading-6 text-[var(--xidea-selection-text)]">
+                          {errorMessage}
+                        </CardContent>
+                      </Card>
+                    ) : null}
+
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="text-sm text-[var(--xidea-stone)]">
-                        {error?.message ?? projectContext.currentThread}
+                        {errorMessage ?? projectContext.currentThread}
                       </div>
                       <Button
                         className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                        disabled={status === "submitted" || status === "streaming" || agentBaseUrl === null}
+                        disabled={
+                          selectedSession === undefined ||
+                          status === "submitted" ||
+                          status === "streaming" ||
+                          agentBaseUrl === null
+                        }
                         onClick={handleSubmitPrompt}
                         type="button"
                       >
@@ -617,26 +808,17 @@ export function App(): ReactElement {
                 <InspectorCard description="当前 session 绑定哪个学习者阶段。" title="学习画像">
                   <div className="space-y-2">
                     {learnerProfiles.map((profile) => (
-                      <Button
-                        className={
-                          profile.id === selectedProfile.id
-                            ? "h-auto w-full justify-start rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-4 py-3 text-left text-[var(--xidea-near-black)] hover:bg-[var(--xidea-selection)]"
-                            : "h-auto w-full justify-start rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3 text-left text-[var(--xidea-near-black)] hover:bg-[var(--xidea-white)]"
-                        }
+                      <ProfileCard
+                        active={profile.id === selectedProfile.id}
                         key={profile.id}
+                        name={profile.name}
                         onClick={() => {
                           startTransition(() => {
                             setSelectedProfileId(profile.id);
                           });
                         }}
-                        type="button"
-                        variant="outline"
-                      >
-                        <div className="min-w-0 w-full">
-                          <p className="truncate text-sm font-medium">{profile.name}</p>
-                          <p className="mt-2 truncate text-sm text-[var(--xidea-stone)]">{profile.role}</p>
-                        </div>
-                      </Button>
+                        role={profile.role}
+                      />
                     ))}
                   </div>
                 </InspectorCard>
