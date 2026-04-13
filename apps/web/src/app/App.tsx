@@ -1,6 +1,6 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
-import { startTransition, useEffect, useMemo, useState, type ReactElement } from "react";
+import { startTransition, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import {
   Brain,
   ChevronDown,
@@ -61,7 +61,7 @@ const initialProjects: ReadonlyArray<ProjectItem> = [
 interface SessionItem {
   readonly id: string;
   readonly projectId: string;
-  readonly unitId: string;
+  readonly unitId: string | null;
   readonly title: string;
   readonly summary: string;
   readonly updatedAt: string;
@@ -271,6 +271,27 @@ function buildReviewHeatmap(
   );
 }
 
+function buildEmptyReviewHeatmap(): ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>> {
+  const totalDays = 35;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const cells = Array.from({ length: totalDays }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (totalDays - index - 1));
+
+    return {
+      dateKey: toDateKey(date),
+      tooltip: `${toDateKey(date)} 暂无复习动作`,
+      intensity: 0 as const,
+    };
+  });
+
+  return Array.from({ length: 5 }, (_, weekIndex) =>
+    cells.slice(weekIndex * 7, weekIndex * 7 + 7),
+  );
+}
+
 function getHeatmapCellClass(intensity: ReviewHeatmapCell["intensity"]): string {
   switch (intensity) {
     case 0:
@@ -381,7 +402,7 @@ function InspectorCard({
 }: {
   title: string;
   description?: string;
-  children: ReactElement | ReactElement[];
+  children: ReactNode;
 }): ReactElement {
   return (
     <Card className="rounded-[1.25rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
@@ -401,7 +422,7 @@ function MonitorSection({
 }: {
   title: string;
   accent?: string;
-  children: ReactElement | ReactElement[];
+  children: ReactNode;
 }): ReactElement {
   return (
     <Card className="min-w-0 overflow-hidden rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
@@ -509,19 +530,21 @@ export function App(): ReactElement {
   );
 
   const selectedSession = sessions.find((session) => session.id === selectedSessionId);
-  const selectedUnit =
-    learningUnits.find((unit) => unit.id === selectedSession?.unitId) ?? initialUnit;
+  const selectedUnit = selectedSession?.unitId
+    ? learningUnits.find((unit) => unit.id === selectedSession.unitId)
+    : undefined;
+  const runtimeUnit = selectedUnit ?? initialUnit;
   const seedProfile = initialProfile;
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? initialProject;
   const agentBaseUrl = getAgentBaseUrl();
-  const seedRuntime = buildMockRuntimeSnapshot(seedProfile, selectedUnit);
+  const seedRuntime = buildMockRuntimeSnapshot(seedProfile, runtimeUnit);
   const latestUserInput = getLatestUserDraft(
     selectedSession ? sessionMessagesById[selectedSession.id] ?? [] : [],
     draftPrompt,
   );
   const inferredProfile = inferLearnerProfile(latestUserInput, seedRuntime, initialProfile);
-  const mockRuntime = buildMockRuntimeSnapshot(inferredProfile, selectedUnit);
+  const mockRuntime = buildMockRuntimeSnapshot(inferredProfile, runtimeUnit);
   const activeRuntime =
     selectedSession === undefined ? mockRuntime : sessionSnapshots[selectedSession.id] ?? mockRuntime;
   const selectedProfile = inferLearnerProfile(latestUserInput, activeRuntime, initialProfile);
@@ -533,7 +556,15 @@ export function App(): ReactElement {
   const sessionMessageCount = selectedSession
     ? sessionMessagesById[selectedSession.id]?.length ?? 0
     : 0;
-  const reviewHeatmap = buildReviewHeatmap(activeRuntime, sessionMessageCount);
+  const isBlankSession =
+    selectedSession !== undefined &&
+    selectedSession.unitId === null &&
+    sessionMessageCount === 0 &&
+    sessionSnapshots[selectedSession.id] === undefined &&
+    draftPrompt.trim() === "";
+  const reviewHeatmap = isBlankSession
+    ? buildEmptyReviewHeatmap()
+    : buildReviewHeatmap(activeRuntime, sessionMessageCount);
   const activeSourceAssets = useMemo(
     () => sourceAssets.filter((asset) => selectedSourceAssetIds.includes(asset.id)),
     [selectedSourceAssetIds],
@@ -548,7 +579,7 @@ export function App(): ReactElement {
         profile: selectedProfile,
         project: projectContext,
         sourceAssets: activeSourceAssets,
-        unit: selectedUnit,
+        unit: runtimeUnit,
         fallbackSnapshot: activeRuntime,
         onSnapshot: (snapshot) => {
           if (selectedSession === undefined) {
@@ -579,7 +610,7 @@ export function App(): ReactElement {
       selectedProfile,
       selectedProject.id,
       selectedSession,
-      selectedUnit,
+      runtimeUnit,
     ],
   );
 
@@ -592,8 +623,12 @@ export function App(): ReactElement {
   const errorMessage = getErrorMessage(error);
 
   useEffect(() => {
-    setDraftPrompt(buildDefaultAgentPrompt(selectedProfile, selectedUnit, projectContext));
-  }, [selectedSession?.id, selectedUnit.id]);
+    setDraftPrompt(
+      selectedSession?.unitId === null
+        ? ""
+        : buildDefaultAgentPrompt(selectedProfile, runtimeUnit, projectContext),
+    );
+  }, [runtimeUnit, selectedProfile, selectedSession?.id, selectedSession?.unitId]);
 
   useEffect(() => {
     setIsEvidenceExpanded(false);
@@ -679,15 +714,18 @@ export function App(): ReactElement {
     const createdSession: SessionItem = {
       id: `session-${Date.now()}`,
       projectId: targetProject.id,
-      unitId: selectedUnit.id,
-      title: `${selectedUnit.title} / 新对话 ${nextIndex}`,
-      summary: "等待本轮输入",
+      unitId: null,
+      title: `新对话 ${nextIndex}`,
+      summary: "暂无内容",
       updatedAt: "刚刚",
-      status: "草稿",
+      status: "空白",
     };
 
     setSessions((current) => [createdSession, ...current]);
     setSessionMessagesById((current) => ({ ...current, [createdSession.id]: [] }));
+    setDraftPrompt("");
+    setSelectedEntryMode("chat-question");
+    setSelectedSourceAssetIds([]);
     setSelectedProjectId(targetProject.id);
     setSelectedSessionId(createdSession.id);
     setExpandedProjectIds((current) =>
@@ -951,6 +989,7 @@ export function App(): ReactElement {
                         </CardContent>
                       </Card>
                     ) : messages.length === 0 ? (
+                      isBlankSession ? null : (
                       <>
                         <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                           <CardHeader className="pb-3">
@@ -969,6 +1008,7 @@ export function App(): ReactElement {
                           </CardContent>
                         </Card>
                       </>
+                      )
                     ) : (
                       messages.map((message) => {
                         const isAssistant = message.role === "assistant";
@@ -987,28 +1027,15 @@ export function App(): ReactElement {
                             className={isAssistant ? "flex justify-start" : "flex justify-end"}
                             key={message.id}
                           >
-                            <Card
-                              className={
-                                isAssistant
-                                  ? "w-full max-w-[76%] rounded-[1.2rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none"
-                                  : "w-full max-w-[72%] rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none"
-                              }
-                            >
-                              <CardHeader className="pb-3">
-                                <div className="flex items-center gap-2">
-                                  <Badge
-                                    className={
-                                      isAssistant
-                                        ? "border-transparent bg-[var(--xidea-white)] text-[var(--xidea-selection-text)] shadow-none"
-                                        : "border-[var(--xidea-border)] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)] shadow-none"
-                                    }
-                                    variant="outline"
-                                  >
-                                    {isAssistant ? "系统" : "用户"}
-                                  </Badge>
-                                  {isAssistant && shouldCollapseAssistant ? (
+                            {isAssistant ? (
+                              <div className="w-full max-w-[82%] py-1">
+                                <div className="mb-2 flex items-center gap-2">
+                                  <span className="xidea-kicker text-[var(--xidea-selection-text)]">
+                                    Agent
+                                  </span>
+                                  {shouldCollapseAssistant ? (
                                     <Button
-                                      className="h-7 rounded-full px-2 text-[11px] text-[var(--xidea-stone)] hover:bg-[var(--xidea-white)] hover:text-[var(--xidea-near-black)]"
+                                      className="h-6 rounded-full px-2 text-[11px] text-[var(--xidea-stone)] hover:bg-[var(--xidea-parchment)] hover:text-[var(--xidea-near-black)]"
                                       onClick={() => {
                                         setExpandedAssistantMessageIds((current) => ({
                                           ...current,
@@ -1023,21 +1050,48 @@ export function App(): ReactElement {
                                     </Button>
                                   ) : null}
                                 </div>
-                              </CardHeader>
-                              <CardContent className="space-y-3 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                                {isAssistant && !isExpanded ? (
-                                  <div className="rounded-[0.9rem] border border-[var(--xidea-selection-border)]/60 bg-[var(--xidea-white)] px-3 py-2 text-[13px] leading-6 text-[var(--xidea-selection-text)]">
-                                    Agent 摘要
-                                  </div>
+                                {shouldCollapseAssistant && !isExpanded ? (
+                                  <p className="mb-2 text-[12px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+                                    核心摘要
+                                  </p>
                                 ) : null}
-                                <div>{visibleText}</div>
-                              </CardContent>
-                            </Card>
+                                <div className="text-[14px] leading-6 whitespace-pre-wrap text-[var(--xidea-charcoal)]">
+                                  {visibleText}
+                                </div>
+                              </div>
+                            ) : (
+                              <Card className="w-full max-w-[72%] rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                                <CardHeader className="pb-3">
+                                  <div className="flex items-center gap-2">
+                                    <Badge
+                                      className="border-[var(--xidea-border)] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)] shadow-none"
+                                      variant="outline"
+                                    >
+                                      用户
+                                    </Badge>
+                                  </div>
+                                </CardHeader>
+                                <CardContent className="text-sm leading-7 text-[var(--xidea-charcoal)]">
+                                  <div>{visibleText}</div>
+                                </CardContent>
+                              </Card>
+                            )}
                           </div>
                         );
                       })
                     )}
 
+                    {isBlankSession ? (
+                      <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">空白 Session</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
+                          <p>这是一个真正的新 session，还没有默认材料、画像、路径或历史消息。</p>
+                          <p>直接输入你的问题，系统会从这一轮开始生成状态。</p>
+                        </CardContent>
+                      </Card>
+                    ) : (
                     <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
@@ -1077,7 +1131,9 @@ export function App(): ReactElement {
                         ))}
                       </CardContent>
                     </Card>
+                    )}
 
+                    {!isBlankSession ? (
                     <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                       <CardHeader className="gap-3 pb-3">
                         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1188,6 +1244,7 @@ export function App(): ReactElement {
                         ) : null}
                       </CardContent>
                     </Card>
+                    ) : null}
                   </div>
                 </ScrollArea>
               </div>
@@ -1248,11 +1305,13 @@ export function App(): ReactElement {
                 <MonitorSection accent={activeRuntime.source === "live-agent" ? "Live" : "Mock"} title="Session">
                   <CompactNote label="Project" value={selectedProject.name} />
                   <CompactNote label="Thread" value={selectedSession?.status ?? "等待创建"} />
-                  <CompactNote label="Mode" value={activeRuntime.decision.title} />
+                  <CompactNote label="Mode" value={isBlankSession ? "未生成" : activeRuntime.decision.title} />
                   <CompactNote
                     label="Agent"
                     value={
-                      activeRuntime.decision.confidence !== null
+                      isBlankSession
+                        ? "--"
+                        : activeRuntime.decision.confidence !== null
                         ? `${(activeRuntime.decision.confidence * 100).toFixed(0)}% confidence`
                         : "heuristic"
                     }
@@ -1267,7 +1326,7 @@ export function App(): ReactElement {
                         label={metric.label}
                         tone={metric.tone}
                         value={
-                          activeRuntime.state[metric.key] === null
+                          isBlankSession || activeRuntime.state[metric.key] === null
                             ? "--"
                             : `${activeRuntime.state[metric.key]}%`
                         }
@@ -1279,10 +1338,10 @@ export function App(): ReactElement {
                       Profile
                     </p>
                     <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">
-                      {generatedProfile.title}
+                      {isBlankSession ? "等待系统根据对话生成学习画像" : generatedProfile.title}
                     </p>
                     <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                      {generatedProfile.evidence[0]}
+                      {isBlankSession ? "先发起一轮对话，画像和证据会跟着诊断结果出现。" : generatedProfile.evidence[0]}
                     </p>
                   </div>
                 </MonitorSection>
@@ -1292,16 +1351,16 @@ export function App(): ReactElement {
                     <MetricTile
                       label="Last"
                       tone="amber"
-                      value={activeRuntime.state.lastReviewedAt ?? "未记录"}
+                      value={isBlankSession ? "--" : activeRuntime.state.lastReviewedAt ?? "未记录"}
                     />
                     <MetricTile
                       label="Next"
                       tone="sky"
-                      value={activeRuntime.state.nextReviewAt ?? "待决定"}
+                      value={isBlankSession ? "--" : activeRuntime.state.nextReviewAt ?? "待决定"}
                     />
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {activeRuntime.state.weakSignals.slice(0, 3).map((signal) => (
+                    {(isBlankSession ? [] : activeRuntime.state.weakSignals.slice(0, 3)).map((signal) => (
                       <Badge
                         className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
                         key={signal}
@@ -1311,6 +1370,11 @@ export function App(): ReactElement {
                       </Badge>
                     ))}
                   </div>
+                  {isBlankSession ? (
+                    <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
+                      还没有复习信号，等第一轮运行后再生成。
+                    </p>
+                  ) : null}
                   <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3">
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
@@ -1338,29 +1402,31 @@ export function App(): ReactElement {
                   <CompactNote
                     label="Selected"
                     value={
-                      selectedEntryMode === "material-import"
+                      isBlankSession
+                        ? "0 assets"
+                        : selectedEntryMode === "material-import"
                         ? `${activeSourceAssets.length} assets`
                         : `${sourceAssets.length} linked`
                     }
                   />
-                  <CompactNote label="Unit" value={selectedUnit.title} />
+                  <CompactNote label="Unit" value={selectedUnit?.title ?? "未指定"} />
                   <CompactNote
                     label="Writeback"
-                    value={activeRuntime.writeback[0]?.target ?? "Project Thread"}
+                    value={isBlankSession ? "未生成" : activeRuntime.writeback[0]?.target ?? "Project Thread"}
                   />
                   <div className="rounded-[0.95rem] bg-[var(--xidea-parchment)] px-3 py-3">
                     <div className="flex items-center gap-2">
                       <Brain className="h-4 w-4 text-[var(--xidea-terracotta)]" />
                       <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                        {activeRuntime.decision.title}
+                        {isBlankSession ? "等待首轮编排" : activeRuntime.decision.title}
                       </p>
                     </div>
                     <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                      {activeRuntime.decision.objective}
+                      {isBlankSession ? "当前还没有材料上下文或运行结果，先从一条输入开始。" : activeRuntime.decision.objective}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {selectedUnit.candidateModes.slice(0, 3).map((mode) => (
+                    {(selectedUnit?.candidateModes ?? []).slice(0, 3).map((mode) => (
                       <Badge
                         className={`border px-2 py-1 text-[12px] shadow-none ${getModeBadgeClass(mode)}`}
                         key={mode}
