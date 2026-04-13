@@ -31,8 +31,6 @@
   - owner: 学习引擎 owner
 - [ ] 在主案例稳定后，再补 1 到 2 个能支撑主叙事的次级 demo surface
   - owner: 前端 owner / 产品 owner
-- [ ] 将右侧 inspector 重构为高信息密度的监控型面板
-  - owner: 前端 owner / 产品 owner
 - [ ] 将学习画像从前端推断迁到真实 agent / learner state 信号
   - owner: 学习引擎 owner / 前端 owner
 - [ ] 将复习热力图接到真实 `Review Engine` 状态，而不是只基于前端推断渲染
