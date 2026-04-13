@@ -30,6 +30,8 @@
 - 首页信息架构已进一步改成更克制的 codex-style workspace：左侧 `project / session` 侧栏，中间保留当前 thread 必要内容，右侧放学习画像、复习系统和项目特有 inspector
 - 当前 workspace 的视觉规则已收敛为“轻选中态 + 中性色主导 + 侧栏单行排版”，不再使用大面积黑色 active 和多彩状态块
 - `apps/web` 已接入真实 `/runs/v0` 结果，可用本地代理和运行面板把 mock 证据链切到 agent 返回的 `diagnosis / plan / state-patch`
+- `apps/web` 已正式接入 `shadcn/ui` 基础组件，当前 workspace 的按钮、卡片、徽标、滚动区和输入区不再是纯手写 primitive
+- `apps/web` 已正式接入 Vercel AI SDK 的 `useChat + custom transport`，中间 thread 区开始按消息流方式承接 `/runs/v0` 返回，而不是只靠本地面板状态拼接
 - 为本地前后端联调补上 Vite `/agent-api` 代理与 agent CORS 默认配置
 - 初版架构讨论已收敛到可开工状态，并明确 SQLite 状态层与启发式 `Review Engine v0`
 - 完善 `state.py` 数据模型：双轨 LearnerState + 6 个领域模型 + 2 个枚举
