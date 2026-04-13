@@ -126,6 +126,45 @@ START → ingest_input → diagnose_learner → select_training_mode → generat
 | 输出 | `plan` | StudyPlan? | 生成的学习计划 |
 | 追踪 | `rationale` | list[str] | 决策过程说明 |
 
+## Decision Path v1 — 综合诊断评分
+
+`runtime.py` 的诊断决策路径已从 if-elif 瀑布升级为综合评分模型。
+
+### 信号检测增强
+
+| 维度 | 说明 |
+|---|---|
+| 多轮累积 | `build_signals()` 扫描 `recent_messages` 中所有 user 消息，同一关键词在多轮出现时 boost score 和 confidence |
+| Prior state 趋势 | 对比 `prior_learner_unit_state`：confusion 持续偏高时追加趋势信号；memory 偏低但用户未提及时追加隐性遗忘风险信号 |
+| 辅助函数 | `_multi_turn_frequency(messages, keywords)` 统计命中轮次；`_boost(base, turn_count)` 按轮次数线性提升 |
+
+### 动态状态估算
+
+| 改进 | 机制 |
+|---|---|
+| Confidence 缩放 | 每个信号的 delta 乘以 `signal.confidence`，高置信信号影响更大 |
+| 动态 confidence | 不再固定 0.74；基于 `active_signal_count` 和 `source_diversity` 动态计算，范围 0.55–0.95 |
+
+### 综合 Action 评分
+
+用 `_score_actions()` 为 5 个动作打分，替代原来的 if-elif 瀑布：
+
+| Action | 评分公式 | 说明 |
+|---|---|---|
+| clarify | `(confusion - 50) / 25` (confusion > 50) | 混淆度越高分越高 |
+| review | `review_decision.priority` (0–1) | 直接使用 Review Engine 的优先级 |
+| teach | `(60 - understanding) / 60 × 0.7` (understanding < 60) | 理解不足时触发 |
+| apply | `(50 - transfer) / 50 × 0.6` (transfer < 50) | 迁移能力不足时触发 |
+| practice | 固定基线 0.12 | 最低优先级兜底 |
+
+选分数最高的 action 作为诊断结果，`Explanation.evidence` 包含所有 action 的得分排名。
+
+### 效果评估
+
+- 在 `_score_actions()` 中检查 `prior_state.recommended_action`
+- 如果上一轮执行了某动作但对应指标未改善（如 clarify 后 confusion 仍 ≥ 55），该动作得分 ×0.75
+- 避免反复选择无效动作，鼓励策略切换
+
 ## LangGraph 最小编排图
 
 已使用 LangGraph `StateGraph` 实现 5 个节点的线性编排。
