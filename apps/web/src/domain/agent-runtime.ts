@@ -244,6 +244,40 @@ function toSignalCard(signal: AgentSignal, index: number): RuntimeSignalCard {
   };
 }
 
+function buildSignalCardsFromStream(
+  diagnosis: AgentDiagnosis,
+  learnerState: AgentLearnerUnitState,
+): ReadonlyArray<RuntimeSignalCard> {
+  const cards: RuntimeSignalCard[] = [
+    {
+      id: "stream-primary-issue",
+      label: "主要问题",
+      observation: PRIMARY_ISSUE_COPY[diagnosis.primary_issue],
+      implication: `${diagnosis.reason} 当前置信度 ${(diagnosis.confidence * 100).toFixed(0)}%。`,
+    },
+  ];
+
+  learnerState.based_on.slice(0, 2).forEach((reason, index) => {
+    cards.push({
+      id: `stream-based-on-${index}`,
+      label: `判断依据 ${index + 1}`,
+      observation: reason,
+      implication: "这条依据会继续影响下一轮动作选择和状态回写。",
+    });
+  });
+
+  if (cards.length < 3 && learnerState.weak_signals.length > 0) {
+    cards.push({
+      id: "stream-weak-signals",
+      label: "弱信号",
+      observation: learnerState.weak_signals.join(" / "),
+      implication: "系统会把这些弱信号继续挂在当前 unit 上，避免下一轮重新从零判断。",
+    });
+  }
+
+  return cards;
+}
+
 function buildWritebackFromAgent(statePatch: AgentStatePatch | null): ReadonlyArray<WritebackPreview> {
   if (statePatch === null) {
     return [];
@@ -509,7 +543,7 @@ export function normalizeAgentStreamResult(input: {
       ),
     },
     stateSource: stateSourceParts.join(" "),
-    signalCards: [],
+    signalCards: buildSignalCardsFromStream(diagnosis, learnerState),
     decision: {
       title: MODE_LABELS[plan.selected_mode],
       reason: primaryReason,
