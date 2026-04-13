@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   FileInput,
+  Folder,
   FolderOpen,
   MessageSquareText,
   Plus,
@@ -129,6 +130,20 @@ function getMessageText(message: UIMessage): string {
     .trim();
 
   return text === "" ? "当前消息没有文本内容。" : text;
+}
+
+function getCollapsedAssistantText(text: string): string {
+  const normalized = text.trim();
+  if (normalized.length <= 96) {
+    return normalized;
+  }
+
+  const sentenceMatch = normalized.match(/^(.{1,96}?[。！？!?])/u);
+  if (sentenceMatch?.[1]) {
+    return sentenceMatch[1];
+  }
+
+  return `${normalized.slice(0, 96).trim()}...`;
 }
 
 function getLatestUserDraft(messages: ReadonlyArray<UIMessage>, draftPrompt: string): string {
@@ -339,13 +354,10 @@ function ProjectCard({
               : "flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.85rem] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)]"
           }
         >
-          <FolderOpen className="h-4 w-4" />
+          {expanded ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{name}</p>
-        </div>
-        <div className="text-[var(--xidea-stone)]">
-          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </div>
       </button>
 
@@ -420,6 +432,9 @@ export function App(): ReactElement {
     () => sourceAssets.map((asset) => asset.id),
   );
   const [isEvidenceExpanded, setIsEvidenceExpanded] = useState(false);
+  const [expandedAssistantMessageIds, setExpandedAssistantMessageIds] = useState<
+    Record<string, boolean>
+  >({});
   const [draftPrompt, setDraftPrompt] = useState(() =>
     buildDefaultAgentPrompt(initialProfile, initialUnit, projectContext),
   );
@@ -517,6 +532,10 @@ export function App(): ReactElement {
 
   useEffect(() => {
     setIsEvidenceExpanded(false);
+  }, [selectedSession?.id]);
+
+  useEffect(() => {
+    setExpandedAssistantMessageIds({});
   }, [selectedSession?.id]);
 
   useEffect(() => {
@@ -681,8 +700,14 @@ export function App(): ReactElement {
                             }}
                           />
 
-                          {expanded ? (
-                            <div className="mt-2 ml-4 box-border w-[calc(100%-1rem)] border-l border-[var(--xidea-sand)] pl-3">
+                          <div
+                            className={
+                              expanded
+                                ? "xidea-sidebar-reveal mt-2 ml-4 box-border grid w-[calc(100%-1rem)] grid-rows-[1fr] border-l border-[var(--xidea-sand)] pl-3 opacity-100"
+                                : "xidea-sidebar-reveal ml-4 box-border grid w-[calc(100%-1rem)] grid-rows-[0fr] border-l border-[var(--xidea-sand)] pl-3 opacity-0"
+                            }
+                          >
+                            <div className="overflow-hidden">
                               <div className="space-y-2">
                                 {projectSessions.length === 0 ? (
                                   <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
@@ -707,7 +732,7 @@ export function App(): ReactElement {
                                 ))}
                               </div>
                             </div>
-                          ) : null}
+                          </div>
                         </div>
                       );
                     })}
@@ -882,6 +907,15 @@ export function App(): ReactElement {
                     ) : (
                       messages.map((message) => {
                         const isAssistant = message.role === "assistant";
+                        const rawText = getMessageText(message);
+                        const shouldCollapseAssistant =
+                          isAssistant && rawText.length > 96;
+                        const isExpanded =
+                          expandedAssistantMessageIds[message.id] ?? false;
+                        const visibleText =
+                          shouldCollapseAssistant && !isExpanded
+                            ? getCollapsedAssistantText(rawText)
+                            : rawText;
 
                         return (
                           <div
@@ -891,8 +925,8 @@ export function App(): ReactElement {
                             <Card
                               className={
                                 isAssistant
-                                  ? "w-full max-w-[84%] rounded-[1.2rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none"
-                                  : "w-full max-w-[78%] rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none"
+                                  ? "w-full max-w-[76%] rounded-[1.2rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none"
+                                  : "w-full max-w-[72%] rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none"
                               }
                             >
                               <CardHeader className="pb-3">
@@ -907,10 +941,31 @@ export function App(): ReactElement {
                                   >
                                     {isAssistant ? "系统" : "用户"}
                                   </Badge>
+                                  {isAssistant && shouldCollapseAssistant ? (
+                                    <Button
+                                      className="h-7 rounded-full px-2 text-[11px] text-[var(--xidea-stone)] hover:bg-[var(--xidea-white)] hover:text-[var(--xidea-near-black)]"
+                                      onClick={() => {
+                                        setExpandedAssistantMessageIds((current) => ({
+                                          ...current,
+                                          [message.id]: !isExpanded,
+                                        }));
+                                      }}
+                                      size="sm"
+                                      type="button"
+                                      variant="ghost"
+                                    >
+                                      {isExpanded ? "收起" : "展开"}
+                                    </Button>
+                                  ) : null}
                                 </div>
                               </CardHeader>
-                              <CardContent className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                                {getMessageText(message)}
+                              <CardContent className="space-y-3 text-sm leading-7 text-[var(--xidea-charcoal)]">
+                                {isAssistant && !isExpanded ? (
+                                  <div className="rounded-[0.9rem] border border-[var(--xidea-selection-border)]/60 bg-[var(--xidea-white)] px-3 py-2 text-[13px] leading-6 text-[var(--xidea-selection-text)]">
+                                    Agent 摘要
+                                  </div>
+                                ) : null}
+                                <div>{visibleText}</div>
                               </CardContent>
                             </Card>
                           </div>
