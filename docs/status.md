@@ -39,7 +39,6 @@
 - 定义 agent tool schema：4 个最小必要工具 + mock 实现 + TOOL_REGISTRY
 - 定义 agent guardrail schema：5 条行为约束规则 + 统一检查入口
 - 搭建 LangGraph 最小编排图：5 个节点 + StateGraph + 规则 mock 实现
-- 生成 `docs/agent-state-design.md` 设计文档
 - 将 `learn-engine` 分支上的 agent contract 对齐到 `AgentRequest / diagnosis / plan / state-patch / StreamEvent`
 - 在 `apps/agent` 补上 v0 runtime、SQLite repository 与 FastAPI `/runs/v0` / `/schemas` / storage endpoints
 - LangGraph 编排图已切到 `load_context -> diagnose -> decide_action -> maybe_tool -> compose_response -> writeback`
@@ -56,6 +55,12 @@
 - 新增效果评估：检测上一轮动作是否改善对应指标，无效动作自动降权
 - 新增 `POST /runs/v0/stream` SSE streaming endpoint，事件序列 text-delta → diagnosis → plan → state-patch → done
 - 新增 19 个测试（15 决策路径 + 4 SSE），总计 54 个全部通过
+- 重新整理 `docs/` 结构：根目录保留 operating docs，流程文档下沉到 `docs/process/`，参考材料下沉到 `docs/reference/`
+- 生成 [docs/reference/agent-state-design.md](reference/agent-state-design.md) 设计文档
+- 将 `docs/memory/decision-log.md` 收敛为活跃决策薄层，历史条目归档到 `docs/archive/decision-log-history.md`
+- 将路线图并入 `docs/plan.md`，不再单独维护 `reference/backlog.md`
+- 将 demo 展示规则并入 `docs/reference/competition-defense-kit.md`
+- 将科学复习相关产品表述收敛到 `docs/reference/product-brief.md`
 
 ### In Progress
 

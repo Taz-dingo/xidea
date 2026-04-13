@@ -17,8 +17,9 @@ Read these files in order:
 
 1. [../../../AGENTS.md](../../../AGENTS.md)
 2. [../../../CONTRIBUTING.md](../../../CONTRIBUTING.md)
-3. [../../../docs/collaboration-playbook.md](../../../docs/collaboration-playbook.md) only if collaboration rules seem ambiguous
-4. [../../../docs/memory/decision-log.md](../../../docs/memory/decision-log.md) only if the task may change shared understanding
+3. [../../../docs/process/collaboration-playbook.md](../../../docs/process/collaboration-playbook.md) only if collaboration rules seem ambiguous
+4. [../../../docs/memory/decision-log.md](../../../docs/memory/decision-log.md) only if the task may change active shared understanding
+5. [../../../docs/archive/decision-log-history.md](../../../docs/archive/decision-log-history.md) only if historical precedent matters
 
 ## Core Rules
 
@@ -29,6 +30,7 @@ Read these files in order:
 - allowed `type` values are `feat`, `docs`, `fix`, and `refactor`
 - if the task changes team-wide understanding, update `docs/memory/decision-log.md`
 - if the task changes current execution state or priorities, update `docs/status.md` or `docs/plan.md`
+- do not append obsolete branch-process detail into the active decision log; archive it if it only matters as history
 
 ## Choose The Type
 

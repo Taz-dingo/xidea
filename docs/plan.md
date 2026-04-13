@@ -35,8 +35,26 @@
   - owner: 学习引擎 owner
 - [ ] 准备答辩素材和对比竞品摘要
   - owner: 产品 owner
-- [ ] 整理 `docs/memory/decision-log.md` 与文档分层，控制长期记忆体积
+- [x] 整理 `docs/memory/decision-log.md` 与文档分层，控制长期记忆体积
   - owner: 全员
+
+## Roadmap Horizons
+
+### V1
+
+- 接真实模型 API
+- 增加上传材料入口
+- 增加更可信的内容摘要或结构化提炼结果
+- 增加 1 到 2 个次级 demo surface
+- 增加 evaluation 和答辩支撑材料
+
+### V2
+
+- 增强 `Review Engine`
+- 引入真正的 spaced repetition 调度算法
+- 优先考虑 `FSRS` 或同等级现代 SRS 方案，而不是只停留在启发式规则
+- 增强 `Agent Memory / Consolidation`
+- 增加更多输入模态与更多学科模板
 
 ## Implementation Checklist v0
 
