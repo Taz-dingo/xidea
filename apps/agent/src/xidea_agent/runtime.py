@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from xidea_agent.guardrails import get_violations
 from xidea_agent.repository import SQLiteRepository
-from xidea_agent.review_engine import should_enter_review, schedule_next_review
+from xidea_agent.review_engine import ReviewDecision, should_enter_review, schedule_next_review
 from xidea_agent.state import (
     AgentRequest,
     AgentRunResult,
@@ -52,6 +52,21 @@ MODE_LABELS: dict[LearningMode, str] = {
     "scenario-sim": "情境模拟",
 }
 
+ACTION_ISSUE: dict[PedagogicalAction, PrimaryIssue] = {
+    "clarify": "concept-confusion",
+    "teach": "insufficient-understanding",
+    "review": "weak-recall",
+    "apply": "poor-transfer",
+    "practice": "poor-transfer",
+}
+
+ACTION_REASON: dict[PedagogicalAction, str] = {
+    "clarify": "当前最大问题是概念边界混淆，先把区别拉清楚比继续讲知识点更重要。",
+    "teach": "用户还没有形成稳定理解框架，先补建模再安排练习更稳。",
+    "apply": "概念基础已基本具备，但还需要在项目场景里验证是否真的会用。",
+    "practice": "当前适合通过练习把已有理解转成更稳定的应用能力。",
+}
+
 
 def latest_user_message(messages: list[Message]) -> str:
     for message in reversed(messages):
@@ -61,10 +76,86 @@ def latest_user_message(messages: list[Message]) -> str:
     return messages[-1].content
 
 
-def build_signals(messages: list[Message], observations: list[Observation], entry_mode: str) -> list[Signal]:
+def _multi_turn_frequency(
+    messages: list[Message], keywords: tuple[str, ...], lowercase: bool = False
+) -> int:
+    """Count user messages in recent history that mention at least one keyword."""
+    count = 0
+    for msg in messages:
+        if msg.role != "user":
+            continue
+        text = msg.content.lower() if lowercase else msg.content
+        if any(kw in text for kw in keywords):
+            count += 1
+    return count
+
+
+def _boost(base: float, turn_count: int, per_turn: float = 0.06) -> float:
+    """Boost a value when multiple turns mention the same signal."""
+    if turn_count <= 1:
+        return base
+    return min(1.0, base + per_turn * (turn_count - 1))
+
+
+def _score_actions(
+    learner_state: LearnerUnitState,
+    review_decision: ReviewDecision,
+    prior_state: LearnerUnitState | None = None,
+) -> dict[PedagogicalAction, float]:
+    """Score each pedagogical action; highest score wins."""
+    scores: dict[PedagogicalAction, float] = {
+        "clarify": 0.0,
+        "teach": 0.0,
+        "review": 0.0,
+        "apply": 0.0,
+        "practice": 0.12,
+    }
+
+    confusion = learner_state.confusion_level
+    understanding = learner_state.understanding_level
+    transfer = learner_state.transfer_readiness
+
+    if confusion > 50:
+        scores["clarify"] = min(1.0, (confusion - 50) / 25)
+
+    if review_decision.should_review:
+        scores["review"] = review_decision.priority
+
+    if understanding < 60:
+        scores["teach"] = min(1.0, (60 - understanding) / 60) * 0.7
+
+    if transfer < 50:
+        scores["apply"] = min(1.0, (50 - transfer) / 50) * 0.6
+
+    if prior_state and prior_state.recommended_action:
+        pa = prior_state.recommended_action
+        if pa == "clarify" and prior_state.confusion_level >= 55:
+            scores["clarify"] *= 0.75
+        elif pa == "teach" and prior_state.understanding_level <= 55:
+            scores["teach"] *= 0.75
+        elif pa == "review" and prior_state.memory_strength <= 45:
+            scores["review"] *= 0.75
+        elif pa == "apply" and prior_state.transfer_readiness <= 45:
+            scores["apply"] *= 0.75
+
+    return scores
+
+
+def build_signals(
+    messages: list[Message],
+    observations: list[Observation],
+    entry_mode: str,
+    prior_state: LearnerUnitState | None = None,
+) -> list[Signal]:
     message = latest_user_message(messages)
     lowered = message.lower()
     observation_ids = [item.observation_id for item in observations]
+
+    confusion_turns = _multi_turn_frequency(messages, CONFUSION_KEYWORDS)
+    understanding_turns = _multi_turn_frequency(messages, UNDERSTANDING_KEYWORDS)
+    recall_turns = _multi_turn_frequency(messages, RECALL_KEYWORDS)
+    transfer_turns = _multi_turn_frequency(messages, TRANSFER_KEYWORDS)
+    practice_turns = _multi_turn_frequency(messages, PRACTICE_KEYWORDS, lowercase=True)
 
     signals: list[Signal] = [
         Signal(
@@ -80,9 +171,9 @@ def build_signals(messages: list[Message], observations: list[Observation], entr
         signals.append(
             Signal(
                 kind="concept-confusion",
-                score=0.82,
-                confidence=0.86,
-                summary="用户明确表达概念边界混淆，优先澄清区别而不是继续泛讲。",
+                score=_boost(0.82, confusion_turns),
+                confidence=_boost(0.86, confusion_turns, per_turn=0.04),
+                summary=f"用户明确表达概念边界混淆（{confusion_turns}轮提及），优先澄清区别而不是继续泛讲。",
                 based_on=observation_ids[:1],
             )
         )
@@ -91,9 +182,9 @@ def build_signals(messages: list[Message], observations: list[Observation], entr
         signals.append(
             Signal(
                 kind="concept-gap",
-                score=0.76,
-                confidence=0.8,
-                summary="用户当前更像在补理解框架，还没有形成稳定解释。",
+                score=_boost(0.76, understanding_turns),
+                confidence=_boost(0.8, understanding_turns, per_turn=0.04),
+                summary=f"用户当前更像在补理解框架（{understanding_turns}轮提及），还没有形成稳定解释。",
                 based_on=observation_ids[:1],
             )
         )
@@ -102,9 +193,9 @@ def build_signals(messages: list[Message], observations: list[Observation], entr
         signals.append(
             Signal(
                 kind="memory-weakness",
-                score=0.8,
-                confidence=0.78,
-                summary="用户显式提到复习或遗忘，当前存在记忆稳定性风险。",
+                score=_boost(0.8, recall_turns),
+                confidence=_boost(0.78, recall_turns, per_turn=0.04),
+                summary=f"用户显式提到复习或遗忘（{recall_turns}轮提及），当前存在记忆稳定性风险。",
                 based_on=observation_ids[:1],
             )
         )
@@ -113,9 +204,9 @@ def build_signals(messages: list[Message], observations: list[Observation], entr
         signals.append(
             Signal(
                 kind="transfer-readiness",
-                score=0.42,
-                confidence=0.72,
-                summary="问题已经落到项目设计或答辩场景，需要验证是否会迁移应用。",
+                score=_boost(0.42, transfer_turns),
+                confidence=_boost(0.72, transfer_turns, per_turn=0.04),
+                summary=f"问题已经落到项目设计或答辩场景（{transfer_turns}轮提及），需要验证是否会迁移应用。",
                 based_on=observation_ids[:1],
             )
         )
@@ -124,9 +215,9 @@ def build_signals(messages: list[Message], observations: list[Observation], entr
         signals.append(
             Signal(
                 kind="transfer-readiness",
-                score=0.38,
-                confidence=0.75,
-                summary="用户有主动演练意图，适合进入练习或情境验证。",
+                score=_boost(0.38, practice_turns),
+                confidence=_boost(0.75, practice_turns, per_turn=0.04),
+                summary=f"用户有主动演练意图（{practice_turns}轮提及），适合进入练习或情境验证。",
                 based_on=observation_ids[:1],
             )
         )
@@ -141,6 +232,29 @@ def build_signals(messages: list[Message], observations: list[Observation], entr
                 based_on=observation_ids,
             )
         )
+
+    if prior_state is not None:
+        if prior_state.confusion_level >= 45 and confusion_turns > 0:
+            signals.append(
+                Signal(
+                    kind="concept-confusion",
+                    score=0.65,
+                    confidence=0.72,
+                    summary=f"混淆度持续偏高（prior={prior_state.confusion_level}），趋势信号。",
+                    based_on=["prior-state-trend"],
+                )
+            )
+
+        if prior_state.memory_strength <= 50 and recall_turns == 0:
+            signals.append(
+                Signal(
+                    kind="memory-weakness",
+                    score=0.55,
+                    confidence=0.6,
+                    summary=f"记忆强度偏低（prior={prior_state.memory_strength}）但用户未主动提及，可能存在隐性遗忘风险。",
+                    based_on=["prior-state-trend"],
+                )
+            )
 
     return signals
 
@@ -157,23 +271,30 @@ def estimate_learner_state(
     transfer_readiness = prior_state.transfer_readiness if prior_state else 55
     weak_signals: list[str] = list(prior_state.weak_signals) if prior_state else []
 
+    signal_kinds_seen: set[str] = set()
     for signal in signals:
+        w = signal.confidence
         if signal.kind == "concept-confusion":
-            confusion += 38
-            understanding -= 12
-            mastery -= 8
+            confusion += int(38 * w)
+            understanding -= int(12 * w)
+            mastery -= int(8 * w)
             weak_signals.append("概念边界混淆")
         elif signal.kind == "concept-gap":
-            understanding -= 24
-            mastery -= 10
+            understanding -= int(24 * w)
+            mastery -= int(10 * w)
             weak_signals.append("理解框架不稳")
         elif signal.kind == "memory-weakness":
-            memory_strength -= 28
+            memory_strength -= int(28 * w)
             weak_signals.append("关键概念记忆不稳")
         elif signal.kind == "transfer-readiness":
-            transfer_readiness -= 18
-            mastery -= 6
+            transfer_readiness -= int(18 * w)
+            mastery -= int(6 * w)
             weak_signals.append("还不能稳定迁移到真实场景")
+        signal_kinds_seen.add(signal.kind)
+
+    active_signal_count = sum(1 for s in signals if s.kind != "project-relevance")
+    source_diversity = len(signal_kinds_seen - {"project-relevance"})
+    confidence = min(0.95, 0.55 + 0.06 * active_signal_count + 0.05 * source_diversity)
 
     return LearnerUnitState(
         unit_id=target_unit_id or "rag-core-unit",
@@ -183,13 +304,18 @@ def estimate_learner_state(
         confusion_level=max(0, min(100, confusion)),
         transfer_readiness=max(0, min(100, transfer_readiness)),
         weak_signals=list(dict.fromkeys(weak_signals)),
-        confidence=0.74,
+        confidence=round(confidence, 2),
         based_on=[signal.summary for signal in signals],
         updated_at=datetime.now(UTC),
     )
 
 
-def diagnose_state(entry_mode: str, target_unit_id: str | None, learner_state: LearnerUnitState) -> Diagnosis:
+def diagnose_state(
+    entry_mode: str,
+    target_unit_id: str | None,
+    learner_state: LearnerUnitState,
+    prior_state: LearnerUnitState | None = None,
+) -> Diagnosis:
     needs_tool = entry_mode == "material-import"
 
     if not target_unit_id and entry_mode != "material-import":
@@ -212,26 +338,14 @@ def diagnose_state(entry_mode: str, target_unit_id: str | None, learner_state: L
         memory_strength=learner_state.memory_strength,
     )
 
-    if learner_state.confusion_level >= 68:
-        action: PedagogicalAction = "clarify"
-        issue: PrimaryIssue = "concept-confusion"
-        reason = "当前最大问题是概念边界混淆，先把区别拉清楚比继续讲知识点更重要。"
-    elif review_decision.should_review:
-        action = "review"
-        issue = "weak-recall"
+    scores = _score_actions(learner_state, review_decision, prior_state=prior_state)
+    action: PedagogicalAction = max(scores, key=lambda k: scores[k])
+
+    issue = ACTION_ISSUE[action]
+    if action == "review":
         reason = review_decision.reason
-    elif learner_state.understanding_level <= 50:
-        action = "teach"
-        issue = "insufficient-understanding"
-        reason = "用户还没有形成稳定理解框架，先补建模再安排练习更稳。"
-    elif learner_state.transfer_readiness <= 44:
-        action = "apply"
-        issue = "poor-transfer"
-        reason = "概念基础已基本具备，但还需要在项目场景里验证是否真的会用。"
     else:
-        action = "practice"
-        issue = "poor-transfer"
-        reason = "当前适合通过练习把已有理解转成更稳定的应用能力。"
+        reason = ACTION_REASON.get(action, "当前适合通过练习把已有理解转成更稳定的应用能力。")
 
     return Diagnosis(
         recommended_action=action,
@@ -240,19 +354,27 @@ def diagnose_state(entry_mode: str, target_unit_id: str | None, learner_state: L
         focus_unit_id=learner_state.unit_id,
         primary_issue=issue,
         needs_tool=needs_tool,
-        explanation=build_explanation(learner_state, reason),
+        explanation=build_explanation(learner_state, reason, action_scores=scores),
     )
 
 
-def build_explanation(learner_state: LearnerUnitState, summary: str) -> Explanation:
+def build_explanation(
+    learner_state: LearnerUnitState,
+    summary: str,
+    action_scores: dict[PedagogicalAction, float] | None = None,
+) -> Explanation:
+    evidence = [
+        f"understanding={learner_state.understanding_level}",
+        f"memory={learner_state.memory_strength}",
+        f"confusion={learner_state.confusion_level}",
+        f"transfer={learner_state.transfer_readiness}",
+    ]
+    if action_scores:
+        ranked = sorted(action_scores.items(), key=lambda x: x[1], reverse=True)
+        evidence.append("action-scores: " + ", ".join(f"{k}={v:.2f}" for k, v in ranked))
     return Explanation(
         summary=summary,
-        evidence=[
-            f"understanding={learner_state.understanding_level}",
-            f"memory={learner_state.memory_strength}",
-            f"confusion={learner_state.confusion_level}",
-            f"transfer={learner_state.transfer_readiness}",
-        ],
+        evidence=evidence,
         confidence=learner_state.confidence,
     )
 
@@ -501,14 +623,22 @@ def load_context_step(
 
 
 def diagnose_step(state: GraphState) -> GraphState:
-    state.signals = build_signals(state.recent_messages, state.observations, state.request.entry_mode)
+    state.signals = build_signals(
+        state.recent_messages,
+        state.observations,
+        state.request.entry_mode,
+        prior_state=state.prior_learner_unit_state,
+    )
     state.learner_unit_state = estimate_learner_state(
         state.request.target_unit_id,
         state.signals,
         prior_state=state.prior_learner_unit_state,
     )
     state.diagnosis = diagnose_state(
-        state.request.entry_mode, state.request.target_unit_id, state.learner_unit_state
+        state.request.entry_mode,
+        state.request.target_unit_id,
+        state.learner_unit_state,
+        prior_state=state.prior_learner_unit_state,
     )
     state.learner_unit_state.recommended_action = state.diagnosis.recommended_action
     state.rationale.append(
