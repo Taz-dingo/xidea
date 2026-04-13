@@ -140,16 +140,15 @@
 
 `apps/web` 发给 `apps/agent` 的最小请求建议包含：
 
-- `projectId`: 当前项目上下文
-- `threadId`: 当前会话上下文
-- `userId`: 可选，后续接真实用户时使用
-- `entryMode`: `chat | ingest`
-- `userMessage`: 当前轮用户输入
-- `sourceAssetIds`: 可选，本轮相关材料
-- `targetUnitId`: 可选，本轮聚焦的学习单元
-- `learnerState`: 可选，当前前端已知的学习者状态快照
-- `contextSnapshot`: 可选，当前前端已知的材料、主题和最近消息
-- `responseMode`: 第一版默认 `stream`
+- `project_id`: 当前项目上下文
+- `thread_id`: 当前会话上下文
+- `entry_mode`: `chat-question | material-import | coach-followup`
+- `topic`: 当前轮聚焦主题
+- `messages`: 当前轮消息列表，至少包含一条用户输入
+- `source_asset_ids`: 可选，本轮相关材料
+- `target_unit_id`: 可选，本轮聚焦的学习单元
+- `context_hint`: 可选，当前项目或线程的补充说明
+- `response_mode`: 第一版默认 `stream`
 
 ### Stream Events
 
@@ -176,11 +175,11 @@
 可以统一成如下结构：
 
 ```json
-{ "type": "text-delta", "text": "我先帮你把这个概念边界拉清楚。" }
-{ "type": "diagnosis", "data": { "recommendedAction": "clarify", "reason": "当前混淆风险高" } }
-{ "type": "plan", "data": { "headline": "先辨析再迁移", "summary": "先澄清，再追问，再迁移", "steps": [] } }
-{ "type": "state-patch", "data": { "confusion": 72, "recommendedAction": "clarify" } }
-{ "type": "done" }
+{ "event": "text-delta", "delta": "我先帮你把这个概念边界拉清楚。" }
+{ "event": "diagnosis", "diagnosis": { "recommended_action": "clarify", "reason": "当前混淆风险高" } }
+{ "event": "plan", "plan": { "headline": "先辨析再迁移", "summary": "先澄清，再追问，再迁移", "selected_mode": "contrast-drill", "expected_outcome": "建立稳定区分标准", "steps": [] } }
+{ "event": "state-patch", "state_patch": { "learner_state_patch": { "confusion_level": 72, "recommended_action": "clarify" } } }
+{ "event": "done", "final_message": "这轮我会先帮你把概念边界拉清楚。" }
 ```
 
 ### Why This Shape
@@ -231,7 +230,10 @@ load_context
 
 输出：
 
-- `GraphState.context`
+- `GraphState.source_assets`
+- `GraphState.learning_unit`
+- `GraphState.prior_learner_unit_state`
+- `GraphState.recent_messages`
 - `GraphState.request`
 
 ### Node 2: `diagnose`
@@ -248,6 +250,7 @@ load_context
 - `reason`
 - `confidence`
 - `focusUnitId`
+- `primaryIssue`
 - `needsTool`
 
 不负责：
@@ -265,9 +268,8 @@ load_context
 
 建议输出字段：
 
-- `studyPlan`
-- `selectedMode`
 - `toolIntent`
+- `plan` 会在 `compose_response` 阶段与 explanation、state-patch 一起整理成最终输出
 
 不负责：
 
@@ -343,71 +345,37 @@ load_context
 
 ```ts
 type GraphState = {
-  request: {
-    projectId: string;
-    threadId: string;
-    userId?: string;
-    entryMode: "chat" | "ingest";
-    userMessage: string;
-    sourceAssetIds: string[];
-    targetUnitId?: string;
-    responseMode: "stream";
-  };
-
-  context: {
-    sourceAssets: SourceAsset[];
-    currentUnit: LearningUnit | null;
-    learnerState: LearnerState | null;
-    recentMessages: Array<{
-      role: "user" | "assistant" | "system";
-      content: string;
-    }>;
-  };
-
-  diagnosis?: {
-    recommendedAction: "teach" | "clarify" | "practice" | "review" | "apply";
-    reason: string;
-    confidence: number;
-    focusUnitId?: string;
-    needsTool: boolean;
-  };
-
-  action?: {
-    selectedMode?: LearningMode;
-    studyPlan?: StudyPlan;
-    toolIntent?:
-      | "asset-summary"
-      | "unit-detail"
-      | "thread-memory"
-      | "review-context"
-      | null;
-  };
-
+  request: AgentRequest;
+  observations: Observation[];
+  sourceAssets: SourceAsset[];
+  learningUnit?: LearningUnit;
+  signals: Signal[];
+  priorLearnerUnitState?: LearnerUnitState;
+  learnerUnitState?: LearnerUnitState;
+  diagnosis?: Diagnosis;
+  toolIntent: "none" | "asset-summary" | "unit-detail" | "thread-memory" | "review-context";
   toolResult?: {
     kind: string;
     payload: unknown;
   };
-
-  response?: {
-    assistantMessage: string;
-    events: Array<unknown>;
-  };
-
-  writeback?: {
-    learnerStatePatch?: Partial<LearnerState>;
-    lastAction?: string;
-    reviewPatch?: Record<string, unknown>;
-  };
+  plan?: StudyPlan;
+  assistantMessage?: string;
+  statePatch?: StatePatch;
+  recentMessages: Array<{
+    role: "user" | "assistant" | "system";
+    content: string;
+  }>;
+  rationale: string[];
 };
 ```
 
 ### Why This Shape
 
 - `request` 保留原始输入，方便追踪和调试
-- `context` 只放本轮需要消费的上下文快照
-- `diagnosis` 与 `action` 分开，避免把“判断”和“编排”混成一个 blob
+- `observations / signals / learnerUnitState` 分层，避免把事实、诊断信号和状态推断揉成一个 blob
+- `diagnosis` 与 `plan` 分开，避免把“判断”和“编排”混成一个结果对象
 - `toolResult` 保持轻量，只承接 `maybe_tool` 的结果
-- `response` 和 `writeback` 分开，避免展示逻辑和状态更新逻辑缠在一起
+- `assistantMessage` 和 `statePatch` 分开，避免展示逻辑和状态更新逻辑缠在一起
 
 ### Decision 1: Keep `recentMessages`
 

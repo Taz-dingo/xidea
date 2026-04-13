@@ -4,6 +4,24 @@
 
 ### 决策
 
+`learn-engine` 分支作为当前第一版 agent 实现主线，统一收敛到 `AgentRequest / diagnosis / plan / state-patch / StreamEvent` 这套 v0 contract，并在其上继续扩展 LangGraph、SQLite 状态层和 web 联调。
+
+### 原因
+
+- 当前团队已经围绕 `diagnosis / plan / state-patch` 形成前后端联调共识，不能再让实现分支继续漂向另一套更薄的 schema
+- `learn-engine` 已经落下了 `graph / tools / guardrails` 的结构骨架，是最合适继续承接实现的分支
+- 把实现主线明确下来，能避免后续多人并行时重复做 schema 收敛和接口回滚
+
+### 影响
+
+- `apps/agent` 后续默认以 `learn-engine` 为当前实现基线推进
+- 第一版 API、事件流和状态持久化都围绕这套 v0 contract 继续扩展
+- 新增 agent 逻辑时，优先保证与 `diagnosis / plan / state-patch / done` 的联调稳定性，而不是再引入新的返回结构
+
+## 2026-04-13
+
+### 决策
+
 第一版采用“真实持久化状态 + 轻量数据库”的策略，优先把 `projects / threads / thread_messages / learner_unit_state / review_state` 跑成真实读写闭环。
 
 ### 原因
@@ -269,6 +287,66 @@ LangGraph 第一版采用 6 节点最小主链路：`load_context -> diagnose ->
 - 后续遇到分支创建、分支改名、分支命名检查、PR 范围整理时，优先触发 `branch-workflow`
 - agent 在处理这类请求时，默认检查 `type/owner/topic`、短分支规则，以及是否需要同步更新 `decision-log`、`status`、`plan`
 - 项目级 skills 列表从 5 个扩展为 6 个，并把分支协作作为显式入口能力
+
+## 2026-04-12
+
+### 决策
+
+使用 LangGraph StateGraph 搭建最小编排图，5 个节点全部使用规则逻辑 mock 实现。
+
+### 原因
+
+- `plan.md` P0 要求搭出 LangGraph 最小 graph 骨架
+- state / action / tool / guardrail 已定义完毕，具备搭建条件
+- 规则 mock 足够支撑 demo 演示，不急着接真实模型
+
+### 影响
+
+- `graph.py` 从节点列表升级为可运行的 LangGraph StateGraph
+- 5 个节点可独立测试，通过 `compile_graph()` 编译后直接 `invoke()`
+- `generate_plan` 节点的规则逻辑与前端 `planner.ts` 保持对齐
+- `write_back_memory` 节点集成了 guardrail 检查
+- 后续接真实模型只需替换各节点内部实现
+
+## 2026-04-12
+
+### 决策
+
+定义 agent 的 tool 和 guardrail schema，作为受约束单 agent 的行为边界。
+
+### 原因
+
+- `plan.md` P0 要求定义 agent 的 state / action / tool / guardrail
+- state 和 action 已有枚举，但 agent 还不知道能调用什么工具、不能做什么
+- 文档明确要求"受约束"，guardrail 是约束的代码化表达
+
+### 影响
+
+- 新增 `tools.py`：4 个最小必要工具（状态读取、单元读取、上下文读取、状态回写），全部 mock 实现
+- 新增 `guardrails.py`：5 条行为约束规则（诊断优先、不懂不复习、高混淆先澄清、模式匹配、必须解释）
+- 后续 LangGraph 节点可直接使用 `TOOL_REGISTRY` 查找工具、在关键节点后调用 `run_all_guardrails` 检查
+
+## 2026-04-12
+
+### 决策
+
+完善 `apps/agent/src/xidea_agent/state.py` 数据模型，使 Python 端与前端 `types.ts` 对齐，并落地文档中要求的双轨状态模型。
+
+### 原因
+
+- Python 端只有 4 字段骨架，无法支撑后续 LangGraph 节点逻辑
+- 前端已有完整的 LearningMode / LearnerState / LearningUnit / StudyPlan 类型定义
+- `scientific-review-integration.md` 明确要求理解状态和记忆状态分开建模
+- agent 的 action 和 mode 需要枚举约束，防止编排行为不可控
+
+### 影响
+
+- 新增 `LearningMode`（6 种训练模式）和 `TrainingAction`（5 种高层动作）两个枚举
+- `LearnerState` 扩展为 9 字段，同时覆盖理解状态和记忆状态
+- 新增 `SourceAsset`、`LearningUnit`、`StudyPlanStep`、`StudyPlan` 四个模型
+- `GraphState` 改为三层结构：输入层 / 诊断层 / 编排输出层
+- 后续 LangGraph 各节点可直接读写 `GraphState` 中的对应字段
+- Python ↔ 前端通过 snake_case ↔ camelCase 转换保持字段一一对应
 
 ## 2026-04-10
 
