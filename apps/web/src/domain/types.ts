@@ -13,6 +13,14 @@ export interface SourceAsset {
   readonly topic: string;
 }
 
+export interface ProjectContext {
+  readonly name: string;
+  readonly goal: string;
+  readonly currentThread: string;
+  readonly successSignal: string;
+  readonly orchestrationWhy: string;
+}
+
 export interface LearningUnit {
   readonly id: string;
   readonly title: string;
@@ -20,6 +28,13 @@ export interface LearningUnit {
   readonly weaknessTags: ReadonlyArray<string>;
   readonly candidateModes: ReadonlyArray<LearningMode>;
   readonly difficulty: 1 | 2 | 3 | 4 | 5;
+}
+
+export interface DiagnosisSignal {
+  readonly id: string;
+  readonly label: string;
+  readonly observation: string;
+  readonly implication: string;
 }
 
 export interface LearnerState {
@@ -39,6 +54,15 @@ export interface LearnerState {
     | "apply";
 }
 
+export interface LearnerProfile {
+  readonly id: string;
+  readonly name: string;
+  readonly role: string;
+  readonly stateSource: string;
+  readonly diagnosisSignals: ReadonlyArray<DiagnosisSignal>;
+  readonly state: LearnerState;
+}
+
 export interface StudyPlanStep {
   readonly id: string;
   readonly title: string;
@@ -47,9 +71,22 @@ export interface StudyPlanStep {
   readonly outcome: string;
 }
 
+export interface StudyPlanDecision {
+  readonly title: string;
+  readonly reason: string;
+  readonly objective: string;
+}
+
+export interface WritebackPreview {
+  readonly id: string;
+  readonly target: string;
+  readonly change: string;
+}
+
 export interface StudyPlan {
   readonly headline: string;
   readonly summary: string;
+  readonly decision: StudyPlanDecision;
   readonly steps: ReadonlyArray<StudyPlanStep>;
+  readonly writeback: ReadonlyArray<WritebackPreview>;
 }
-
