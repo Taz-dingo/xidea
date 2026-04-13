@@ -4,6 +4,63 @@
 
 ### 决策
 
+项目级前端 skill 需要把 UI 浏览器验证也纳入默认工作流：
+前端任务默认不能只以 `build` 通过或 JSX 目测为完成，应该补做真实浏览器验证，并检查页面结构、关键交互和 console 状态。
+
+### 原因
+
+- 这次已经出现“构建通过，但页面运行时仍有 React 无限更新错误”的情况，证明静态检查不足以覆盖真实 UI 风险
+- 对当前 Xidea workspace 来说，页面结构正确性本身就是产品质量的一部分，必须通过真实页面来验
+- Playwright 会话占用和 stale browser 也是重复性问题，值得写进默认流程而不是每次临时排查
+
+### 影响
+
+- `frontend-design` 和 `react-xidea` 都应要求浏览器级 UI 验证
+- 前端交付默认补做：页面快照、console 检查、至少一个关键交互验证
+- 如果 Playwright 会话卡住，先清理 stale sessions 再继续验证
+
+## 2026-04-13
+
+### 决策
+
+项目级前端 skill 必须同时约束“设计语言”和“实现栈落地”：
+当仓库或用户已明确指定 `shadcn/ui`、Vercel AI SDK、CSS token 方案等前端技术栈时，agent 默认应直接采用，而不是继续用手写 primitive 或自建 chat plumbing 绕开。
+
+### 原因
+
+- 之前虽然已经口头确认了技术栈，但 skill 对“必须实际应用”约束不够强，导致实现阶段仍可能漂回手写方案
+- 对 Xidea 这类比赛版 demo，设计规范、组件规范和样式方案是同一套前端规则，不能只在视觉层面约束，不在实现层面约束
+- 把这条写成项目记忆后，后续前端协作和 agent 执行会更一致
+
+### 影响
+
+- `frontend-design` 不再只是审美和布局指导，也会约束组件体系、CSS 方案和 AI-native surface 的默认实现方式
+- `react-xidea` 在写页面和组件时需要显式尊重项目已选的基础设施，而不是只关注 React 语法和状态组织
+- 以后如果用户指定前端栈，交付结果必须能在 diff 中看到真实接入，而不是只停留在依赖安装或计划描述
+
+## 2026-04-13
+
+### 决策
+
+当前比赛版 web 前端采用 `shadcn/ui + Vercel AI SDK` 作为默认交互壳：
+`shadcn/ui` 负责 workspace 基础控件与视觉一致性，Vercel AI SDK 负责 thread 区消息流和 transport 抽象；Python + LangGraph 继续作为核心编排层。
+
+### 原因
+
+- 当前 workspace 已经收敛到 thread / inspector 结构，继续手写所有基础控件会增加重复 UI 成本，不利于后续快速迭代
+- 中间 thread 区已经开始像真实对话界面，继续直接维护本地消息拼接会让 streaming、消息状态和后续 AI-native UI 扩展越来越别扭
+- 用 AI SDK 承接 chat surface，可以保持 web 交互层的演进空间，同时不改变现有 Python agent runtime 的主导地位
+
+### 影响
+
+- `apps/web` 后续优先复用 `src/components/ui/*` 中的 shadcn 组件，而不是继续新增手写基础 primitive
+- chat / thread 相关交互默认优先走 AI SDK 的 `useChat` 和 transport 适配层
+- `/runs/v0` 现阶段继续通过自定义 transport 映射到 UI message stream，不要求后端立即重写成 AI SDK 原生协议
+
+## 2026-04-13
+
+### 决策
+
 当前比赛版 web workspace 采用“克制的 codex-style 三栏布局”作为默认前端规则：
 左侧只承接 `project -> sessions` 导航，中间只承接当前 thread 与当前动作，右侧只承接学习画像、复习系统和项目特有 inspector。
 
