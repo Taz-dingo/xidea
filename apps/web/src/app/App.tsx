@@ -718,7 +718,7 @@ export function App(): ReactElement {
             </CardHeader>
 
             <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
-              <div className="px-5 pt-5 md:px-6">
+              <div className="px-5 pt-5 lg:px-6">
                 <div className="flex flex-wrap gap-2">
                   {entryModes.map((entry) => {
                     const Icon = entry.icon;
@@ -754,7 +754,7 @@ export function App(): ReactElement {
 
               <Separator className="bg-[var(--xidea-border)]" />
 
-              <div className="min-h-0 flex-1 px-5 md:px-6">
+              <div className="min-h-0 flex-1 px-5 lg:px-6">
                 <ScrollArea className="h-full pr-3">
                   <div className="space-y-3 pb-4">
                     {selectedEntryMode === "material-import" ? (
@@ -773,7 +773,7 @@ export function App(): ReactElement {
                           </div>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                          <div className="grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-3 lg:grid-cols-2">
                             {sourceAssets.map((asset) => {
                               const selected = selectedSourceAssetIds.includes(asset.id);
 
@@ -1007,7 +1007,7 @@ export function App(): ReactElement {
                 </ScrollArea>
               </div>
 
-              <div className="shrink-0 border-t border-[var(--xidea-border)] px-5 py-4 md:px-6">
+              <div className="shrink-0 border-t border-[var(--xidea-border)] px-5 py-4 lg:px-6">
                 <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                   <CardContent className="p-4">
                     <div className="relative">
@@ -1105,7 +1105,7 @@ export function App(): ReactElement {
                 </InspectorCard>
 
                 <InspectorCard description="当前复习节点和弱信号。" title="复习系统">
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                  <div className="grid gap-3">
                     <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
                       <CardContent className="p-4">
                         <p className="text-sm text-[var(--xidea-stone)]">最近复盘</p>
