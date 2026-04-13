@@ -318,6 +318,8 @@ export function buildDefaultAgentPrompt(
 }
 
 export function buildAgentRequest(input: {
+  readonly projectId: string;
+  readonly sessionId: string;
   readonly entryMode: AgentEntryMode;
   readonly prompt: string;
   readonly profile: LearnerProfile;
@@ -334,8 +336,8 @@ export function buildAgentRequest(input: {
       : input.sourceAssets.slice(0, 2).map((asset) => asset.id);
 
   return {
-    project_id: "xidea-rag-demo",
-    thread_id: `${input.profile.id}-${input.unit.id}`,
+    project_id: input.projectId,
+    thread_id: input.sessionId,
     entry_mode: input.entryMode,
     topic: input.unit.title,
     messages: [{ role: "user", content: fallbackPrompt }],

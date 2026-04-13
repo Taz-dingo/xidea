@@ -335,6 +335,8 @@ export function App(): ReactElement {
   const transport = useMemo(
     () =>
       createAgentChatTransport({
+        projectId: selectedProject.id,
+        sessionId: selectedSession?.id ?? selectedProject.id,
         entryMode: selectedEntryMode,
         profile: selectedProfile,
         project: projectContext,
@@ -362,7 +364,7 @@ export function App(): ReactElement {
           );
         },
       }),
-    [selectedEntryMode, selectedProfile, selectedSession, selectedUnit],
+    [selectedEntryMode, selectedProfile, selectedProject.id, selectedSession, selectedUnit],
   );
 
   const { clearError, messages, sendMessage, status, error } = useChat({

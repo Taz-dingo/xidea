@@ -32,6 +32,8 @@ function buildAssistantStream(chunks: UIMessageChunk[]): ReadableStream<UIMessag
 }
 
 export function createAgentChatTransport(input: {
+  readonly projectId: string;
+  readonly sessionId: string;
   readonly entryMode: AgentEntryMode;
   readonly profile: LearnerProfile;
   readonly project: ProjectContext;
@@ -44,6 +46,8 @@ export function createAgentChatTransport(input: {
       const prompt = getLatestUserText(messages);
       const result = await runAgentV0(
         buildAgentRequest({
+          projectId: input.projectId,
+          sessionId: input.sessionId,
           entryMode: input.entryMode,
           profile: input.profile,
           project: input.project,
