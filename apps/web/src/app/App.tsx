@@ -104,6 +104,23 @@ function getMetricDotClass(tone: "emerald" | "amber" | "rose" | "sky"): string {
   }
 }
 
+function getAssetKindLabel(kind: (typeof sourceAssets)[number]["kind"]): string {
+  switch (kind) {
+    case "audio":
+      return "音频";
+    case "image":
+      return "图片";
+    case "note":
+      return "笔记";
+    case "pdf":
+      return "PDF";
+    case "video":
+      return "视频";
+    case "web":
+      return "网页";
+  }
+}
+
 function getMessageText(message: UIMessage): string {
   const text = message.parts
     .map((part) => (part.type === "text" ? part.text : ""))
@@ -312,6 +329,9 @@ export function App(): ReactElement {
   const [selectedProjectId, setSelectedProjectId] = useState(initialSessions[0]?.projectId ?? initialProject.id);
   const [selectedSessionId, setSelectedSessionId] = useState(initialSessions[0]?.id ?? "");
   const [selectedEntryMode, setSelectedEntryMode] = useState<AgentEntryMode>("chat-question");
+  const [selectedSourceAssetIds, setSelectedSourceAssetIds] = useState<ReadonlyArray<string>>(
+    () => sourceAssets.map((asset) => asset.id),
+  );
   const [draftPrompt, setDraftPrompt] = useState(() =>
     buildDefaultAgentPrompt(initialProfile, initialUnit, projectContext),
   );
@@ -331,6 +351,10 @@ export function App(): ReactElement {
   const mockRuntime = buildMockRuntimeSnapshot(selectedProfile, selectedUnit);
   const activeRuntime =
     selectedSession === undefined ? mockRuntime : sessionSnapshots[selectedSession.id] ?? mockRuntime;
+  const activeSourceAssets = useMemo(
+    () => sourceAssets.filter((asset) => selectedSourceAssetIds.includes(asset.id)),
+    [selectedSourceAssetIds],
+  );
 
   const transport = useMemo(
     () =>
@@ -340,7 +364,7 @@ export function App(): ReactElement {
         entryMode: selectedEntryMode,
         profile: selectedProfile,
         project: projectContext,
-        sourceAssets,
+        sourceAssets: activeSourceAssets,
         unit: selectedUnit,
         fallbackSnapshot: activeRuntime,
         onSnapshot: (snapshot) => {
@@ -367,6 +391,7 @@ export function App(): ReactElement {
       }),
     [
       activeRuntime,
+      activeSourceAssets,
       selectedEntryMode,
       selectedProfile,
       selectedProject.id,
@@ -648,6 +673,12 @@ export function App(): ReactElement {
                         key={entry.id}
                         onClick={() => {
                           setSelectedEntryMode(entry.id);
+                          if (
+                            entry.id === "material-import" &&
+                            selectedSourceAssetIds.length === 0
+                          ) {
+                            setSelectedSourceAssetIds(sourceAssets.map((asset) => asset.id));
+                          }
                         }}
                         type="button"
                         variant="outline"
@@ -665,6 +696,73 @@ export function App(): ReactElement {
               <div className="min-h-0 flex-1 px-5 md:px-6">
                 <ScrollArea className="h-full pr-3">
                   <div className="space-y-3 pb-4">
+                    {selectedEntryMode === "material-import" ? (
+                      <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
+                              <FileInput className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">材料进入</CardTitle>
+                              <CardDescription className="text-sm text-[var(--xidea-stone)]">
+                                先告诉系统这轮要读哪几份材料，再决定如何编排学习动作。
+                              </CardDescription>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="grid gap-3 md:grid-cols-2">
+                            {sourceAssets.map((asset) => {
+                              const selected = selectedSourceAssetIds.includes(asset.id);
+
+                              return (
+                                <button
+                                  className={
+                                    selected
+                                      ? "rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-4 py-4 text-left transition-colors"
+                                      : "rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-4 py-4 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f2ee]"
+                                  }
+                                  key={asset.id}
+                                  onClick={() => {
+                                    setSelectedSourceAssetIds((current) =>
+                                      current.includes(asset.id)
+                                        ? current.filter((id) => id !== asset.id)
+                                        : [...current, asset.id],
+                                    );
+                                  }}
+                                  type="button"
+                                >
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                                      {asset.title}
+                                    </p>
+                                    <Badge
+                                      className="border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-stone)] shadow-none"
+                                      variant="outline"
+                                    >
+                                      {getAssetKindLabel(asset.kind)}
+                                    </Badge>
+                                  </div>
+                                  <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
+                                    {asset.topic}
+                                  </p>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4 text-sm leading-7 text-[var(--xidea-charcoal)]">
+                            {activeSourceAssets.length > 0
+                              ? `这轮会把 ${activeSourceAssets.length} 份材料带入 agent：${activeSourceAssets
+                                  .map((asset) => asset.title)
+                                  .join(" / ")}`
+                              : "先选择至少一份材料，再让系统基于材料决定下一步训练动作。"}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ) : null}
+
                     {selectedSession === undefined ? (
                       <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                         <CardHeader className="pb-3">
@@ -859,7 +957,11 @@ export function App(): ReactElement {
                         }
                         setDraftPrompt(event.target.value);
                       }}
-                      placeholder="输入这一轮你想推进的问题或材料。"
+                      placeholder={
+                        selectedEntryMode === "material-import"
+                          ? "补一句你希望系统围绕这些材料先判断什么、澄清什么，或生成什么训练动作。"
+                          : "输入这一轮你想推进的问题或材料。"
+                      }
                       value={draftPrompt}
                     />
 
@@ -879,6 +981,8 @@ export function App(): ReactElement {
                         className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
                         disabled={
                           selectedSession === undefined ||
+                          (selectedEntryMode === "material-import" &&
+                            activeSourceAssets.length === 0) ||
                           status === "submitted" ||
                           status === "streaming" ||
                           agentBaseUrl === null
@@ -1003,7 +1107,13 @@ export function App(): ReactElement {
                         <p className="text-sm font-medium text-[var(--xidea-near-black)]">当前材料</p>
                       </div>
                       <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                        {sourceAssets.length} 份材料已接入当前项目线程，默认不展开详情。
+                        {selectedEntryMode === "material-import"
+                          ? activeSourceAssets.length > 0
+                            ? `当前已选中 ${activeSourceAssets.length} 份材料：${activeSourceAssets
+                                .map((asset) => asset.title)
+                                .join(" / ")}`
+                            : "当前还没有选中材料。"
+                          : `${sourceAssets.length} 份材料已接入当前项目线程，默认按相关性带入。`}
                       </p>
                     </CardContent>
                   </Card>
