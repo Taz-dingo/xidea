@@ -1,5 +1,62 @@
 # Decision Log
 
+## 2026-04-13 — Review Engine v0 独立化
+
+### 决策
+
+将 Review Engine 从 `runtime.py` 的内联逻辑拆为独立模块 `review_engine.py`，实现架构文档要求的 6 条启发式规则、`ReviewState` 完整状态和基于成功/失败的间隔调度。
+
+### 原因
+
+- 架构文档明确要求 Review Engine 作为独立能力层存在，而不是散落在编排主链路里
+- 原有 review 判断只有 `memory_strength <= 38` 一条规则，缺少理解前置检查、混淆阻断和逾期提权
+- 缺少 `review_count / lapse_count`，无法体现"系统记住了你的复习历史"
+
+### 影响
+
+- 新增 `review_engine.py`：ReviewState / ReviewDecision / ReviewOutcome / 6 条规则 / 间隔调度
+- `state.py`：ReviewPatch 增加 `review_count / lapse_count`
+- `repository.py`：review_state 表增加两列
+- `runtime.py`：diagnose_state() 和 build_state_patch() 改为调用 review engine
+- 新增 13 个测试覆盖所有规则和边界场景
+
+## 2026-04-13 — 丰富 maybe_tool 上下文来源
+
+### 决策
+
+将 `maybe_tool` 的 4 个 tool intent 从 stub payload 升级为结构化上下文输出：`asset-summary` 增加 `contentExcerpt / keyConcepts / relevanceHint`，`unit-detail` 增加 `prerequisites / commonMisconceptions / coreQuestions / relatedUnits`，`thread-memory` 增加 `learningProgress / lastDiagnosis`，`review-context` 增加 `performanceTrend / decayRisk / lastReviewOutcome`。
+
+### 原因
+
+- 原有 tool payload 太薄，无法为 demo 展示「系统真的在补充上下文再做判断」的效果
+- 丰富后的字段直接服务于 compose_response 和 writeback 的判断质量
+- 所有新增数据仍使用 seed + SQLite，不引入外部依赖
+
+### 影响
+
+- `tools.py` 新增 `_ASSET_ENRICHMENT` 和 `_UNIT_ENRICHMENT` 两套结构化 seed 数据
+- `describe_tool_registry()` 已更新，反映新的返回字段
+- 新增 12 个测试覆盖所有 tool intent 的增强 payload
+- `docs/agent-state-design.md` 的 Tools 部分已重写
+
+## 2026-04-13
+
+### 决策
+
+当前 v0 实现默认按三条主线并行推进：学习引擎 owner 负责 `apps/agent` 与 agent contract，前端 owner 负责 `apps/web` 与 demo 展示，产品 / demo 叙事 owner 负责比赛故事线、范围取舍与答辩表述；每次新任务开始前，必须先判断所属分工和主 owner，再继续实现。
+
+### 原因
+
+- 当前项目已经进入并行开发阶段，如果不先判断任务归属，几条主线很容易同时改 contract、页面结构或 demo 讲法
+- `learn-engine` 已经收敛为 agent v0 的实现主线，`apps/web` 也需要单独稳定 demo 接入路径，同时比赛叙事本身也需要独立 owner 持续收敛
+- 把“先路由再开工”写成显式规则，能减少多人协作时的重复实现和边界漂移
+
+### 影响
+
+- 新任务默认先判断是学习引擎主线、前端主线、产品 / demo 叙事主线，还是跨 owner 协作
+- 涉及跨 owner 的改动，PR 需要说明主 owner、配合 owner 和边界
+- onboarding 和协作文档都要把这一步作为默认开工检查
+
 ## 2026-04-13
 
 ### 决策

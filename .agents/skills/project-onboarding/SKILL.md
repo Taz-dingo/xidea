@@ -43,6 +43,8 @@ After reading, the agent should be able to state:
 - the next highest-priority tasks
 - which docs are stable memory vs current execution docs
 - which owner likely owns the current task
+- which workstream the current task belongs to
+- which files are in-bounds and out-of-bounds for this task
 
 ## Doc Roles
 
@@ -59,7 +61,18 @@ Treat `docs/memory/` as durable memory that survives across sessions.
 - Default to simplifying scope, not expanding it
 - Keep `main` buildable and demoable
 - Use short-lived branches
+- Before implementation, first route the task to a primary owner / workstream
 - If a task changes team-wide understanding, update the relevant memory doc
+
+## Start-Of-Task Gate
+
+Before proposing edits or writing code, answer these questions:
+
+1. Is the task primarily owned by the learning-engine workstream, the frontend workstream, the product-demo workstream, or shared across them
+2. Which directories are the main edit surface for this task
+3. Which adjacent areas should stay untouched unless the task explicitly requires cross-owner coordination
+
+If the answers are still fuzzy, stop broad implementation and clarify the workstream first through docs, a task note, or PR framing.
 
 ## When To Update Docs
 
@@ -83,6 +96,12 @@ Treat `docs/memory/` as durable memory that survives across sessions.
 
 ## Task Routing
 
+Current default split:
+
+- learning-engine workstream: `apps/agent/src/xidea_agent`, agent contract, runtime, repository, guardrails, API, backend tests
+- frontend workstream: `apps/web/src/app`, `apps/web/src/components`, evidence-chain UI, demo orchestration, agent API consumption
+- product-demo workstream: `docs/spec.md`, `docs/status.md`, `docs/plan.md`, `docs/product-brief.md`, demo script, story framing, copy and judging narrative
+
 For UI simplification or presentation work:
 
 - also use `frontend-design`
@@ -91,7 +110,7 @@ For UI simplification or presentation work:
 For learning logic, planner, or domain modeling:
 
 - use `typescript-xidea`
-- inspect `src/domain`
+- inspect `apps/agent/src/xidea_agent` or `apps/web/src/domain` based on the chosen workstream
 
 For project setup, collaboration, or context handoff:
 
