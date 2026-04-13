@@ -949,36 +949,25 @@ export function App(): ReactElement {
               <div className="shrink-0 border-t border-[var(--xidea-border)] px-5 py-4 md:px-6">
                 <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                   <CardContent className="p-4">
-                    <Textarea
-                      className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
-                      onChange={(event) => {
-                        if (error !== undefined) {
-                          clearError();
+                    <div className="relative">
+                      <Textarea
+                        className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] pr-28 pb-12 text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
+                        onChange={(event) => {
+                          if (error !== undefined) {
+                            clearError();
+                          }
+                          setDraftPrompt(event.target.value);
+                        }}
+                        placeholder={
+                          selectedEntryMode === "material-import"
+                            ? "补一句你希望系统围绕这些材料先判断什么、澄清什么，或生成什么训练动作。"
+                            : "输入这一轮你想推进的问题或材料。"
                         }
-                        setDraftPrompt(event.target.value);
-                      }}
-                      placeholder={
-                        selectedEntryMode === "material-import"
-                          ? "补一句你希望系统围绕这些材料先判断什么、澄清什么，或生成什么训练动作。"
-                          : "输入这一轮你想推进的问题或材料。"
-                      }
-                      value={draftPrompt}
-                    />
+                        value={draftPrompt}
+                      />
 
-                    {errorMessage ? (
-                      <Card className="mt-4 rounded-[1rem] border-[#ebd5cc] bg-[#f9efea] shadow-none">
-                        <CardContent className="px-4 py-3 text-sm leading-6 text-[var(--xidea-selection-text)]">
-                          {errorMessage}
-                        </CardContent>
-                      </Card>
-                    ) : null}
-
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                      <div className="text-sm text-[var(--xidea-stone)]">
-                        {errorMessage ?? projectContext.currentThread}
-                      </div>
                       <Button
-                        className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                        className="absolute right-3 bottom-3 rounded-full bg-[var(--xidea-terracotta)] px-4 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
                         disabled={
                           selectedSession === undefined ||
                           (selectedEntryMode === "material-import" &&
@@ -990,9 +979,17 @@ export function App(): ReactElement {
                         onClick={handleSubmitPrompt}
                         type="button"
                       >
-                        {status === "submitted" || status === "streaming" ? "运行中..." : "运行 agent"}
+                        {status === "submitted" || status === "streaming" ? "运行中..." : "发送"}
                       </Button>
                     </div>
+
+                    {errorMessage ? (
+                      <Card className="mt-4 rounded-[1rem] border-[#ebd5cc] bg-[#f9efea] shadow-none">
+                        <CardContent className="px-4 py-3 text-sm leading-6 text-[var(--xidea-selection-text)]">
+                          {errorMessage}
+                        </CardContent>
+                      </Card>
+                    ) : null}
                   </CardContent>
                 </Card>
               </div>
