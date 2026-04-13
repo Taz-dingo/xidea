@@ -8,7 +8,7 @@ import type {
   WritebackPreview,
 } from "./types";
 
-const MODE_LABELS: Record<LearningMode, string> = {
+export const MODE_LABELS: Record<LearningMode, string> = {
   socratic: "苏格拉底追问",
   "guided-qa": "1v1 导师问答",
   "contrast-drill": "对比辨析训练",

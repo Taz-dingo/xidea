@@ -26,6 +26,7 @@
 - 将 web demo 数据统一收敛到 RAG 主案例，不再并列展示跨学科样例
 - 将主案例映射成更可信的状态来源、诊断信号和回写预览
 - 将编排证据链做成默认可见输出，并把 planner explanation 结构化为主决策与写回预览
+- 完成 web 前端 v0 首页重构，强化“项目线程 -> 诊断 -> 动作选择 -> 学习路径 -> 回写”的默认叙事结构
 - 初版架构讨论已收敛到可开工状态，并明确 SQLite 状态层与启发式 `Review Engine v0`
 - 完善 `state.py` 数据模型：双轨 LearnerState + 6 个领域模型 + 2 个枚举
 - 定义 agent tool schema：4 个最小必要工具 + mock 实现 + TOOL_REGISTRY

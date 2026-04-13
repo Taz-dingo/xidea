@@ -1,7 +1,8 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
 }
 
 html {
@@ -10,9 +11,55 @@ html {
 
 body {
   margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(255, 216, 163, 0.68), transparent 34%),
+    radial-gradient(circle at 85% 10%, rgba(151, 226, 255, 0.58), transparent 30%),
+    linear-gradient(180deg, #f7f3ed 0%, #eef3f7 52%, #f6f2e8 100%);
+  color: #0f172a;
+}
+
+#root {
+  min-height: 100vh;
 }
 
 button {
   font: inherit;
 }
 
+::selection {
+  background: rgba(15, 23, 42, 0.12);
+}
+
+.xidea-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.xidea-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.58), transparent 26%),
+    radial-gradient(circle at 84% 28%, rgba(255, 255, 255, 0.42), transparent 22%);
+  pointer-events: none;
+  z-index: -2;
+}
+
+.glass-panel {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.58));
+  box-shadow:
+    0 20px 60px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(18px);
+}
+
+.grid-fade {
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.05) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.32), transparent 85%);
+}
