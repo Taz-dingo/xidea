@@ -57,8 +57,25 @@
 - `main` 必须保持可构建、可演示
 - 所有工作默认走短分支和 PR
 - 一个 PR 只解决一个问题
+- 每次新开工先判断当前任务属于哪个分工，再继续实现
 - 涉及代码改动的任务默认补测试；如果当前阶段不补测试，必须明确说明原因、风险和后续补齐点
 - 会影响团队共识的内容，先更新 `docs/memory/decision-log.md`
+
+## Current Workstream Split
+
+当前 v0 默认按三条主线并行推进：
+
+- 学习引擎 owner：负责 `apps/agent/src/xidea_agent`、agent contract、LangGraph runtime、repository、API 和后端测试
+- 前端 owner：负责 `apps/web` 的页面、交互、证据链展示和对 `/runs/v0` 的接入
+- 产品 / demo 叙事 owner：负责比赛故事线、讲述顺序、范围取舍、文案和答辩材料
+
+开工前先回答这 3 个问题：
+
+1. 当前任务主要属于学习引擎、前端，还是产品 / demo 叙事分工
+2. 这次改动的主目录和主 owner 是什么
+3. 如果需要跨两个以上分工，边界和原因是什么
+
+如果这 3 个问题还回答不清楚，先补文档或在 PR 里说明，再继续编码。
 
 ## Agent Memory Rules
 

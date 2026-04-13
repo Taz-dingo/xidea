@@ -37,6 +37,7 @@
 - LangGraph 编排图已切到 `load_context -> diagnose -> decide_action -> maybe_tool -> compose_response -> writeback`
 - `load_context` 已可读取 SQLite 中的 recent messages 与 prior learner state 作为本轮基线
 - 为 runtime、graph、API、repository roundtrip 补上 10 个测试，当前全部通过
+- 明确当前 v0 默认按学习引擎 / 前端 / 产品叙事三条主线并行推进，并要求每次新开工先完成 workstream routing
 
 ### In Progress
 
