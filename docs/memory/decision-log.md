@@ -4,6 +4,24 @@
 
 ### 决策
 
+`learn-engine` 分支作为当前第一版 agent 实现主线，统一收敛到 `AgentRequest / diagnosis / plan / state-patch / StreamEvent` 这套 v0 contract，并在其上继续扩展 LangGraph、SQLite 状态层和 web 联调。
+
+### 原因
+
+- 当前团队已经围绕 `diagnosis / plan / state-patch` 形成前后端联调共识，不能再让实现分支继续漂向另一套更薄的 schema
+- `learn-engine` 已经落下了 `graph / tools / guardrails` 的结构骨架，是最合适继续承接实现的分支
+- 把实现主线明确下来，能避免后续多人并行时重复做 schema 收敛和接口回滚
+
+### 影响
+
+- `apps/agent` 后续默认以 `learn-engine` 为当前实现基线推进
+- 第一版 API、事件流和状态持久化都围绕这套 v0 contract 继续扩展
+- 新增 agent 逻辑时，优先保证与 `diagnosis / plan / state-patch / done` 的联调稳定性，而不是再引入新的返回结构
+
+## 2026-04-13
+
+### 决策
+
 第一版采用“真实持久化状态 + 轻量数据库”的策略，优先把 `projects / threads / thread_messages / learner_unit_state / review_state` 跑成真实读写闭环。
 
 ### 原因
