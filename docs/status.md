@@ -27,6 +27,10 @@
 - 将主案例映射成更可信的状态来源、诊断信号和回写预览
 - 将编排证据链做成默认可见输出，并把 planner explanation 结构化为主决策与写回预览
 - 完成 web 前端 v0 首页重构，强化“项目线程 -> 诊断 -> 动作选择 -> 学习路径 -> 回写”的默认叙事结构
+- 首页信息架构已进一步改成更克制的 codex-style workspace：左侧 `project / session` 侧栏，中间保留当前 thread 必要内容，右侧放学习画像、复习系统和项目特有 inspector
+- 当前 workspace 的视觉规则已收敛为“轻选中态 + 中性色主导 + 侧栏单行排版”，不再使用大面积黑色 active 和多彩状态块
+- `apps/web` 已接入真实 `/runs/v0` 结果，可用本地代理和运行面板把 mock 证据链切到 agent 返回的 `diagnosis / plan / state-patch`
+- 为本地前后端联调补上 Vite `/agent-api` 代理与 agent CORS 默认配置
 - 初版架构讨论已收敛到可开工状态，并明确 SQLite 状态层与启发式 `Review Engine v0`
 - 完善 `state.py` 数据模型：双轨 LearnerState + 6 个领域模型 + 2 个枚举
 - 定义 agent tool schema：4 个最小必要工具 + mock 实现 + TOOL_REGISTRY

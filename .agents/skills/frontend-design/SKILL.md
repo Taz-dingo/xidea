@@ -77,6 +77,30 @@ Use visual cues for:
 
 Even with mock data, the UI should imply the system can switch media and teaching mode.
 
+### 5. Practice restraint
+
+Do not show a block just because the information exists.
+
+Prefer:
+
+- one clear working surface over stacked explanatory sections
+- compact inspector panels over repeated storytelling copy
+- hiding secondary detail unless it changes the current decision
+
+Avoid:
+
+- giant hero headlines that only explain the product to itself
+- repeating the same idea in header, section intro, and card body
+- expanding source material, rationale, and metadata by default
+
+For workspace-like product UI, prefer a Codex-style information layout:
+
+- left sidebar owns project and session navigation
+- center panel owns only the current thread and current action
+- right sidebar owns inspector information such as learner profile, review state, and project-specific metadata
+- sidebar titles and list rows should stay single-line by default; truncate rather than growing vertically
+- use mostly neutral surfaces and reserve accent color for a few important actions or signals
+
 ## Visual Direction For This Repo
 
 - Warm, intelligent, optimistic
@@ -107,4 +131,3 @@ Before shipping a UI change, check:
 - Keep design tokens centralized in CSS variables when the design system grows
 - Reuse visual primitives only after the product language is stable
 - Prefer a small number of memorable patterns over many mediocre ones
-

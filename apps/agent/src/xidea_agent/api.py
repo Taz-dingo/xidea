@@ -1,6 +1,7 @@
 import os
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import TypeAdapter
 
 from xidea_agent.graph import describe_graph
@@ -21,6 +22,13 @@ from xidea_agent.state import (
 def create_app(repository: SQLiteRepository | None = None) -> FastAPI:
     repository = repository or _build_default_repository()
     app = FastAPI(title="Xidea Agent")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_load_allowed_origins(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -83,6 +91,17 @@ def _build_default_repository() -> SQLiteRepository | None:
     repository = SQLiteRepository(db_path)
     repository.initialize()
     return repository
+
+
+def _load_allowed_origins() -> list[str]:
+    configured = os.getenv("XIDEA_AGENT_ALLOW_ORIGINS")
+    if configured:
+        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+
+    return [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+    ]
 
 
 def _require_repository(repository: SQLiteRepository | None) -> SQLiteRepository:

@@ -4,6 +4,25 @@
 
 ### 决策
 
+当前比赛版 web workspace 采用“克制的 codex-style 三栏布局”作为默认前端规则：
+左侧只承接 `project -> sessions` 导航，中间只承接当前 thread 与当前动作，右侧只承接学习画像、复习系统和项目特有 inspector。
+
+### 原因
+
+- 之前的首页虽然能讲故事，但信息密度过高，容易退化成“超长卡片”和自我解释页面
+- 当前比赛答辩更需要像一个可操作工具，而不是一张会说话的海报
+- 把导航、主工作区、inspector 拆开后，评委更容易在短时间内理解系统正在处理什么、为什么这样处理
+
+### 影响
+
+- 后续 web 界面默认优先采用 workspace / inspector 结构，而不是大段 hero、分屏说明或堆叠卡片
+- 侧边栏文字默认保持单行截断，避免列表高度失控
+- 颜色系统默认以中性色为主，只保留少量品牌强调色和必要状态信号
+
+## 2026-04-13
+
+### 决策
+
 `learn-engine` 分支作为当前第一版 agent 实现主线，统一收敛到 `AgentRequest / diagnosis / plan / state-patch / StreamEvent` 这套 v0 contract，并在其上继续扩展 LangGraph、SQLite 状态层和 web 联调。
 
 ### 原因
