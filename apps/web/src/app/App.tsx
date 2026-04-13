@@ -342,6 +342,7 @@ export function App(): ReactElement {
         project: projectContext,
         sourceAssets,
         unit: selectedUnit,
+        fallbackSnapshot: activeRuntime,
         onSnapshot: (snapshot) => {
           if (selectedSession === undefined) {
             return;
@@ -364,7 +365,14 @@ export function App(): ReactElement {
           );
         },
       }),
-    [selectedEntryMode, selectedProfile, selectedProject.id, selectedSession, selectedUnit],
+    [
+      activeRuntime,
+      selectedEntryMode,
+      selectedProfile,
+      selectedProject.id,
+      selectedSession,
+      selectedUnit,
+    ],
   );
 
   const { clearError, messages, sendMessage, status, error } = useChat({

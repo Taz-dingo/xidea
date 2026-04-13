@@ -56,7 +56,7 @@ interface AgentSignal {
   readonly based_on: ReadonlyArray<string>;
 }
 
-interface AgentDiagnosis {
+export interface AgentDiagnosis {
   readonly recommended_action: AgentAction;
   readonly reason: string;
   readonly confidence: number;
@@ -74,7 +74,7 @@ interface AgentPlanStep {
   readonly outcome: string;
 }
 
-interface AgentPlan {
+export interface AgentPlan {
   readonly headline: string;
   readonly summary: string;
   readonly selected_mode: LearningMode;
@@ -82,7 +82,7 @@ interface AgentPlan {
   readonly steps: ReadonlyArray<AgentPlanStep>;
 }
 
-interface AgentLearnerUnitState {
+export interface AgentLearnerUnitState {
   readonly unit_id: string;
   readonly mastery: number;
   readonly understanding_level: number;
@@ -119,13 +119,13 @@ interface AgentReviewPatch {
   readonly review_reason: string | null;
 }
 
-interface AgentStatePatch {
+export interface AgentStatePatch {
   readonly learner_state_patch: AgentLearnerStatePatch | null;
   readonly last_action: AgentLastAction | null;
   readonly review_patch: AgentReviewPatch | null;
 }
 
-type AgentStreamEvent =
+export type AgentStreamEvent =
   | { readonly event: "text-delta"; readonly delta: string }
   | { readonly event: "diagnosis"; readonly diagnosis: AgentDiagnosis }
   | { readonly event: "plan"; readonly plan: AgentPlan }
@@ -309,6 +309,23 @@ function buildAssistantMessageFromEvents(result: AgentRunResult): string {
   return deltaText || result.graph_state.assistant_message || "Agent 已返回结构化结果。";
 }
 
+function buildAssistantMessageFromStreamEvents(events: ReadonlyArray<AgentStreamEvent>): string {
+  const doneEvent = events.find((event) => event.event === "done");
+  if (doneEvent?.final_message) {
+    return doneEvent.final_message;
+  }
+
+  return (
+    events
+      .filter(
+        (event): event is Extract<AgentStreamEvent, { event: "text-delta" }> =>
+          event.event === "text-delta",
+      )
+      .map((event) => event.delta)
+      .join("") || "Agent 已返回结构化结果。"
+  );
+}
+
 export function buildDefaultAgentPrompt(
   profile: LearnerProfile,
   unit: LearningUnit,
@@ -438,5 +455,76 @@ export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot
     writeback: buildWritebackFromAgent(result.graph_state.state_patch),
     assistantMessage: buildAssistantMessageFromEvents(result),
     rationale: result.graph_state.rationale,
+  };
+}
+
+export function normalizeAgentStreamResult(input: {
+  readonly events: ReadonlyArray<AgentStreamEvent>;
+  readonly learnerState: AgentLearnerUnitState | null;
+  readonly fallbackSnapshot: RuntimeSnapshot;
+}): RuntimeSnapshot {
+  const diagnosisEvent = input.events.find(
+    (event): event is Extract<AgentStreamEvent, { event: "diagnosis" }> =>
+      event.event === "diagnosis",
+  );
+  const planEvent = input.events.find(
+    (event): event is Extract<AgentStreamEvent, { event: "plan" }> => event.event === "plan",
+  );
+  const statePatchEvent = input.events.find(
+    (event): event is Extract<AgentStreamEvent, { event: "state-patch" }> =>
+      event.event === "state-patch",
+  );
+
+  const diagnosis = diagnosisEvent?.diagnosis;
+  const plan = planEvent?.plan;
+  const learnerState = input.learnerState;
+
+  if (diagnosis === undefined || plan === undefined || learnerState === null) {
+    return input.fallbackSnapshot;
+  }
+
+  const learnerPatch = statePatchEvent?.state_patch.learner_state_patch;
+  const primaryReason = diagnosis.explanation?.summary ?? diagnosis.reason;
+  const stateSourceParts = [
+    "来源：真实 `/runs/v0/stream` agent 结果。",
+    PRIMARY_ISSUE_COPY[diagnosis.primary_issue],
+    learnerState.based_on.length > 0 ? `判断依据：${learnerState.based_on.join(" / ")}` : null,
+  ].filter((item): item is string => item !== null);
+
+  return {
+    source: "live-agent",
+    state: {
+      mastery: learnerState.mastery,
+      understandingLevel: learnerState.understanding_level,
+      memoryStrength: learnerState.memory_strength,
+      confusion: learnerState.confusion_level,
+      transferReadiness: learnerState.transfer_readiness,
+      weakSignals: learnerState.weak_signals,
+      recommendedAction: diagnosis.recommended_action,
+      lastReviewedAt: formatDateLabel(learnerPatch?.last_reviewed_at ?? null),
+      nextReviewAt: formatDateLabel(
+        learnerPatch?.next_review_at ??
+          statePatchEvent?.state_patch.review_patch?.scheduled_at ??
+          null,
+      ),
+    },
+    stateSource: stateSourceParts.join(" "),
+    signalCards: [],
+    decision: {
+      title: MODE_LABELS[plan.selected_mode],
+      reason: primaryReason,
+      objective: plan.expected_outcome,
+      confidence: diagnosis.confidence,
+    },
+    plan: {
+      headline: plan.headline,
+      summary: plan.summary,
+      steps: plan.steps,
+      highlightedModes: plan.steps.map((step) => step.mode),
+      primaryMode: plan.selected_mode,
+    },
+    writeback: buildWritebackFromAgent(statePatchEvent?.state_patch ?? null),
+    assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
+    rationale: diagnosis.explanation?.evidence ?? [],
   };
 }
