@@ -3,9 +3,8 @@ import type { UIMessage } from "ai";
 import { startTransition, useEffect, useMemo, useState, type ReactElement } from "react";
 import {
   Brain,
-  ChevronDown,
-  ChevronRight,
   FileInput,
+  FolderOpen,
   MessageSquareText,
   Plus,
   RefreshCcw,
@@ -133,111 +132,73 @@ function getMessageText(message: UIMessage): string {
 function SessionCard({
   active,
   title,
-  summary,
-  status,
   updatedAt,
   onClick,
 }: {
   active: boolean;
   title: string;
-  summary: string;
-  status: string;
   updatedAt: string;
   onClick: () => void;
 }): ReactElement {
   return (
-    <Card
+    <button
       className={
         active
-          ? "rounded-[1rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none transition-colors"
-          : "rounded-[1rem] border-transparent bg-transparent shadow-none transition-colors hover:border-[var(--xidea-border)] hover:bg-[var(--xidea-white)]"
+          ? "flex w-full items-center justify-between gap-3 rounded-[0.9rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
+          : "flex w-full items-center justify-between gap-3 rounded-[0.9rem] border border-transparent bg-transparent px-3 py-2 text-left transition-colors hover:border-[var(--xidea-border)] hover:bg-[var(--xidea-white)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
       }
+      onClick={onClick}
+      type="button"
     >
-      <CardContent className="p-0">
-        <button
-          className="block w-full rounded-[1rem] px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
-          onClick={onClick}
-          type="button"
-        >
-          <div className="min-w-0 w-full">
-            <div className="flex items-center justify-between gap-3">
-              <p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
-              <span className={active ? "shrink-0 text-xs text-[var(--xidea-selection-text)]" : "shrink-0 text-xs text-[var(--xidea-stone)]"}>
-                {updatedAt}
-              </span>
-            </div>
-            <p
-              className={
-                active
-                  ? "mt-2 line-clamp-2 text-sm leading-6 text-[var(--xidea-charcoal)]"
-                  : "mt-2 line-clamp-2 text-sm leading-6 text-[var(--xidea-stone)]"
-              }
-            >
-              {summary}
-            </p>
-            <div className="mt-3">
-              <Badge
-                className={
-                  active
-                    ? "border-transparent bg-[var(--xidea-white)] text-[var(--xidea-selection-text)] shadow-none"
-                    : "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)] shadow-none"
-                }
-                variant="outline"
-              >
-                {status}
-              </Badge>
-            </div>
-          </div>
-        </button>
-      </CardContent>
-    </Card>
+      <p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
+      <span
+        className={
+          active
+            ? "shrink-0 text-[11px] text-[var(--xidea-selection-text)]"
+            : "shrink-0 text-[11px] text-[var(--xidea-stone)]"
+        }
+      >
+        {updatedAt}
+      </span>
+    </button>
   );
 }
 
 function ProjectCard({
   active,
-  expanded,
   name,
-  description,
   sessionCount,
   onClick,
 }: {
   active: boolean;
-  expanded: boolean;
   name: string;
-  description: string;
   sessionCount: number;
   onClick: () => void;
 }): ReactElement {
   return (
-    <Card
+    <button
       className={
         active
-          ? "rounded-[1rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] shadow-none transition-colors"
-          : "rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7]"
+          ? "flex w-full items-center justify-between gap-3 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] px-3 py-3 text-left shadow-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
+          : "flex w-full items-center justify-between gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-3 text-left shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
       }
+      onClick={onClick}
+      type="button"
     >
-      <CardContent className="p-0">
-        <button
-          className="block w-full rounded-[1rem] px-4 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
-          onClick={onClick}
-          type="button"
+      <div className="flex min-w-0 items-center gap-3">
+        <div
+          className={
+            active
+              ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.85rem] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)]"
+              : "flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.85rem] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)]"
+          }
         >
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 text-[var(--xidea-stone)]">
-              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-3">
-                <p className="min-w-0 flex-1 truncate text-sm font-medium">{name}</p>
-                <span className="shrink-0 text-xs text-[var(--xidea-stone)]">{sessionCount}</span>
-              </div>
-              <p className="mt-2 line-clamp-1 text-sm leading-6 text-[var(--xidea-stone)]">{description}</p>
-            </div>
-          </div>
-        </button>
-      </CardContent>
-    </Card>
+          <FolderOpen className="h-4 w-4" />
+        </div>
+        <p className="min-w-0 flex-1 truncate text-sm font-medium">{name}</p>
+      </div>
+      <span className="shrink-0 text-[11px] text-[var(--xidea-stone)]">{sessionCount}</span>
+    </button>
   );
 }
 
@@ -323,9 +284,6 @@ export function App(): ReactElement {
   const [selectedProfileId, setSelectedProfileId] = useState(initialProfile.id);
   const [projects, setProjects] = useState<ReadonlyArray<ProjectItem>>(initialProjects);
   const [sessions, setSessions] = useState<ReadonlyArray<SessionItem>>(initialSessions);
-  const [expandedProjectIds, setExpandedProjectIds] = useState<ReadonlyArray<string>>([
-    initialProject.id,
-  ]);
   const [selectedProjectId, setSelectedProjectId] = useState(initialSessions[0]?.projectId ?? initialProject.id);
   const [selectedSessionId, setSelectedSessionId] = useState(initialSessions[0]?.id ?? "");
   const [selectedEntryMode, setSelectedEntryMode] = useState<AgentEntryMode>("chat-question");
@@ -447,14 +405,6 @@ export function App(): ReactElement {
     );
   }, [error, selectedSession?.id]);
 
-  function toggleProject(projectId: string): void {
-    setExpandedProjectIds((current) =>
-      current.includes(projectId)
-        ? current.filter((id) => id !== projectId)
-        : [...current, projectId],
-    );
-  }
-
   function handleSelectProject(projectId: string): void {
     setSelectedProjectId(projectId);
 
@@ -473,7 +423,6 @@ export function App(): ReactElement {
     setProjects((current) => [createdProject, ...current]);
     setSelectedProjectId(createdProject.id);
     setSelectedSessionId("");
-    setExpandedProjectIds((current) => [createdProject.id, ...current]);
   }
 
   function handleCreateSession(projectId: string): void {
@@ -499,9 +448,6 @@ export function App(): ReactElement {
     setSessionMessagesById((current) => ({ ...current, [createdSession.id]: [] }));
     setSelectedProjectId(targetProject.id);
     setSelectedSessionId(createdSession.id);
-    setExpandedProjectIds((current) =>
-      current.includes(targetProject.id) ? current : [...current, targetProject.id],
-    );
   }
 
   function handleSubmitPrompt(): void {
@@ -533,12 +479,12 @@ export function App(): ReactElement {
 
   return (
     <main className="xidea-shell min-h-screen bg-[var(--xidea-parchment)] text-[var(--xidea-near-black)]">
-      <div className="relative mx-auto min-h-screen max-w-[1600px] px-4 py-4 md:px-5 md:py-5 xl:h-screen xl:min-h-0">
-        <div className="grid items-start gap-4 xl:h-full xl:grid-cols-[340px_minmax(0,1fr)] xl:items-stretch 2xl:grid-cols-[340px_minmax(0,1fr)_320px]">
-          <Card className="overflow-hidden rounded-[1.6rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none xl:h-full">
-            <CardContent className="flex h-full flex-col p-4">
+      <div className="relative mx-auto min-h-screen max-w-[1520px] px-3 py-3 lg:h-screen lg:min-h-0 lg:px-4 lg:py-4">
+        <div className="grid items-start gap-3 lg:h-full lg:grid-cols-[280px_minmax(0,1fr)_300px] lg:items-stretch">
+          <Card className="overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none lg:h-full">
+            <CardContent className="flex h-full flex-col p-3">
               <Button
-                className="justify-start rounded-[1rem] border-[var(--xidea-charcoal)] bg-[var(--xidea-white)] text-[var(--xidea-near-black)] shadow-none transition-colors hover:bg-[#f8f6f1]"
+                className="justify-start rounded-[0.95rem] border-[var(--xidea-charcoal)] bg-[var(--xidea-white)] px-3 text-[13px] text-[var(--xidea-near-black)] shadow-none transition-colors hover:bg-[#f8f6f1]"
                 onClick={handleCreateProject}
                 type="button"
                 variant="outline"
@@ -547,34 +493,30 @@ export function App(): ReactElement {
                 新建 project
               </Button>
 
-              <Separator className="my-5 bg-[var(--xidea-border)]" />
+              <Separator className="my-4 bg-[var(--xidea-border)]" />
 
               <div className="flex min-h-0 flex-1 flex-col space-y-3">
                 <p className="xidea-kicker">Projects</p>
                 <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                  <div className="space-y-3 pr-2">
+                  <div className="space-y-2 pr-1">
                     {projects.map((project) => {
                       const projectSessions = sessions.filter((session) => session.projectId === project.id);
-                      const expanded = expandedProjectIds.includes(project.id);
                       const activeProject = project.id === selectedProject?.id;
 
                       return (
                         <div key={project.id}>
                           <ProjectCard
                             active={activeProject}
-                            description={project.description}
-                            expanded={expanded}
                             name={project.name}
                             onClick={() => {
                               handleSelectProject(project.id);
-                              toggleProject(project.id);
                             }}
                             sessionCount={projectSessions.length}
                           />
 
-                          {expanded ? (
-                            <div className="mt-2 ml-3 box-border w-[calc(100%-0.75rem)] border-l border-[var(--xidea-sand)] pl-3">
-                              <div className="mb-3 space-y-2">
+                          {activeProject ? (
+                            <div className="mt-2 ml-4 box-border w-[calc(100%-1rem)] border-l border-[var(--xidea-sand)] pl-3">
+                              <div className="mb-2 space-y-2">
                                 <div className="flex items-center justify-between gap-2">
                                   <p className="xidea-kicker">Sessions</p>
                                   <span className="shrink-0 text-xs text-[var(--xidea-stone)]">
@@ -582,7 +524,7 @@ export function App(): ReactElement {
                                   </span>
                                 </div>
                                 <Button
-                                  className="w-full justify-start rounded-full px-3 text-xs shadow-none transition-colors hover:bg-[var(--xidea-white)]"
+                                  className="w-full justify-start rounded-[0.9rem] px-3 text-xs shadow-none transition-colors hover:bg-[var(--xidea-white)]"
                                   onClick={() => {
                                     handleCreateSession(project.id);
                                   }}
@@ -612,8 +554,6 @@ export function App(): ReactElement {
                                         setSelectedSessionId(session.id);
                                       });
                                     }}
-                                    status={session.status}
-                                    summary={session.summary}
                                     title={session.title}
                                     updatedAt={session.updatedAt}
                                   />
@@ -630,8 +570,8 @@ export function App(): ReactElement {
             </CardContent>
           </Card>
 
-          <Card className="flex min-h-0 flex-col overflow-hidden rounded-[1.6rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none xl:h-full">
-            <CardHeader className="gap-3 border-b border-[var(--xidea-border)] pb-4">
+          <Card className="flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none lg:h-full">
+            <CardHeader className="gap-3 border-b border-[var(--xidea-border)] px-5 pb-4 pt-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                   <CardTitle className="truncate text-sm font-medium text-[var(--xidea-near-black)]">
@@ -996,7 +936,7 @@ export function App(): ReactElement {
             </CardContent>
           </Card>
 
-          <div className="min-h-0 xl:col-span-2 2xl:col-span-1 2xl:h-full">
+          <div className="min-h-0 lg:h-full">
             <ScrollArea className="h-full pr-1">
               <div className="flex flex-col gap-3 pb-1">
                 <InspectorCard description="当前 session 绑定哪个学习者阶段。" title="学习画像">
