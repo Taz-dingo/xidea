@@ -404,14 +404,14 @@ function MonitorSection({
   children: ReactElement | ReactElement[];
 }): ReactElement {
   return (
-    <Card className="rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+    <Card className="min-w-0 overflow-hidden rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
       <CardHeader className="px-4 pb-3 pt-4">
         <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">
           {title}
           {accent ? <span className="ml-2 text-[var(--xidea-selection-text)]">{accent}</span> : null}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3 px-4 pb-4 pt-0">{children}</CardContent>
+      <CardContent className="min-w-0 space-y-3 px-4 pb-4 pt-0">{children}</CardContent>
     </Card>
   );
 }
@@ -426,14 +426,16 @@ function MetricTile({
   tone: "emerald" | "amber" | "rose" | "sky";
 }): ReactElement {
   return (
-    <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-3">
-      <div className="flex items-center gap-2">
+    <div className="min-w-0 overflow-hidden rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-3">
+      <div className="flex min-w-0 items-center gap-2">
         <span className={`inline-block h-2 w-2 rounded-full ${getMetricDotClass(tone)}`} />
-        <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
+        <span className="truncate text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
           {label}
         </span>
       </div>
-      <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">{value}</p>
+      <p className="mt-2 min-w-0 break-words text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
+        {value}
+      </p>
     </div>
   );
 }
@@ -446,11 +448,13 @@ function CompactNote({
   value: string;
 }): ReactElement {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-[0.95rem] bg-[var(--xidea-parchment)] px-3 py-2.5">
-      <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
+    <div className="flex min-w-0 items-start gap-2 rounded-[0.95rem] bg-[var(--xidea-parchment)] px-3 py-2.5">
+      <span className="shrink-0 pt-0.5 text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
         {label}
       </span>
-      <span className="text-right text-sm leading-6 text-[var(--xidea-charcoal)]">{value}</span>
+      <span className="min-w-0 flex-1 break-words text-right text-sm leading-5 text-[var(--xidea-charcoal)]">
+        {value}
+      </span>
     </div>
   );
 }
@@ -721,7 +725,7 @@ export function App(): ReactElement {
   return (
     <main className="xidea-shell min-h-screen bg-[var(--xidea-parchment)] text-[var(--xidea-near-black)]">
       <div className="relative mx-auto min-h-screen max-w-[1520px] px-3 py-3 lg:h-screen lg:min-h-0 lg:px-4 lg:py-4">
-        <div className="grid items-start gap-3 lg:h-full lg:grid-cols-[280px_minmax(0,1fr)_300px] lg:items-stretch">
+        <div className="grid items-start gap-3 lg:h-full lg:grid-cols-[280px_minmax(0,1fr)_328px] lg:items-stretch">
           <Card className="overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none lg:h-full">
             <CardContent className="flex h-full flex-col p-3">
               <div className="flex min-h-0 flex-1 flex-col space-y-3">
@@ -1238,7 +1242,7 @@ export function App(): ReactElement {
             </CardContent>
           </Card>
 
-          <div className="min-h-0 lg:h-full">
+          <div className="min-h-0 min-w-0 lg:h-full">
             <ScrollArea className="h-full pr-1">
               <div className="grid gap-3 pb-1">
                 <MonitorSection accent={activeRuntime.source === "live-agent" ? "Live" : "Mock"} title="Session">
