@@ -84,3 +84,66 @@ def test_persisted_run_is_queryable_from_storage_endpoints(
 
     assert state_response.status_code == 200
     assert state_response.json()["recommended_action"] == "review"
+
+
+_SAMPLE_REQUEST = {
+    "project_id": "rag-demo",
+    "thread_id": "thread-1",
+    "entry_mode": "chat-question",
+    "topic": "RAG retrieval design",
+    "target_unit_id": "unit-rag-retrieval",
+    "messages": [
+        {"role": "user", "content": "我分不清 retrieval 和 reranking 的职责"}
+    ],
+}
+
+
+def test_stream_endpoint_returns_sse_events(client: TestClient) -> None:
+    response = client.post("/runs/v0/stream", json=_SAMPLE_REQUEST)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+    raw = response.text
+    event_types = []
+    for line in raw.splitlines():
+        if line.startswith("event: "):
+            event_types.append(line[len("event: "):])
+
+    assert event_types == ["text-delta", "diagnosis", "plan", "state-patch", "done"]
+
+
+def test_stream_endpoint_events_are_valid_json(client: TestClient) -> None:
+    import json
+
+    response = client.post("/runs/v0/stream", json=_SAMPLE_REQUEST)
+    raw = response.text
+
+    data_lines = [line[len("data: "):] for line in raw.splitlines() if line.startswith("data: ")]
+    assert len(data_lines) == 5
+
+    for data_line in data_lines:
+        parsed = json.loads(data_line)
+        assert "event" in parsed
+
+
+def test_stream_diagnosis_contains_action_scores(client: TestClient) -> None:
+    import json
+
+    response = client.post("/runs/v0/stream", json=_SAMPLE_REQUEST)
+    raw = response.text
+
+    data_lines = [line[len("data: "):] for line in raw.splitlines() if line.startswith("data: ")]
+    diagnosis_data = json.loads(data_lines[1])
+    assert diagnosis_data["event"] == "diagnosis"
+    assert diagnosis_data["diagnosis"]["recommended_action"] == "clarify"
+
+
+def test_stream_endpoint_persists_to_repository(persisted_client: TestClient) -> None:
+    response = persisted_client.post("/runs/v0/stream", json=_SAMPLE_REQUEST)
+    assert response.status_code == 200
+
+    messages = persisted_client.get("/threads/thread-1/recent-messages").json()
+    assert len(messages) == 2
+    assert messages[0]["role"] == "user"
+    assert messages[1]["role"] == "assistant"

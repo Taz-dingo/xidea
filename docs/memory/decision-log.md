@@ -604,3 +604,56 @@ LangGraph 第一版采用 6 节点最小主链路：`load_context -> diagnose ->
 
 - repo 目录切换为 `apps/web` 和 `apps/agent`
 - 后续需要补前后端 contract 和 graph node 设计
+
+---
+
+## 2026-04-14: 决策路径从 if-elif 瀑布升级为综合评分模型
+
+### 决策
+
+将 `runtime.py` 的 `build_signals / estimate_learner_state / diagnose_state` 三个核心函数从简单关键词匹配 + 固定阈值 + if-elif 瀑布升级为：
+
+1. 多轮信号累积 + prior state 趋势检测
+2. Confidence 缩放的动态状态估算
+3. Action scoring 综合评分选择
+4. 上一轮效果评估与无效动作惩罚
+
+### 原因
+
+- 原来只检查最新一条消息，无法感知多轮重复表达的信号强度
+- 固定 delta（如 confusion += 38）不区分信号质量
+- if-elif 瀑布无法处理"confusion 高 + memory 弱"等复合场景
+- 没有效果反馈，可能反复选择无效动作
+
+### 影响
+
+- `runtime.py` 新增 `_multi_turn_frequency` / `_boost` / `_score_actions` 三个内部函数
+- `Explanation.evidence` 现在包含 `action-scores` 排名，前端可展示决策透明度
+- 新增 15 个测试（覆盖 A/B/C/D 四个改进），总计 50 个全部通过
+- 不改 `state.py` schema，完全向后兼容
+
+---
+
+## 2026-04-14: 新增 FastAPI SSE streaming endpoint
+
+### 决策
+
+在 `api.py` 新增 `POST /runs/v0/stream` endpoint，使用 SSE (Server-Sent Events) 格式逐个推送 `StreamEvent`。
+
+### 原因
+
+- 前端 v0 已通过 custom transport 对接 `/runs/v0`，但当前返回完整 JSON，无法逐步渲染
+- SSE 是浏览器原生支持的流式协议，兼容性好，实现简单
+- 保留原有 `/runs/v0` 同步端点不变，前端可渐进迁移
+
+### 实现
+
+- 复用 `run_agent_v0()` 完整执行流程，然后用 `_iter_sse_events()` 逐个 yield 事件
+- 每个 SSE 消息格式：`event: <type>\ndata: <json>\n\n`
+- 事件序列：`text-delta → diagnosis → plan → state-patch → done`
+- 新增 4 个测试验证 SSE 格式、JSON 解析、诊断内容和持久化
+
+### 影响
+
+- 前端 owner 可在 `agent-chat-transport.ts` 中切换到 `EventSource` 或 `fetch + ReadableStream`
+- 后续可在 LLM 接入后升级为真正的逐 token streaming

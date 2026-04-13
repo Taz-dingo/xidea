@@ -1,8 +1,11 @@
+import json
 import os
+from collections.abc import Iterator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import TypeAdapter
+from starlette.responses import StreamingResponse
 
 from xidea_agent.graph import describe_graph
 from xidea_agent.repository import SQLiteRepository
@@ -60,6 +63,20 @@ def create_app(repository: SQLiteRepository | None = None) -> FastAPI:
             repository.save_run(request, result)
         return result
 
+    @app.post("/runs/v0/stream")
+    def run_v0_stream(request: AgentRequest) -> StreamingResponse:
+        result = run_agent_v0(request, repository=repository)
+        if repository is not None:
+            repository.save_run(request, result)
+        return StreamingResponse(
+            _iter_sse_events(result),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     @app.get("/storage/status")
     def storage_status() -> dict[str, object]:
         return {
@@ -109,3 +126,12 @@ def _require_repository(repository: SQLiteRepository | None) -> SQLiteRepository
         raise HTTPException(status_code=503, detail="Repository is not configured")
 
     return repository
+
+
+def _iter_sse_events(result: AgentRunResult) -> Iterator[str]:
+    """Yield events in SSE wire format (event + data lines)."""
+    for stream_event in result.events:
+        event_type = stream_event.event
+        payload = stream_event.model_dump(mode="json")
+        data = json.dumps(payload, ensure_ascii=False)
+        yield f"event: {event_type}\ndata: {data}\n\n"
