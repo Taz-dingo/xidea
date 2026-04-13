@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from xidea_agent.guardrails import get_violations
 from xidea_agent.repository import SQLiteRepository
+from xidea_agent.review_engine import should_enter_review, schedule_next_review
 from xidea_agent.state import (
     AgentRequest,
     AgentRunResult,
@@ -205,14 +206,20 @@ def diagnose_state(entry_mode: str, target_unit_id: str | None, learner_state: L
             ),
         )
 
+    review_decision = should_enter_review(
+        understanding_level=learner_state.understanding_level,
+        confusion_level=learner_state.confusion_level,
+        memory_strength=learner_state.memory_strength,
+    )
+
     if learner_state.confusion_level >= 68:
         action: PedagogicalAction = "clarify"
         issue: PrimaryIssue = "concept-confusion"
         reason = "当前最大问题是概念边界混淆，先把区别拉清楚比继续讲知识点更重要。"
-    elif learner_state.memory_strength <= 38:
+    elif review_decision.should_review:
         action = "review"
         issue = "weak-recall"
-        reason = "当前更像是记忆稳定性不足，先做针对性回忆再进入更复杂任务更合理。"
+        reason = review_decision.reason
     elif learner_state.understanding_level <= 50:
         action = "teach"
         issue = "insufficient-understanding"
@@ -430,13 +437,17 @@ def build_state_patch(
 
     review_patch: ReviewPatch | None = None
     if diagnosis.recommended_action == "review":
+        now = datetime.now(UTC)
+        next_review = schedule_next_review(review_count=0, recall_success=True, now=now)
         review_patch = ReviewPatch(
             due_unit_ids=[learner_state.unit_id],
-            scheduled_at=datetime.now(UTC) + timedelta(days=2),
+            scheduled_at=next_review,
             review_reason="当前暴露出记忆稳定性不足，需要安排下一次定向复盘。",
+            review_count=1,
+            lapse_count=0,
         )
-        learner_patch.last_reviewed_at = datetime.now(UTC)
-        learner_patch.next_review_at = review_patch.scheduled_at
+        learner_patch.last_reviewed_at = now
+        learner_patch.next_review_at = next_review
 
     return StatePatch(
         learner_state_patch=learner_patch,

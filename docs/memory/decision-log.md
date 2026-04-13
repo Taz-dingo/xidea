@@ -1,5 +1,44 @@
 # Decision Log
 
+## 2026-04-13 — Review Engine v0 独立化
+
+### 决策
+
+将 Review Engine 从 `runtime.py` 的内联逻辑拆为独立模块 `review_engine.py`，实现架构文档要求的 6 条启发式规则、`ReviewState` 完整状态和基于成功/失败的间隔调度。
+
+### 原因
+
+- 架构文档明确要求 Review Engine 作为独立能力层存在，而不是散落在编排主链路里
+- 原有 review 判断只有 `memory_strength <= 38` 一条规则，缺少理解前置检查、混淆阻断和逾期提权
+- 缺少 `review_count / lapse_count`，无法体现"系统记住了你的复习历史"
+
+### 影响
+
+- 新增 `review_engine.py`：ReviewState / ReviewDecision / ReviewOutcome / 6 条规则 / 间隔调度
+- `state.py`：ReviewPatch 增加 `review_count / lapse_count`
+- `repository.py`：review_state 表增加两列
+- `runtime.py`：diagnose_state() 和 build_state_patch() 改为调用 review engine
+- 新增 13 个测试覆盖所有规则和边界场景
+
+## 2026-04-13 — 丰富 maybe_tool 上下文来源
+
+### 决策
+
+将 `maybe_tool` 的 4 个 tool intent 从 stub payload 升级为结构化上下文输出：`asset-summary` 增加 `contentExcerpt / keyConcepts / relevanceHint`，`unit-detail` 增加 `prerequisites / commonMisconceptions / coreQuestions / relatedUnits`，`thread-memory` 增加 `learningProgress / lastDiagnosis`，`review-context` 增加 `performanceTrend / decayRisk / lastReviewOutcome`。
+
+### 原因
+
+- 原有 tool payload 太薄，无法为 demo 展示「系统真的在补充上下文再做判断」的效果
+- 丰富后的字段直接服务于 compose_response 和 writeback 的判断质量
+- 所有新增数据仍使用 seed + SQLite，不引入外部依赖
+
+### 影响
+
+- `tools.py` 新增 `_ASSET_ENRICHMENT` 和 `_UNIT_ENRICHMENT` 两套结构化 seed 数据
+- `describe_tool_registry()` 已更新，反映新的返回字段
+- 新增 12 个测试覆盖所有 tool intent 的增强 payload
+- `docs/agent-state-design.md` 的 Tools 部分已重写
+
 ## 2026-04-13
 
 ### 决策
