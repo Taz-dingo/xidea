@@ -394,6 +394,67 @@ function InspectorCard({
   );
 }
 
+function MonitorSection({
+  title,
+  accent,
+  children,
+}: {
+  title: string;
+  accent?: string;
+  children: ReactElement | ReactElement[];
+}): ReactElement {
+  return (
+    <Card className="rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+      <CardHeader className="px-4 pb-3 pt-4">
+        <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">
+          {title}
+          {accent ? <span className="ml-2 text-[var(--xidea-selection-text)]">{accent}</span> : null}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 px-4 pb-4 pt-0">{children}</CardContent>
+    </Card>
+  );
+}
+
+function MetricTile({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "emerald" | "amber" | "rose" | "sky";
+}): ReactElement {
+  return (
+    <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-3">
+      <div className="flex items-center gap-2">
+        <span className={`inline-block h-2 w-2 rounded-full ${getMetricDotClass(tone)}`} />
+        <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
+          {label}
+        </span>
+      </div>
+      <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">{value}</p>
+    </div>
+  );
+}
+
+function CompactNote({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}): ReactElement {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-[0.95rem] bg-[var(--xidea-parchment)] px-3 py-2.5">
+      <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
+        {label}
+      </span>
+      <span className="text-right text-sm leading-6 text-[var(--xidea-charcoal)]">{value}</span>
+    </div>
+  );
+}
+
 function getErrorMessage(error: Error | undefined): string | null {
   if (error === undefined) {
     return null;
@@ -1179,74 +1240,66 @@ export function App(): ReactElement {
 
           <div className="min-h-0 lg:h-full">
             <ScrollArea className="h-full pr-1">
-              <div className="flex flex-col gap-3 pb-1">
-                <InspectorCard description="由当前对话、诊断和状态信号动态生成。" title="学习画像">
-                  <Card className="rounded-[1rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none">
-                    <CardContent className="space-y-3 p-4">
-                      <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                        {generatedProfile.title}
-                      </p>
-                      <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                        {generatedProfile.summary}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <div className="space-y-2">
-                    {generatedProfile.evidence.map((item, index) => (
-                      <div
-                        className="flex items-start gap-3 rounded-[0.95rem] bg-[var(--xidea-parchment)] px-4 py-3 text-sm leading-7 text-[var(--xidea-charcoal)]"
-                        key={`${item}-${index}`}
-                      >
-                        <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-[var(--xidea-terracotta)]" />
-                        <span>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                </InspectorCard>
+              <div className="grid gap-3 pb-1">
+                <MonitorSection accent={activeRuntime.source === "live-agent" ? "Live" : "Mock"} title="Session">
+                  <CompactNote label="Project" value={selectedProject.name} />
+                  <CompactNote label="Thread" value={selectedSession?.status ?? "等待创建"} />
+                  <CompactNote label="Mode" value={activeRuntime.decision.title} />
+                  <CompactNote
+                    label="Agent"
+                    value={
+                      activeRuntime.decision.confidence !== null
+                        ? `${(activeRuntime.decision.confidence * 100).toFixed(0)}% confidence`
+                        : "heuristic"
+                    }
+                  />
+                </MonitorSection>
 
-                <InspectorCard description="由当前 runtime 回写出来的学习状态。" title="学习状态">
-                  <div className="flex flex-wrap gap-2">
+                <MonitorSection title="Learner">
+                  <div className="grid grid-cols-2 gap-2">
                     {metricCopy.map((metric) => (
-                      <Badge
-                        className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2 text-sm font-medium text-[var(--xidea-charcoal)] shadow-none"
+                      <MetricTile
                         key={metric.key}
-                        variant="outline"
-                      >
-                        <span className={`mr-2 inline-block h-2.5 w-2.5 rounded-full ${getMetricDotClass(metric.tone)}`} />
-                        {metric.label} {activeRuntime.state[metric.key] === null ? "--" : `${activeRuntime.state[metric.key]}%`}
-                      </Badge>
+                        label={metric.label}
+                        tone={metric.tone}
+                        value={
+                          activeRuntime.state[metric.key] === null
+                            ? "--"
+                            : `${activeRuntime.state[metric.key]}%`
+                        }
+                      />
                     ))}
                   </div>
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                    <CardContent className="p-4 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                      {activeRuntime.stateSource}
-                    </CardContent>
-                  </Card>
-                </InspectorCard>
+                  <div className="rounded-[0.95rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-selection-text)]">
+                      Profile
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">
+                      {generatedProfile.title}
+                    </p>
+                    <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                      {generatedProfile.evidence[0]}
+                    </p>
+                  </div>
+                </MonitorSection>
 
-                <InspectorCard description="当前复习节点和弱信号。" title="复习系统">
-                  <div className="grid gap-3">
-                    <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                      <CardContent className="p-4">
-                        <p className="text-sm text-[var(--xidea-stone)]">最近复盘</p>
-                        <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">
-                          {activeRuntime.state.lastReviewedAt ?? "未记录"}
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                      <CardContent className="p-4">
-                        <p className="text-sm text-[var(--xidea-stone)]">下一次提醒</p>
-                        <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">
-                          {activeRuntime.state.nextReviewAt ?? "待本轮决定"}
-                        </p>
-                      </CardContent>
-                    </Card>
+                <MonitorSection title="Review">
+                  <div className="grid grid-cols-2 gap-2">
+                    <MetricTile
+                      label="Last"
+                      tone="amber"
+                      value={activeRuntime.state.lastReviewedAt ?? "未记录"}
+                    />
+                    <MetricTile
+                      label="Next"
+                      tone="sky"
+                      value={activeRuntime.state.nextReviewAt ?? "待决定"}
+                    />
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {activeRuntime.state.weakSignals.map((signal) => (
+                    {activeRuntime.state.weakSignals.slice(0, 3).map((signal) => (
                       <Badge
-                        className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-3 py-2 text-sm text-[var(--xidea-charcoal)] shadow-none"
+                        className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
                         key={signal}
                         variant="outline"
                       >
@@ -1254,17 +1307,19 @@ export function App(): ReactElement {
                       </Badge>
                     ))}
                   </div>
-                  <div className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-[var(--xidea-near-black)]">复习热力图</p>
-                      <span className="text-xs text-[var(--xidea-stone)]">最近 5 周</span>
+                  <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
+                        Heatmap
+                      </p>
+                      <span className="text-[11px] text-[var(--xidea-stone)]">5w</span>
                     </div>
-                    <div className="mt-4 grid grid-cols-5 gap-2">
+                    <div className="mt-3 grid grid-cols-5 gap-1.5">
                       {reviewHeatmap.map((week, weekIndex) => (
-                        <div className="grid grid-rows-7 gap-2" key={`week-${weekIndex}`}>
+                        <div className="grid grid-rows-7 gap-1.5" key={`week-${weekIndex}`}>
                           {week.map((cell) => (
                             <div
-                              className={`h-4 w-full rounded-[4px] ${getHeatmapCellClass(cell.intensity)}`}
+                              className={`h-3.5 w-full rounded-[3px] ${getHeatmapCellClass(cell.intensity)}`}
                               key={cell.dateKey}
                               title={cell.tooltip}
                             />
@@ -1272,71 +1327,46 @@ export function App(): ReactElement {
                         </div>
                       ))}
                     </div>
-                    <div className="mt-3 flex items-center justify-between text-[11px] text-[var(--xidea-stone)]">
-                      <span>低</span>
-                      <span>高</span>
-                    </div>
                   </div>
-                </InspectorCard>
+                </MonitorSection>
 
-                <InspectorCard description="项目上下文和当前主训练动作。" title="项目面板">
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                    <CardContent className="p-4">
-                      <p className="text-sm font-medium text-[var(--xidea-near-black)]">{selectedProject.name}</p>
-                      <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                        当前 project 下共有 {sessions.filter((session) => session.projectId === selectedProject.id).length} 个 session。
+                <MonitorSection title="Materials">
+                  <CompactNote
+                    label="Selected"
+                    value={
+                      selectedEntryMode === "material-import"
+                        ? `${activeSourceAssets.length} assets`
+                        : `${sourceAssets.length} linked`
+                    }
+                  />
+                  <CompactNote label="Unit" value={selectedUnit.title} />
+                  <CompactNote
+                    label="Writeback"
+                    value={activeRuntime.writeback[0]?.target ?? "Project Thread"}
+                  />
+                  <div className="rounded-[0.95rem] bg-[var(--xidea-parchment)] px-3 py-3">
+                    <div className="flex items-center gap-2">
+                      <Brain className="h-4 w-4 text-[var(--xidea-terracotta)]" />
+                      <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                        {activeRuntime.decision.title}
                       </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Brain className="h-4 w-4 text-[var(--xidea-terracotta)]" />
-                        <p className="text-sm font-medium text-[var(--xidea-near-black)]">{activeRuntime.decision.title}</p>
-                      </div>
-                      <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">{activeRuntime.decision.objective}</p>
-                    </CardContent>
-                  </Card>
-
+                    </div>
+                    <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                      {activeRuntime.decision.objective}
+                    </p>
+                  </div>
                   <div className="flex flex-wrap gap-2">
-                    {selectedUnit.candidateModes.map((mode) => (
-                      <Badge className={`border shadow-none ${getModeBadgeClass(mode)}`} key={mode} variant="outline">
+                    {selectedUnit.candidateModes.slice(0, 3).map((mode) => (
+                      <Badge
+                        className={`border px-2 py-1 text-[12px] shadow-none ${getModeBadgeClass(mode)}`}
+                        key={mode}
+                        variant="outline"
+                      >
                         {MODE_LABELS[mode]}
                       </Badge>
                     ))}
                   </div>
-
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Target className="h-4 w-4 text-[var(--xidea-terracotta)]" />
-                        <p className="text-sm font-medium text-[var(--xidea-near-black)]">当前材料</p>
-                      </div>
-                      <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                        {selectedEntryMode === "material-import"
-                          ? activeSourceAssets.length > 0
-                            ? `当前已选中 ${activeSourceAssets.length} 份材料：${activeSourceAssets
-                                .map((asset) => asset.title)
-                                .join(" / ")}`
-                            : "当前还没有选中材料。"
-                          : `${sourceAssets.length} 份材料已接入当前项目线程，默认按相关性带入。`}
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2">
-                        <RefreshCcw className="h-4 w-4 text-[var(--xidea-terracotta)]" />
-                        <p className="text-sm font-medium text-[var(--xidea-near-black)]">状态回写</p>
-                      </div>
-                      <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                        {activeRuntime.writeback[0]?.change ?? "本轮结果会写回 learner state 和 review engine。"}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </InspectorCard>
+                </MonitorSection>
               </div>
             </ScrollArea>
           </div>
