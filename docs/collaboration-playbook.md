@@ -18,13 +18,35 @@
 
 ### 学习引擎 owner
 
-- 负责学习状态、planner、规则
-- 维护 `src/domain/` 和相关文档
+- 负责学习状态、diagnosis / plan / state-patch contract、planner、规则
+- 维护 `apps/agent/src/xidea_agent`、agent API、repository、runtime 和相关文档
 
 ### 前端 owner
 
 - 负责页面、交互、演示稳定性
-- 维护 `src/app/` 和 `src/components/`
+- 维护 `apps/web/src/app/` 和 `apps/web/src/components/`
+
+## Current Workstream Split
+
+当前 v0 默认按两条主线并行：
+
+- 学习引擎主线：稳定 `apps/agent` 的 schema、runtime、storage、guardrails、tests 和 `/runs/v0`
+- 前端主线：稳定 `apps/web` 的 demo flow、证据链展示，并接入真实 agent 返回
+
+这两条主线的默认边界是：
+
+- 学习引擎 owner 不主动改前端展示结构，除非为了联调修复明确的小接口问题
+- 前端 owner 不主动改 agent contract，除非先和学习引擎 owner 对齐字段变化
+
+## Start-Of-Task Check
+
+每次新开工先做一次轻量路由：
+
+1. 判断当前任务主要属于学习引擎、前端，还是跨 owner 协作
+2. 写清楚这次要改的主目录和不打算碰的边界
+3. 如果是跨 owner 任务，先说明谁是主 owner，谁只做配合
+
+如果这一步不明确，先补文档、issue 或 PR 说明，不直接开始大范围改代码。
 
 ## Branching
 
