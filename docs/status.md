@@ -1,6 +1,6 @@
 # Status
 
-## As Of 2026-04-13
+## As Of 2026-04-14
 
 ### Done
 
@@ -38,18 +38,22 @@
 - `load_context` 已可读取 SQLite 中的 recent messages 与 prior learner state 作为本轮基线
 - 为 runtime、graph、API、repository roundtrip 补上 10 个测试，当前全部通过
 - 明确当前 v0 默认按学习引擎 / 前端 / 产品叙事三条主线并行推进，并要求每次新开工先完成 workstream routing
+- 丰富 `maybe_tool` 的 4 个 tool intent：asset-summary / unit-detail / thread-memory / review-context 全部从 stub 升级为结构化上下文输出
+- 独立化 `Review Engine v0`：从 runtime 内联逻辑拆为独立模块，实现 6 条启发式规则 + 间隔调度 + 回忆成功/失败处理
+- `ReviewPatch` 和 `review_state` 表增加 `review_count / lapse_count`
+- 新增 25 个测试（12 tools + 13 review engine），总计 35 个全部通过
 
 ### In Progress
 
-- 收敛单 pedagogical agent 的输入输出结构、状态回写、streaming contract 和 API contract
-- 保持 web demo 简洁可演示，同时继续对齐后续 agent runtime 接口
+- 把 `/runs/v0` 从同步返回改为真正的 SSE streaming endpoint
+- 前端 v0 三栏 workspace 已开出 PR #8，正在对接 agent API
 
 ### Next
 
 - 把 web demo 接到真实 `/runs/v0` 返回的 `diagnosis / plan / state-patch` 结构
-- 继续丰富 `maybe_tool` 的真实上下文来源，而不只返回轻量 stub payload
-- 把 `Review Engine v0` 从 patch 级回写推进到独立启发式调度层
+- 实现 FastAPI SSE streaming，让前端能流式展示编排过程
 - 决定第一版 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
+- 细化 agent 决策路径与 evaluation 维度
 
 ### Risks
 
