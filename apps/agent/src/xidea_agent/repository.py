@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS review_state (
   due_unit_ids TEXT,
   scheduled_at TEXT,
   review_reason TEXT,
+  review_count INTEGER NOT NULL DEFAULT 0,
+  lapse_count INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL,
   PRIMARY KEY(thread_id, unit_id),
   FOREIGN KEY(thread_id) REFERENCES threads(thread_id)
@@ -191,6 +193,8 @@ class SQLiteRepository:
             due_unit_ids=json.loads(row["due_unit_ids"]) if row["due_unit_ids"] else None,
             scheduled_at=row["scheduled_at"],
             review_reason=row["review_reason"],
+            review_count=row["review_count"],
+            lapse_count=row["lapse_count"],
         )
 
     def _connect(self) -> sqlite3.Connection:
@@ -277,12 +281,17 @@ class SQLiteRepository:
 
         connection.execute(
             """
-            INSERT INTO review_state(thread_id, unit_id, due_unit_ids, scheduled_at, review_reason, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO review_state(
+              thread_id, unit_id, due_unit_ids, scheduled_at,
+              review_reason, review_count, lapse_count, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(thread_id, unit_id) DO UPDATE SET
               due_unit_ids = excluded.due_unit_ids,
               scheduled_at = excluded.scheduled_at,
               review_reason = excluded.review_reason,
+              review_count = excluded.review_count,
+              lapse_count = excluded.lapse_count,
               updated_at = excluded.updated_at
             """,
             (
@@ -293,6 +302,8 @@ class SQLiteRepository:
                 else None,
                 review_patch.scheduled_at.isoformat() if review_patch.scheduled_at else None,
                 review_patch.review_reason,
+                review_patch.review_count or 0,
+                review_patch.lapse_count or 0,
                 updated_at,
             ),
         )

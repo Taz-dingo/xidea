@@ -154,6 +154,8 @@ class ReviewPatch(StrictModel):
     due_unit_ids: list[str] | None = None
     scheduled_at: datetime | None = None
     review_reason: str | None = None
+    review_count: int | None = None
+    lapse_count: int | None = None
 
 
 class StatePatch(StrictModel):

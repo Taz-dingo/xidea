@@ -92,5 +92,6 @@
 ## Working Rule
 
 - 如果 `P0` 没讲清楚，不进入更复杂功能
+- 每次新任务开始前，先确认主 owner、所属 workstream 和主编辑目录
 - 每完成一个任务，顺手更新 `docs/status.md`
 - 会改变共识的任务，合并前更新 `docs/memory/decision-log.md`

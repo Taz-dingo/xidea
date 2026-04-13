@@ -22,16 +22,17 @@
 ## Daily Workflow
 
 1. 每天开始前先同步 `main`
-2. 在自己的短分支上工作
-3. 一个分支只做一件事
-4. 提 PR 到 `main`
-5. 至少一人 review 后再合并
+2. 开工前先判断当前任务属于哪个 owner / workstream
+3. 在自己的短分支上工作
+4. 一个分支只做一件事
+5. 提 PR 到 `main`
+6. 至少一人 review 后再合并
 
 ## Ownership
 
-- 产品 owner 改 story、范围、文案、答辩材料
-- 学习引擎 owner 改 `src/domain`、`src/data`、规划逻辑
-- 前端 owner 改 `src/app`、`src/components`、交互和展示
+- 产品 / demo 叙事 owner 改 story、范围、文案、答辩材料和 demo script
+- 学习引擎 owner 改 `apps/agent/src/xidea_agent`、agent contract、LangGraph runtime、SQLite repository、后端 API 与测试
+- 前端 owner 改 `apps/web/src/app`、`apps/web/src/components`、交互和展示，并消费稳定的 agent contract
 
 如果跨 owner 改动较大，先在 PR 里写清楚原因。
 
