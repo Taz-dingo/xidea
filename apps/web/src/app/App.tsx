@@ -26,7 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { learnerProfiles, learningUnits, projectContext, sourceAssets } from "@/data/demo";
 import { buildDefaultAgentPrompt, buildMockRuntimeSnapshot, type AgentEntryMode, type RuntimeSnapshot } from "@/domain/agent-runtime";
 import { MODE_LABELS } from "@/domain/planner";
-import type { LearningMode } from "@/domain/types";
+import type { LearnerProfile, LearningMode } from "@/domain/types";
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
 import { getAgentBaseUrl } from "@/lib/agent-client";
 
@@ -129,6 +129,146 @@ function getMessageText(message: UIMessage): string {
   return text === "" ? "当前消息没有文本内容。" : text;
 }
 
+function getLatestUserDraft(messages: ReadonlyArray<UIMessage>, draftPrompt: string): string {
+  const latestUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "user");
+
+  if (latestUserMessage !== undefined) {
+    const text = getMessageText(latestUserMessage);
+    if (text !== "当前消息没有文本内容。") {
+      return text;
+    }
+  }
+
+  return draftPrompt.trim();
+}
+
+function inferLearnerProfile(
+  draftOrLatestUserInput: string,
+  runtime: RuntimeSnapshot,
+  fallbackProfile: LearnerProfile,
+): LearnerProfile {
+  const normalized = draftOrLatestUserInput.toLowerCase();
+
+  if (
+    normalized.includes("答辩") ||
+    normalized.includes("评审") ||
+    normalized.includes("汇报") ||
+    runtime.state.transferReadiness !== null && runtime.state.transferReadiness >= 68 ||
+    runtime.state.recommendedAction === "apply"
+  ) {
+    return learnerProfiles[2] ?? fallbackProfile;
+  }
+
+  if (
+    normalized.includes("分不清") ||
+    normalized.includes("混淆") ||
+    normalized.includes("重排") ||
+    runtime.state.confusion >= 60 ||
+    runtime.state.recommendedAction === "clarify"
+  ) {
+    return learnerProfiles[1] ?? fallbackProfile;
+  }
+
+  return learnerProfiles[0] ?? fallbackProfile;
+}
+
+function buildGeneratedProfileSummary(
+  profile: LearnerProfile,
+  runtime: RuntimeSnapshot,
+  latestUserInput: string,
+): {
+  readonly title: string;
+  readonly summary: string;
+  readonly evidence: ReadonlyArray<string>;
+} {
+  const evidence = [
+    runtime.state.weakSignals[0] ?? "当前 thread 仍在积累稳定证据",
+    runtime.decision.reason,
+    latestUserInput === "" ? "还没有新的用户输入，先沿用当前 session 状态。" : `最近输入：${latestUserInput}`,
+  ];
+
+  return {
+    title: `系统当前将学习者归为「${profile.name}」`,
+    summary: `${profile.role} 系统会在后续对话里继续根据输入、诊断和状态回写动态调整这张画像。`,
+    evidence,
+  };
+}
+
+interface ReviewHeatmapCell {
+  readonly dateKey: string;
+  readonly tooltip: string;
+  readonly intensity: 0 | 1 | 2 | 3 | 4;
+}
+
+function toDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function buildReviewHeatmap(
+  runtime: RuntimeSnapshot,
+  messageCount: number,
+): ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>> {
+  const totalDays = 35;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const lastReviewedAt = runtime.state.lastReviewedAt;
+  const nextReviewAt = runtime.state.nextReviewAt;
+  const cells: ReviewHeatmapCell[] = [];
+
+  for (let index = totalDays - 1; index >= 0; index -= 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - index);
+
+    let intensity: 0 | 1 | 2 | 3 | 4 = 0;
+
+    if (lastReviewedAt !== null && toDateKey(date) === lastReviewedAt) {
+      intensity = 4;
+    } else if (nextReviewAt !== null && toDateKey(date) === nextReviewAt) {
+      intensity = 1;
+    } else if (index < Math.min(6, Math.max(2, messageCount))) {
+      intensity = runtime.state.confusion >= 60 ? 2 : 1;
+    } else if (
+      runtime.state.memoryStrength < 60 &&
+      index % Math.max(4, Math.round((100 - runtime.state.memoryStrength) / 10)) === 0
+    ) {
+      intensity = 1;
+    }
+
+    const tooltip =
+      intensity === 0
+        ? `${toDateKey(date)} 暂无复习动作`
+        : `${toDateKey(date)} 复习活跃度 ${intensity}`;
+
+    cells.push({
+      dateKey: toDateKey(date),
+      tooltip,
+      intensity,
+    });
+  }
+
+  return Array.from({ length: 5 }, (_, weekIndex) =>
+    cells.slice(weekIndex * 7, weekIndex * 7 + 7),
+  );
+}
+
+function getHeatmapCellClass(intensity: ReviewHeatmapCell["intensity"]): string {
+  switch (intensity) {
+    case 0:
+      return "bg-[var(--xidea-parchment)]";
+    case 1:
+      return "bg-[#e7d8cf]";
+    case 2:
+      return "bg-[#ddb9a8]";
+    case 3:
+      return "bg-[#d98e70]";
+    case 4:
+      return "bg-[var(--xidea-terracotta)]";
+  }
+}
+
 function SessionCard({
   active,
   title,
@@ -202,39 +342,6 @@ function ProjectCard({
   );
 }
 
-function ProfileCard({
-  active,
-  name,
-  role,
-  onClick,
-}: {
-  active: boolean;
-  name: string;
-  role: string;
-  onClick: () => void;
-}): ReactElement {
-  return (
-    <Card
-      className={
-        active
-          ? "rounded-[1rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none transition-colors"
-          : "rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7]"
-      }
-    >
-      <CardContent className="p-0">
-        <button
-          className="block w-full rounded-[1rem] px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-white)]"
-          onClick={onClick}
-          type="button"
-        >
-          <p className="text-sm font-medium leading-6">{name}</p>
-          <p className="mt-2 text-sm leading-6 text-[var(--xidea-stone)]">{role}</p>
-        </button>
-      </CardContent>
-    </Card>
-  );
-}
-
 function InspectorCard({
   title,
   description,
@@ -281,7 +388,6 @@ export function App(): ReactElement {
     throw new Error("Demo data must contain at least one learner profile, learning unit, and project.");
   }
 
-  const [selectedProfileId, setSelectedProfileId] = useState(initialProfile.id);
   const [projects, setProjects] = useState<ReadonlyArray<ProjectItem>>(initialProjects);
   const [sessions, setSessions] = useState<ReadonlyArray<SessionItem>>(initialSessions);
   const [selectedProjectId, setSelectedProjectId] = useState(initialSessions[0]?.projectId ?? initialProject.id);
@@ -298,17 +404,32 @@ export function App(): ReactElement {
     () => Object.fromEntries(initialSessions.map((session) => [session.id, []])),
   );
 
-  const selectedProfile =
-    learnerProfiles.find((profile) => profile.id === selectedProfileId) ?? initialProfile;
   const selectedSession = sessions.find((session) => session.id === selectedSessionId);
   const selectedUnit =
     learningUnits.find((unit) => unit.id === selectedSession?.unitId) ?? initialUnit;
+  const seedProfile = initialProfile;
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? initialProject;
   const agentBaseUrl = getAgentBaseUrl();
-  const mockRuntime = buildMockRuntimeSnapshot(selectedProfile, selectedUnit);
+  const seedRuntime = buildMockRuntimeSnapshot(seedProfile, selectedUnit);
+  const latestUserInput = getLatestUserDraft(
+    selectedSession ? sessionMessagesById[selectedSession.id] ?? [] : [],
+    draftPrompt,
+  );
+  const inferredProfile = inferLearnerProfile(latestUserInput, seedRuntime, initialProfile);
+  const mockRuntime = buildMockRuntimeSnapshot(inferredProfile, selectedUnit);
   const activeRuntime =
     selectedSession === undefined ? mockRuntime : sessionSnapshots[selectedSession.id] ?? mockRuntime;
+  const selectedProfile = inferLearnerProfile(latestUserInput, activeRuntime, initialProfile);
+  const generatedProfile = buildGeneratedProfileSummary(
+    selectedProfile,
+    activeRuntime,
+    latestUserInput,
+  );
+  const sessionMessageCount = selectedSession
+    ? sessionMessagesById[selectedSession.id]?.length ?? 0
+    : 0;
+  const reviewHeatmap = buildReviewHeatmap(activeRuntime, sessionMessageCount);
   const activeSourceAssets = useMemo(
     () => sourceAssets.filter((asset) => selectedSourceAssetIds.includes(asset.id)),
     [selectedSourceAssetIds],
@@ -368,7 +489,7 @@ export function App(): ReactElement {
 
   useEffect(() => {
     setDraftPrompt(buildDefaultAgentPrompt(selectedProfile, selectedUnit, projectContext));
-  }, [selectedProfile.id, selectedSession?.id, selectedUnit.id]);
+  }, [selectedSession?.id, selectedUnit.id]);
 
   useEffect(() => {
     if (selectedSession === undefined) {
@@ -939,20 +1060,26 @@ export function App(): ReactElement {
           <div className="min-h-0 lg:h-full">
             <ScrollArea className="h-full pr-1">
               <div className="flex flex-col gap-3 pb-1">
-                <InspectorCard description="当前 session 绑定哪个学习者阶段。" title="学习画像">
+                <InspectorCard description="由当前对话、诊断和状态信号动态生成。" title="学习画像">
+                  <Card className="rounded-[1rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none">
+                    <CardContent className="space-y-3 p-4">
+                      <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                        {generatedProfile.title}
+                      </p>
+                      <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">
+                        {generatedProfile.summary}
+                      </p>
+                    </CardContent>
+                  </Card>
                   <div className="space-y-2">
-                    {learnerProfiles.map((profile) => (
-                      <ProfileCard
-                        active={profile.id === selectedProfile.id}
-                        key={profile.id}
-                        name={profile.name}
-                        onClick={() => {
-                          startTransition(() => {
-                            setSelectedProfileId(profile.id);
-                          });
-                        }}
-                        role={profile.role}
-                      />
+                    {generatedProfile.evidence.map((item, index) => (
+                      <div
+                        className="flex items-start gap-3 rounded-[0.95rem] bg-[var(--xidea-parchment)] px-4 py-3 text-sm leading-7 text-[var(--xidea-charcoal)]"
+                        key={`${item}-${index}`}
+                      >
+                        <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-[var(--xidea-terracotta)]" />
+                        <span>{item}</span>
+                      </div>
                     ))}
                   </div>
                 </InspectorCard>
@@ -1006,6 +1133,29 @@ export function App(): ReactElement {
                         {signal}
                       </Badge>
                     ))}
+                  </div>
+                  <div className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-[var(--xidea-near-black)]">复习热力图</p>
+                      <span className="text-xs text-[var(--xidea-stone)]">最近 5 周</span>
+                    </div>
+                    <div className="mt-4 grid grid-cols-5 gap-2">
+                      {reviewHeatmap.map((week, weekIndex) => (
+                        <div className="grid grid-rows-7 gap-2" key={`week-${weekIndex}`}>
+                          {week.map((cell) => (
+                            <div
+                              className={`h-4 w-full rounded-[4px] ${getHeatmapCellClass(cell.intensity)}`}
+                              key={cell.dateKey}
+                              title={cell.tooltip}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex items-center justify-between text-[11px] text-[var(--xidea-stone)]">
+                      <span>低</span>
+                      <span>高</span>
+                    </div>
                   </div>
                 </InspectorCard>
 
