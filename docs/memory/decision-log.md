@@ -4,6 +4,101 @@
 
 ### 决策
 
+项目默认用统一模板来填写 PR 描述，并为此维护独立的 `pr-description` skill：
+当用户说“提 PR”或要求补 PR 描述时，默认按 `Summary / Screenshots / Demo / Risks / Open Questions` 结构输出，而不是临时发挥。
+
+### 原因
+
+- 这轮协作里已经出现重复手动补 PR 描述模板的场景，适合收敛成固定流程
+- PR 描述属于协作交付面，不只是写作细节；统一结构能降低 review 成本
+- 将其拆成独立 skill 后，比继续塞进 `branch-workflow` 更清晰，也更容易触发
+
+### 影响
+
+- 以后在 Xidea repo 里，用户提到“提 PR”“填 desc”“写 PR 描述”时，默认应用这个模板
+- `branch-workflow` 继续负责分支与 PR 流程，`pr-description` 负责描述内容本身
+- 前端分支的 PR 描述默认还应补浏览器验证或 demo 说明，而不是只列 commit
+
+## 2026-04-13
+
+### 决策
+
+项目级前端 skill 需要把 UI 浏览器验证也纳入默认工作流：
+前端任务默认不能只以 `build` 通过或 JSX 目测为完成，应该补做真实浏览器验证，并检查页面结构、关键交互和 console 状态。
+
+### 原因
+
+- 这次已经出现“构建通过，但页面运行时仍有 React 无限更新错误”的情况，证明静态检查不足以覆盖真实 UI 风险
+- 对当前 Xidea workspace 来说，页面结构正确性本身就是产品质量的一部分，必须通过真实页面来验
+- Playwright 会话占用和 stale browser 也是重复性问题，值得写进默认流程而不是每次临时排查
+
+### 影响
+
+- `frontend-design` 和 `react-xidea` 都应要求浏览器级 UI 验证
+- 前端交付默认补做：页面快照、console 检查、至少一个关键交互验证
+- 如果 Playwright 会话卡住，先清理 stale sessions 再继续验证
+
+## 2026-04-13
+
+### 决策
+
+项目级前端 skill 必须同时约束“设计语言”和“实现栈落地”：
+当仓库或用户已明确指定 `shadcn/ui`、Vercel AI SDK、CSS token 方案等前端技术栈时，agent 默认应直接采用，而不是继续用手写 primitive 或自建 chat plumbing 绕开。
+
+### 原因
+
+- 之前虽然已经口头确认了技术栈，但 skill 对“必须实际应用”约束不够强，导致实现阶段仍可能漂回手写方案
+- 对 Xidea 这类比赛版 demo，设计规范、组件规范和样式方案是同一套前端规则，不能只在视觉层面约束，不在实现层面约束
+- 把这条写成项目记忆后，后续前端协作和 agent 执行会更一致
+
+### 影响
+
+- `frontend-design` 不再只是审美和布局指导，也会约束组件体系、CSS 方案和 AI-native surface 的默认实现方式
+- `react-xidea` 在写页面和组件时需要显式尊重项目已选的基础设施，而不是只关注 React 语法和状态组织
+- 以后如果用户指定前端栈，交付结果必须能在 diff 中看到真实接入，而不是只停留在依赖安装或计划描述
+
+## 2026-04-13
+
+### 决策
+
+当前比赛版 web 前端采用 `shadcn/ui + Vercel AI SDK` 作为默认交互壳：
+`shadcn/ui` 负责 workspace 基础控件与视觉一致性，Vercel AI SDK 负责 thread 区消息流和 transport 抽象；Python + LangGraph 继续作为核心编排层。
+
+### 原因
+
+- 当前 workspace 已经收敛到 thread / inspector 结构，继续手写所有基础控件会增加重复 UI 成本，不利于后续快速迭代
+- 中间 thread 区已经开始像真实对话界面，继续直接维护本地消息拼接会让 streaming、消息状态和后续 AI-native UI 扩展越来越别扭
+- 用 AI SDK 承接 chat surface，可以保持 web 交互层的演进空间，同时不改变现有 Python agent runtime 的主导地位
+
+### 影响
+
+- `apps/web` 后续优先复用 `src/components/ui/*` 中的 shadcn 组件，而不是继续新增手写基础 primitive
+- chat / thread 相关交互默认优先走 AI SDK 的 `useChat` 和 transport 适配层
+- `/runs/v0` 现阶段继续通过自定义 transport 映射到 UI message stream，不要求后端立即重写成 AI SDK 原生协议
+
+## 2026-04-13
+
+### 决策
+
+当前比赛版 web workspace 采用“克制的 codex-style 三栏布局”作为默认前端规则：
+左侧只承接 `project -> sessions` 导航，中间只承接当前 thread 与当前动作，右侧只承接学习画像、复习系统和项目特有 inspector。
+
+### 原因
+
+- 之前的首页虽然能讲故事，但信息密度过高，容易退化成“超长卡片”和自我解释页面
+- 当前比赛答辩更需要像一个可操作工具，而不是一张会说话的海报
+- 把导航、主工作区、inspector 拆开后，评委更容易在短时间内理解系统正在处理什么、为什么这样处理
+
+### 影响
+
+- 后续 web 界面默认优先采用 workspace / inspector 结构，而不是大段 hero、分屏说明或堆叠卡片
+- 侧边栏文字默认保持单行截断，避免列表高度失控
+- 颜色系统默认以中性色为主，只保留少量品牌强调色和必要状态信号
+
+## 2026-04-13
+
+### 决策
+
 `learn-engine` 分支作为当前第一版 agent 实现主线，统一收敛到 `AgentRequest / diagnosis / plan / state-patch / StreamEvent` 这套 v0 contract，并在其上继续扩展 LangGraph、SQLite 状态层和 web 联调。
 
 ### 原因

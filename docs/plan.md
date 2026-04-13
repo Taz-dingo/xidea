@@ -35,6 +35,8 @@
   - owner: 学习引擎 owner
 - [ ] 准备答辩素材和对比竞品摘要
   - owner: 产品 owner
+- [ ] 整理 `docs/memory/decision-log.md` 与文档分层，控制长期记忆体积
+  - owner: 全员
 
 ## Implementation Checklist v0
 
@@ -68,6 +70,7 @@
 6. `apps/web` 接入真实 agent API
    - 使用 Vercel AI SDK 管理 message stream
    - 渲染 diagnosis、plan、state-patch 三类结构化结果
+   - 首页前端 v0 叙事壳已完成，下一步优先把 mock 证据链切到真实 `/runs/v0` 数据
 7. `apps/web` 保持比赛主案例聚焦
    - 默认围绕 RAG 项目学习
    - 确保证据链默认可见
