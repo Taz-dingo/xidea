@@ -910,106 +910,55 @@ export function App(): ReactElement {
 
               <div className="min-h-0 flex-1 px-5 lg:px-6">
                 <ScrollArea className="h-full pr-3">
-                  <div className="space-y-3 pb-4">
+                  <div className="space-y-4 pb-4">
                     {selectedEntryMode === "material-import" ? (
-                      <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
-                              <FileInput className="h-4 w-4" />
-                            </div>
-                            <div>
-                              <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">材料进入</CardTitle>
-                              <CardDescription className="text-sm text-[var(--xidea-stone)]">
-                                先告诉系统这轮要读哪几份材料，再决定如何编排学习动作。
-                              </CardDescription>
-                            </div>
+                      <section className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
+                            <FileInput className="h-4 w-4" />
                           </div>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                          <div className="grid gap-3 lg:grid-cols-2">
-                            {sourceAssets.map((asset) => {
-                              const selected = selectedSourceAssetIds.includes(asset.id);
+                          <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
+                        </div>
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          {sourceAssets.map((asset) => {
+                            const selected = selectedSourceAssetIds.includes(asset.id);
 
-                              return (
-                                <button
-                                  className={
-                                    selected
-                                      ? "rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-4 py-4 text-left transition-colors"
-                                      : "rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-4 py-4 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f2ee]"
-                                  }
-                                  key={asset.id}
-                                  onClick={() => {
-                                    setSelectedSourceAssetIds((current) =>
-                                      current.includes(asset.id)
-                                        ? current.filter((id) => id !== asset.id)
-                                        : [...current, asset.id],
-                                    );
-                                  }}
-                                  type="button"
-                                >
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                                      {asset.title}
-                                    </p>
-                                    <Badge
-                                      className="border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-stone)] shadow-none"
-                                      variant="outline"
-                                    >
-                                      {getAssetKindLabel(asset.kind)}
-                                    </Badge>
-                                  </div>
-                                  <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                                    {asset.topic}
+                            return (
+                              <button
+                                className={
+                                  selected
+                                    ? "rounded-[1rem] bg-[var(--xidea-selection)] px-4 py-4 text-left transition-colors"
+                                    : "rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4 text-left transition-colors hover:bg-[#f8f2ee]"
+                                }
+                                key={asset.id}
+                                onClick={() => {
+                                  setSelectedSourceAssetIds((current) =>
+                                    current.includes(asset.id)
+                                      ? current.filter((id) => id !== asset.id)
+                                      : [...current, asset.id],
+                                  );
+                                }}
+                                type="button"
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                                    {asset.title}
                                   </p>
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          <div className="rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                            {activeSourceAssets.length > 0
-                              ? `这轮会把 ${activeSourceAssets.length} 份材料带入 agent：${activeSourceAssets
-                                  .map((asset) => asset.title)
-                                  .join(" / ")}`
-                              : "先选择至少一份材料，再让系统基于材料决定下一步训练动作。"}
-                          </div>
-                        </CardContent>
-                      </Card>
+                                  <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+                                    {getAssetKindLabel(asset.kind)}
+                                  </span>
+                                </div>
+                                <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
+                                  {asset.topic}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
                     ) : null}
 
-                    {selectedSession === undefined ? (
-                      <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                        <CardHeader className="pb-3">
-                          <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">当前 project</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                          <p>这个 project 还没有 session。</p>
-                          <p>先在左侧当前 project 下新建 session，再开始这一轮 agent 运行。</p>
-                        </CardContent>
-                      </Card>
-                    ) : messages.length === 0 ? (
-                      isBlankSession ? null : (
-                      <>
-                        <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                          <CardHeader className="pb-3">
-                            <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">当前输入</CardTitle>
-                          </CardHeader>
-                          <CardContent className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                            {draftPrompt.trim() || "输入为空。"}
-                          </CardContent>
-                        </Card>
-                        <Card className="rounded-[1.2rem] border-[#ebd5cc] bg-[#f5ede9] shadow-none">
-                          <CardHeader className="pb-3">
-                            <CardTitle className="xidea-kicker text-[var(--xidea-selection-text)]">系统判断</CardTitle>
-                          </CardHeader>
-                          <CardContent className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                            {activeRuntime.decision.reason}
-                          </CardContent>
-                        </Card>
-                      </>
-                      )
-                    ) : (
+                    {selectedSession === undefined || messages.length === 0 ? null : (
                       messages.map((message) => {
                         const isAssistant = message.role === "assistant";
                         const rawText = getMessageText(message);
@@ -1051,9 +1000,9 @@ export function App(): ReactElement {
                                   ) : null}
                                 </div>
                                 {shouldCollapseAssistant && !isExpanded ? (
-                                  <p className="mb-2 text-[12px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
-                                    核心摘要
-                                  </p>
+                                  <span className="mb-2 block text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+                                    摘要
+                                  </span>
                                 ) : null}
                                 <div className="text-[14px] leading-6 whitespace-pre-wrap text-[var(--xidea-charcoal)]">
                                   {visibleText}
@@ -1081,32 +1030,15 @@ export function App(): ReactElement {
                       })
                     )}
 
-                    {isBlankSession ? (
-                      <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                        <CardHeader className="pb-3">
-                          <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">空白 Session</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                          <p>这是一个真正的新 session，还没有默认材料、画像、路径或历史消息。</p>
-                          <p>直接输入你的问题，系统会从这一轮开始生成状态。</p>
-                        </CardContent>
-                      </Card>
-                    ) : (
-                    <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
-                            <Route className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">下一步路径</CardTitle>
-                            <CardDescription className="text-sm text-[var(--xidea-stone)]">
-                              由当前 runtime 决定的前三步。
-                            </CardDescription>
-                          </div>
+                    {!isBlankSession ? (
+                    <section className="space-y-3 py-2">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
+                          <Route className="h-4 w-4" />
                         </div>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
+                        <p className="xidea-kicker text-[var(--xidea-stone)]">路径</p>
+                      </div>
+                      <div className="space-y-3">
                         {activeRuntime.plan.steps.slice(0, 3).map((step, index) => (
                           <div
                             className="flex items-start gap-4 rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4"
@@ -1129,29 +1061,21 @@ export function App(): ReactElement {
                             </div>
                           </div>
                         ))}
-                      </CardContent>
-                    </Card>
-                    )}
+                      </div>
+                    </section>
+                    ) : null}
 
                     {!isBlankSession ? (
-                    <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                      <CardHeader className="gap-3 pb-3">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">编排证据链</CardTitle>
-                            <CardDescription className="text-sm text-[var(--xidea-stone)]">
-                              默认只显示核心判断，需要时再展开细节。
-                            </CardDescription>
-                          </div>
+                    <section className="space-y-4 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="xidea-kicker text-[var(--xidea-stone)]">编排证据</p>
+                        <div className="flex items-center gap-2">
+                          {activeRuntime.decision.confidence !== null ? (
+                            <span className="text-[12px] font-medium text-[var(--xidea-selection-text)]">
+                              {(activeRuntime.decision.confidence * 100).toFixed(0)}%
+                            </span>
+                          ) : null}
                           <div className="flex items-center gap-2">
-                            {activeRuntime.decision.confidence !== null ? (
-                              <Badge
-                                className="border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] shadow-none"
-                                variant="outline"
-                              >
-                                {(activeRuntime.decision.confidence * 100).toFixed(0)}%
-                              </Badge>
-                            ) : null}
                             <Button
                               className="h-8 w-8 rounded-[0.85rem] text-[var(--xidea-stone)] hover:bg-[var(--xidea-parchment)] hover:text-[var(--xidea-near-black)]"
                               onClick={() => {
@@ -1169,81 +1093,65 @@ export function App(): ReactElement {
                             </Button>
                           </div>
                         </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4">
-                          <p className="xidea-kicker text-[var(--xidea-stone)]">核心判断</p>
-                          <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                            {activeRuntime.decision.reason}
-                          </p>
-                        </div>
+                      </div>
 
-                        {isEvidenceExpanded ? (
-                          <>
-                            <div className="grid gap-3 lg:grid-cols-3">
-                              {activeRuntime.signalCards.map((signal) => (
-                                <Card
-                                  className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none"
-                                  key={signal.id}
+                      <div className="text-sm leading-7 text-[var(--xidea-charcoal)]">
+                        {activeRuntime.decision.reason}
+                      </div>
+
+                      {isEvidenceExpanded ? (
+                        <>
+                          <div className="grid gap-3 lg:grid-cols-3">
+                            {activeRuntime.signalCards.map((signal) => (
+                              <div className="space-y-2 rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4" key={signal.id}>
+                                <p className="xidea-kicker text-[var(--xidea-selection-text)]">
+                                  {signal.label}
+                                </p>
+                                <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+                                  {signal.observation}
+                                </p>
+                                <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                                  {signal.implication}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="xidea-kicker text-[var(--xidea-stone)]">Rationale</p>
+                            {activeRuntime.rationale.length > 0 ? (
+                              activeRuntime.rationale.map((item, index) => (
+                                <div
+                                  className="flex items-start gap-3 text-sm leading-7 text-[var(--xidea-charcoal)]"
+                                  key={`${item}-${index}`}
                                 >
-                                  <CardContent className="space-y-2 p-4">
-                                    <p className="xidea-kicker text-[var(--xidea-selection-text)]">
-                                      {signal.label}
-                                    </p>
-                                    <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
-                                      {signal.observation}
-                                    </p>
-                                    <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                                      {signal.implication}
-                                    </p>
-                                  </CardContent>
-                                </Card>
-                              ))}
-                            </div>
+                                  <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-[var(--xidea-terracotta)]" />
+                                  <span>{item}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">
+                                {activeRuntime.decision.reason}
+                              </p>
+                            )}
+                          </div>
 
-                            <div className="rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4">
-                              <p className="xidea-kicker text-[var(--xidea-stone)]">为什么是这个动作</p>
-                              <div className="mt-3 space-y-2">
-                                {activeRuntime.rationale.length > 0 ? (
-                                  activeRuntime.rationale.map((item, index) => (
-                                    <div
-                                      className="flex items-start gap-3 text-sm leading-7 text-[var(--xidea-charcoal)]"
-                                      key={`${item}-${index}`}
-                                    >
-                                      <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-[var(--xidea-terracotta)]" />
-                                      <span>{item}</span>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                                    {activeRuntime.decision.reason}
-                                  </p>
-                                )}
+                          <div className="space-y-3">
+                            <p className="xidea-kicker text-[var(--xidea-stone)]">Writeback</p>
+                            {activeRuntime.writeback.map((item) => (
+                              <div className="space-y-1 rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4" key={item.id}>
+                                <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                                  {item.target}
+                                </p>
+                                <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                                  {item.change}
+                                </p>
                               </div>
-                            </div>
-
-                            <div className="rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4">
-                              <p className="xidea-kicker text-[var(--xidea-stone)]">状态回写预览</p>
-                              <div className="mt-3 space-y-3">
-                                {activeRuntime.writeback.map((item) => (
-                                  <div
-                                    className="rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3"
-                                    key={item.id}
-                                  >
-                                    <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                                      {item.target}
-                                    </p>
-                                    <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                                      {item.change}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </>
-                        ) : null}
-                      </CardContent>
-                    </Card>
+                            ))}
+                          </div>
+                        </>
+                      ) : null}
+                    </section>
                     ) : null}
                   </div>
                 </ScrollArea>
@@ -1338,11 +1246,13 @@ export function App(): ReactElement {
                       Profile
                     </p>
                     <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">
-                      {isBlankSession ? "等待系统根据对话生成学习画像" : generatedProfile.title}
+                      {isBlankSession ? "--" : generatedProfile.title}
                     </p>
-                    <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                      {isBlankSession ? "先发起一轮对话，画像和证据会跟着诊断结果出现。" : generatedProfile.evidence[0]}
-                    </p>
+                    {!isBlankSession ? (
+                      <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                        {generatedProfile.evidence[0]}
+                      </p>
+                    ) : null}
                   </div>
                 </MonitorSection>
 
@@ -1370,11 +1280,6 @@ export function App(): ReactElement {
                       </Badge>
                     ))}
                   </div>
-                  {isBlankSession ? (
-                    <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
-                      还没有复习信号，等第一轮运行后再生成。
-                    </p>
-                  ) : null}
                   <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3">
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
@@ -1418,12 +1323,14 @@ export function App(): ReactElement {
                     <div className="flex items-center gap-2">
                       <Brain className="h-4 w-4 text-[var(--xidea-terracotta)]" />
                       <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                        {isBlankSession ? "等待首轮编排" : activeRuntime.decision.title}
+                        {isBlankSession ? "--" : activeRuntime.decision.title}
                       </p>
                     </div>
-                    <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                      {isBlankSession ? "当前还没有材料上下文或运行结果，先从一条输入开始。" : activeRuntime.decision.objective}
-                    </p>
+                    {!isBlankSession ? (
+                      <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                        {activeRuntime.decision.objective}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {(selectedUnit?.candidateModes ?? []).slice(0, 3).map((mode) => (

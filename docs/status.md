@@ -68,6 +68,7 @@
 - `apps/web` 的左栏 project 已改为文件夹开关图标，并为 session reveal 补上轻量展开收起动画
 - `apps/web` 的 agent 输出已默认收成核心摘要，长解释与证据链需要显式展开，用户输入与系统输出的视觉层级已拉开
 - `apps/web` 的右栏已重构为监控型高信息密度面板，当前聚焦 session、learner、review 和 materials 四组状态
+- `apps/web` 中栏已进一步收敛到“只有用户输入保留卡片，系统输出与诊断改走无边框信息流”，同时空白 session 不再显示解释性提示文案
 
 ### In Progress
 
