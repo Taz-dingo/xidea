@@ -3,6 +3,8 @@ import type { UIMessage } from "ai";
 import { startTransition, useEffect, useMemo, useState, type ReactElement } from "react";
 import {
   Brain,
+  ChevronDown,
+  ChevronRight,
   FileInput,
   FolderOpen,
   MessageSquareText,
@@ -341,9 +343,9 @@ function ProjectCard({
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{name}</p>
-          <p className="text-[11px] text-[var(--xidea-stone)]">
-            {expanded ? "展开中" : "已收起"}
-          </p>
+        </div>
+        <div className="text-[var(--xidea-stone)]">
+          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </div>
       </button>
 
@@ -417,6 +419,7 @@ export function App(): ReactElement {
   const [selectedSourceAssetIds, setSelectedSourceAssetIds] = useState<ReadonlyArray<string>>(
     () => sourceAssets.map((asset) => asset.id),
   );
+  const [isEvidenceExpanded, setIsEvidenceExpanded] = useState(false);
   const [draftPrompt, setDraftPrompt] = useState(() =>
     buildDefaultAgentPrompt(initialProfile, initialUnit, projectContext),
   );
@@ -511,6 +514,10 @@ export function App(): ReactElement {
   useEffect(() => {
     setDraftPrompt(buildDefaultAgentPrompt(selectedProfile, selectedUnit, projectContext));
   }, [selectedSession?.id, selectedUnit.id]);
+
+  useEffect(() => {
+    setIsEvidenceExpanded(false);
+  }, [selectedSession?.id]);
 
   useEffect(() => {
     if (selectedSession === undefined) {
@@ -873,31 +880,42 @@ export function App(): ReactElement {
                         </Card>
                       </>
                     ) : (
-                      messages.map((message) => (
-                        <Card
-                          className={
-                            message.role === "assistant"
-                              ? "rounded-[1.2rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none"
-                              : "rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none"
-                          }
-                          key={message.id}
-                        >
-                          <CardHeader className="pb-3">
-                            <CardTitle
+                      messages.map((message) => {
+                        const isAssistant = message.role === "assistant";
+
+                        return (
+                          <div
+                            className={isAssistant ? "flex justify-start" : "flex justify-end"}
+                            key={message.id}
+                          >
+                            <Card
                               className={
-                                message.role === "assistant"
-                                  ? "xidea-kicker text-[var(--xidea-selection-text)]"
-                                  : "xidea-kicker text-[var(--xidea-stone)]"
+                                isAssistant
+                                  ? "w-full max-w-[84%] rounded-[1.2rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none"
+                                  : "w-full max-w-[78%] rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none"
                               }
                             >
-                              {message.role === "assistant" ? "当前动作" : "当前输入"}
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                            {getMessageText(message)}
-                          </CardContent>
-                        </Card>
-                      ))
+                              <CardHeader className="pb-3">
+                                <div className="flex items-center gap-2">
+                                  <Badge
+                                    className={
+                                      isAssistant
+                                        ? "border-transparent bg-[var(--xidea-white)] text-[var(--xidea-selection-text)] shadow-none"
+                                        : "border-[var(--xidea-border)] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)] shadow-none"
+                                    }
+                                    variant="outline"
+                                  >
+                                    {isAssistant ? "系统" : "用户"}
+                                  </Badge>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="text-sm leading-7 text-[var(--xidea-charcoal)]">
+                                {getMessageText(message)}
+                              </CardContent>
+                            </Card>
+                          </div>
+                        );
+                      })
                     )}
 
                     <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
@@ -946,80 +964,108 @@ export function App(): ReactElement {
                           <div>
                             <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">编排证据链</CardTitle>
                             <CardDescription className="text-sm text-[var(--xidea-stone)]">
-                              把当前诊断、动作依据和状态回写默认展开。
+                              默认只显示核心判断，需要时再展开细节。
                             </CardDescription>
                           </div>
-                          {activeRuntime.decision.confidence !== null ? (
-                            <Badge
-                              className="border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] shadow-none"
-                              variant="outline"
+                          <div className="flex items-center gap-2">
+                            {activeRuntime.decision.confidence !== null ? (
+                              <Badge
+                                className="border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] shadow-none"
+                                variant="outline"
+                              >
+                                {(activeRuntime.decision.confidence * 100).toFixed(0)}%
+                              </Badge>
+                            ) : null}
+                            <Button
+                              className="h-8 w-8 rounded-[0.85rem] text-[var(--xidea-stone)] hover:bg-[var(--xidea-parchment)] hover:text-[var(--xidea-near-black)]"
+                              onClick={() => {
+                                setIsEvidenceExpanded((current) => !current);
+                              }}
+                              size="icon"
+                              type="button"
+                              variant="ghost"
                             >
-                              置信度 {(activeRuntime.decision.confidence * 100).toFixed(0)}%
-                            </Badge>
-                          ) : null}
+                              {isEvidenceExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        <div className="grid gap-3 lg:grid-cols-3">
-                          {activeRuntime.signalCards.map((signal) => (
-                            <Card
-                              className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none"
-                              key={signal.id}
-                            >
-                              <CardContent className="space-y-2 p-4">
-                                <p className="xidea-kicker text-[var(--xidea-selection-text)]">
-                                  {signal.label}
-                                </p>
-                                <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
-                                  {signal.observation}
-                                </p>
-                                <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                                  {signal.implication}
-                                </p>
-                              </CardContent>
-                            </Card>
-                          ))}
+                        <div className="rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4">
+                          <p className="xidea-kicker text-[var(--xidea-stone)]">核心判断</p>
+                          <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
+                            {activeRuntime.decision.reason}
+                          </p>
                         </div>
 
-                        <div className="rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4">
-                          <p className="xidea-kicker text-[var(--xidea-stone)]">为什么是这个动作</p>
-                          <div className="mt-3 space-y-2">
-                            {activeRuntime.rationale.length > 0 ? (
-                              activeRuntime.rationale.map((item, index) => (
-                                <div
-                                  className="flex items-start gap-3 text-sm leading-7 text-[var(--xidea-charcoal)]"
-                                  key={`${item}-${index}`}
+                        {isEvidenceExpanded ? (
+                          <>
+                            <div className="grid gap-3 lg:grid-cols-3">
+                              {activeRuntime.signalCards.map((signal) => (
+                                <Card
+                                  className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none"
+                                  key={signal.id}
                                 >
-                                  <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-[var(--xidea-terracotta)]" />
-                                  <span>{item}</span>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                                {activeRuntime.decision.reason}
-                              </p>
-                            )}
-                          </div>
-                        </div>
+                                  <CardContent className="space-y-2 p-4">
+                                    <p className="xidea-kicker text-[var(--xidea-selection-text)]">
+                                      {signal.label}
+                                    </p>
+                                    <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+                                      {signal.observation}
+                                    </p>
+                                    <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">
+                                      {signal.implication}
+                                    </p>
+                                  </CardContent>
+                                </Card>
+                              ))}
+                            </div>
 
-                        <div className="rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4">
-                          <p className="xidea-kicker text-[var(--xidea-stone)]">状态回写预览</p>
-                          <div className="mt-3 space-y-3">
-                            {activeRuntime.writeback.map((item) => (
-                              <div
-                                className="rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3"
-                                key={item.id}
-                              >
-                                <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                                  {item.target}
-                                </p>
-                                <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                                  {item.change}
-                                </p>
+                            <div className="rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4">
+                              <p className="xidea-kicker text-[var(--xidea-stone)]">为什么是这个动作</p>
+                              <div className="mt-3 space-y-2">
+                                {activeRuntime.rationale.length > 0 ? (
+                                  activeRuntime.rationale.map((item, index) => (
+                                    <div
+                                      className="flex items-start gap-3 text-sm leading-7 text-[var(--xidea-charcoal)]"
+                                      key={`${item}-${index}`}
+                                    >
+                                      <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-[var(--xidea-terracotta)]" />
+                                      <span>{item}</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">
+                                    {activeRuntime.decision.reason}
+                                  </p>
+                                )}
                               </div>
-                            ))}
-                          </div>
-                        </div>
+                            </div>
+
+                            <div className="rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4">
+                              <p className="xidea-kicker text-[var(--xidea-stone)]">状态回写预览</p>
+                              <div className="mt-3 space-y-3">
+                                {activeRuntime.writeback.map((item) => (
+                                  <div
+                                    className="rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3"
+                                    key={item.id}
+                                  >
+                                    <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                                      {item.target}
+                                    </p>
+                                    <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
+                                      {item.change}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        ) : null}
                       </CardContent>
                     </Card>
                   </div>
