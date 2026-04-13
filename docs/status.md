@@ -56,6 +56,10 @@
 - 新增效果评估：检测上一轮动作是否改善对应指标，无效动作自动降权
 - 新增 `POST /runs/v0/stream` SSE streaming endpoint，事件序列 text-delta → diagnosis → plan → state-patch → done
 - 新增 19 个测试（15 决策路径 + 4 SSE），总计 54 个全部通过
+- `apps/web` 请求已按当前 `project / session` 真实绑定到 agent `project_id / thread_id`，不同 session 不再共用后端线程状态
+- `apps/web` 已切到真实 SSE 消费 `/runs/v0/stream`，thread 区改为跟随后端流式事件逐步渲染
+- `apps/web` 已把编排证据链默认展开，当前可直接查看诊断信号、动作依据与完整状态回写预览
+- `apps/web` 的 `material-import` 已升级为真实材料入口面板，支持选择本轮带入材料并约束发送条件
 
 ### In Progress
 
@@ -64,7 +68,6 @@
 ### Next
 
 - 决定第一版 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
-- 前端切换到 SSE 消费 `/runs/v0/stream`，实现流式渲染
 
 ### Risks
 
