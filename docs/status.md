@@ -65,10 +65,13 @@
 - `apps/web` 的学习画像已改为根据当前对话与运行态自动生成，不再由用户手动切换
 - `apps/web` 的复习系统已新增 GitHub-style 近 5 周复习热力图
 - `apps/web` 主布局已收敛为基础态 + `lg` 两段响应式，不再继续细分更碎的宽度区间
+- `apps/web` 的左栏 project 已改为文件夹开关图标，并为 session reveal 补上轻量展开收起动画
+- `apps/web` 的 agent 输出已默认收成核心摘要，长解释与证据链需要显式展开，用户输入与系统输出的视觉层级已拉开
 
 ### In Progress
 
 - 保持 web demo 简洁可演示，同时继续对齐后续 agent runtime 接口
+- 讨论并准备右侧 inspector 的监控型重构，同时规划学习画像 / 复习热力图 / 材料面板接真实系统
 
 ### Next
 
