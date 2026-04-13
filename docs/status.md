@@ -60,6 +60,11 @@
 - `apps/web` 已切到真实 SSE 消费 `/runs/v0/stream`，thread 区改为跟随后端流式事件逐步渲染
 - `apps/web` 已把编排证据链默认展开，当前可直接查看诊断信号、动作依据与完整状态回写预览
 - `apps/web` 的 `material-import` 已升级为真实材料入口面板，支持选择本轮带入材料并约束发送条件
+- `apps/web` 中栏输入区已收成单一输入框 + 内嵌发送按钮，thread 与 inspector 滚动区默认显示可见滚动条
+- `apps/web` 左栏已收敛为更紧凑的 codex-style workspace 导航：project 用图标行呈现，session 只保留标题级信息
+- `apps/web` 的学习画像已改为根据当前对话与运行态自动生成，不再由用户手动切换
+- `apps/web` 的复习系统已新增 GitHub-style 近 5 周复习热力图
+- `apps/web` 主布局已收敛为基础态 + `lg` 两段响应式，不再继续细分更碎的宽度区间
 
 ### In Progress
 
