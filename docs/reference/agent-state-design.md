@@ -26,7 +26,7 @@ Agent 推荐的 5 种高层训练动作：
 
 | 值 | 触发条件 | 出处 |
 |---|---|---|
-| `teach` | 用户没懂，需要先教学 | `scientific-review-integration.md` |
+| `teach` | 用户没懂，需要先教学 | `product-brief.md` |
 | `clarify` | 用户容易混淆，需要澄清 | 同上 |
 | `practice` | 基本理解但不稳，需要练习 | 同上 |
 | `review` | 会了但快忘，进入复习节奏 | 同上 |
@@ -293,8 +293,8 @@ result = app.invoke(GraphState())  # 全 mock 运行
 | 规则 ID | 规则名 | 约束内容 | 出处 |
 |---|---|---|---|
 | G1 | 诊断优先 | 必须先完成诊断才能选择训练动作 | decision-log |
-| G2 | 不懂不复习 | understanding_level < 40 时禁止 REVIEW | scientific-review-integration.md |
-| G3 | 高混淆先澄清 | confusion >= 70 时必须包含澄清类步骤 | scientific-review-integration.md |
+| G2 | 不懂不复习 | understanding_level < 40 时禁止 REVIEW | product-brief.md |
+| G3 | 高混淆先澄清 | confusion >= 70 时必须包含澄清类步骤 | product-brief.md |
 | G4 | 模式匹配 | 选择的 mode 必须在 unit.candidate_modes 内 | 前端 planner.ts 隐含 |
 | G5 | 必须解释 | 每个 step 必须有非空 reason | spec.md |
 

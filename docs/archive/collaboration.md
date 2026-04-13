@@ -1,5 +1,7 @@
 # 协作约定
 
+> 已归档。当前协作 source of truth 以 `CONTRIBUTING.md` 和 `docs/process/collaboration-playbook.md` 为准。
+
 ## 推荐分工
 
 ### Guang
@@ -50,4 +52,3 @@
 ## 决策记录
 
 建议后续新增 `docs/adr/`，每个关键决策单独一页，避免反复争论。
-

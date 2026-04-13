@@ -124,7 +124,7 @@ curl -X POST http://127.0.0.1:8000/runs/v0 \
 
 - `apps/web`: React + Tailwind + shadcn/ui-oriented frontend
 - `apps/agent`: Python + LangChain + LangGraph orchestration core
-- `docs/`: 产品、架构、协作、记忆文档
+- `docs/`: 按 operating docs / process guides / reference docs 分层的项目文档
 - `.agents/skills/`: 项目级 skills
 
 ## Operating Docs
@@ -133,6 +133,7 @@ curl -X POST http://127.0.0.1:8000/runs/v0 \
 - `docs/plan.md`: 当前阶段接下来做什么
 - `docs/status.md`: 当前已经做到哪里
 - `docs/memory/`: 长期记忆与决策
+- `docs/README.md`: 文档总入口和分层说明
 
 默认从项目级 skill `project-onboarding` 开始进入仓库上下文。
 
@@ -144,6 +145,7 @@ curl -X POST http://127.0.0.1:8000/runs/v0 \
 
 ## Collaboration
 
-- 分支和 PR 规则见 [CONTRIBUTING.md](/Users/chenguang/Dingo%20Projetcts/xidea/CONTRIBUTING.md)
-- 三人协作方式见 [docs/collaboration-playbook.md](/Users/chenguang/Dingo%20Projetcts/xidea/docs/collaboration-playbook.md)
-- agent 长期记忆管理见 [docs/agent-memory.md](/Users/chenguang/Dingo%20Projetcts/xidea/docs/agent-memory.md)
+- 分支和 PR 规则见 [CONTRIBUTING.md](CONTRIBUTING.md)
+- 三人协作方式见 [docs/process/collaboration-playbook.md](docs/process/collaboration-playbook.md)
+- agent 长期记忆管理见 [docs/process/agent-memory.md](docs/process/agent-memory.md)
+- 文档入口和分层说明见 [docs/README.md](docs/README.md)

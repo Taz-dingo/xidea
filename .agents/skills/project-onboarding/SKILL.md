@@ -24,16 +24,19 @@ This skill is the default entrypoint when someone needs to understand:
 Read these files in order:
 
 1. [../../../AGENTS.md](../../../AGENTS.md)
-2. [../../../docs/spec.md](../../../docs/spec.md)
-3. [../../../docs/status.md](../../../docs/status.md)
-4. [../../../docs/plan.md](../../../docs/plan.md)
-5. [../../../docs/agent-memory.md](../../../docs/agent-memory.md)
-6. [../../../docs/memory/project-context.md](../../../docs/memory/project-context.md)
-7. [../../../docs/memory/decision-log.md](../../../docs/memory/decision-log.md)
-8. [../../../docs/memory/open-questions.md](../../../docs/memory/open-questions.md)
-9. [../../../CONTRIBUTING.md](../../../CONTRIBUTING.md)
+2. [../../../docs/README.md](../../../docs/README.md)
+3. [../../../docs/spec.md](../../../docs/spec.md)
+4. [../../../docs/status.md](../../../docs/status.md)
+5. [../../../docs/plan.md](../../../docs/plan.md)
+6. [../../../docs/process/collaboration-playbook.md](../../../docs/process/collaboration-playbook.md)
+7. [../../../docs/process/agent-memory.md](../../../docs/process/agent-memory.md)
+8. [../../../docs/memory/project-context.md](../../../docs/memory/project-context.md)
+9. [../../../docs/memory/decision-log.md](../../../docs/memory/decision-log.md)
+10. [../../../docs/memory/open-questions.md](../../../docs/memory/open-questions.md)
+11. [../../../CONTRIBUTING.md](../../../CONTRIBUTING.md)
 
-Only read older or broader docs like `product-brief.md` and `architecture.md` if the current task truly needs them.
+Only read older or broader docs under `docs/reference/` like `product-brief.md`, `competition-defense-kit.md`, `architecture.md`, and `agent-state-design.md` if the current task truly needs them.
+Only read `docs/archive/` when historical context is truly needed.
 
 ## Expected Output After Reading
 
@@ -51,10 +54,14 @@ After reading, the agent should be able to state:
 - `spec.md`: what we are building now
 - `plan.md`: what we are doing next
 - `status.md`: where things currently stand
+- `docs/process/*`: recurring workflow and maintenance rules
 - `docs/memory/*`: long-lived memory
 
 Treat `spec / plan / status` as the current operating layer.
+Treat `docs/process/` as the current workflow layer.
 Treat `docs/memory/` as durable memory that survives across sessions.
+Treat `docs/reference/` as background material, not default truth.
+Treat `docs/archive/` as historical context only.
 
 ## Working Rules
 
@@ -93,6 +100,7 @@ If the answers are still fuzzy, stop broad implementation and clarify the workst
 ### Update `docs/memory/*`
 
 - when a decision becomes durable and relevant beyond the current task
+- when the decision still belongs in the active log instead of archive
 
 ## Task Routing
 
@@ -100,7 +108,7 @@ Current default split:
 
 - learning-engine workstream: `apps/agent/src/xidea_agent`, agent contract, runtime, repository, guardrails, API, backend tests
 - frontend workstream: `apps/web/src/app`, `apps/web/src/components`, evidence-chain UI, demo orchestration, agent API consumption
-- product-demo workstream: `docs/spec.md`, `docs/status.md`, `docs/plan.md`, `docs/product-brief.md`, demo script, story framing, copy and judging narrative
+- product-demo workstream: `docs/spec.md`, `docs/status.md`, `docs/plan.md`, `docs/reference/product-brief.md`, demo script, story framing, copy and judging narrative
 
 For UI simplification or presentation work:
 
