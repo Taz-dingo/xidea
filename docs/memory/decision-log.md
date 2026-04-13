@@ -631,3 +631,29 @@ LangGraph 第一版采用 6 节点最小主链路：`load_context -> diagnose ->
 - `Explanation.evidence` 现在包含 `action-scores` 排名，前端可展示决策透明度
 - 新增 15 个测试（覆盖 A/B/C/D 四个改进），总计 50 个全部通过
 - 不改 `state.py` schema，完全向后兼容
+
+---
+
+## 2026-04-14: 新增 FastAPI SSE streaming endpoint
+
+### 决策
+
+在 `api.py` 新增 `POST /runs/v0/stream` endpoint，使用 SSE (Server-Sent Events) 格式逐个推送 `StreamEvent`。
+
+### 原因
+
+- 前端 v0 已通过 custom transport 对接 `/runs/v0`，但当前返回完整 JSON，无法逐步渲染
+- SSE 是浏览器原生支持的流式协议，兼容性好，实现简单
+- 保留原有 `/runs/v0` 同步端点不变，前端可渐进迁移
+
+### 实现
+
+- 复用 `run_agent_v0()` 完整执行流程，然后用 `_iter_sse_events()` 逐个 yield 事件
+- 每个 SSE 消息格式：`event: <type>\ndata: <json>\n\n`
+- 事件序列：`text-delta → diagnosis → plan → state-patch → done`
+- 新增 4 个测试验证 SSE 格式、JSON 解析、诊断内容和持久化
+
+### 影响
+
+- 前端 owner 可在 `agent-chat-transport.ts` 中切换到 `EventSource` 或 `fetch + ReadableStream`
+- 后续可在 LLM 接入后升级为真正的逐 token streaming
