@@ -10,16 +10,16 @@ Python orchestration core for Xidea.
 
 ## Current Scope
 
-- define shared state
-- define graph nodes and execution boundaries
-- expose a minimal API for frontend integration later
+- define shared state, tool boundaries, and guardrails
+- run the heuristic v0 orchestration loop with SQLite-backed persistence
+- expose the FastAPI surface already consumed by `apps/web`
 
 ## Current V0
 
 - aligned `AgentRequest / diagnosis / plan / state-patch / StreamEvent` contract
 - heuristic `load_context -> diagnose -> decide_action -> maybe_tool -> compose_response -> writeback` flow
 - optional SQLite persistence for thread messages, learner unit state, and review state
-- FastAPI endpoints for schemas, v0 runs, and storage inspection
+- FastAPI endpoints for `/health`, `/schemas`, `/runs/v0`, `/runs/v0/stream`, and storage inspection
 - tests covering runtime, graph, API, and repository roundtrip
 
 ## Local Commands

@@ -1,6 +1,6 @@
 ---
 name: pr-description
-description: Project-level PR description skill for Xidea. Use when the user asks to prepare, fill, draft, or polish a pull request description, especially for requests like "提个 PR", "填一下 PR desc", "帮我写 PR 描述", or "准备合并". Produces the repo's default PR sections: Summary, Screenshots / Demo, and Risks / Open Questions.
+description: Project-level PR description skill for Xidea. Use when the user asks to prepare, fill, draft, or polish a pull request description, especially for requests like "提个 PR", "填一下 PR desc", "帮我写 PR 描述", or "准备合并". Produces the repo's default PR sections in Chinese: 摘要、演示 / 验证、风险 / 待确认项.
 ---
 
 # PR Description
@@ -13,18 +13,18 @@ Turn the current branch state into a short, merge-ready PR description that foll
 
 ## Default Output
 
-Unless the user asks for a different format, return:
+Unless the user asks for a different format or language, return the PR description in Chinese:
 
 ```md
-## Summary
+## 摘要
 
 - ...
 
-## Screenshots / Demo
+## 演示 / 验证
 
 - ...
 
-## Risks / Open Questions
+## 风险 / 待确认项
 
 - ...
 ```
@@ -66,6 +66,7 @@ Read only what you need, in this order:
 ## Writing Rules
 
 - optimize for reviewer speed, not completeness
+- default to Chinese phrasing for both section titles and bullet content
 - prefer outcome language over file-by-file changelogs
 - mention user-visible behavior before internal refactors
 - if code changed without tests, explicitly say what was verified manually
