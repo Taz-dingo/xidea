@@ -386,7 +386,7 @@ new_state = apply_outcome(review_state, outcome)
 - **LLM 是核心 pedagogical agent**：信号提取、诊断决策、计划生成、教学回复全部由 LLM 驱动
 - **规则仅作为 guardrails**：约束 LLM 输出，确保教学安全性（如不懂不复习、高混淆先澄清）
 - **Guardrails 违规时修正而非 fallback**：guardrail 拒绝 LLM 诊断后，直接在 LLM 诊断上修正，而非回退到规则诊断
-- **OPENAI_API_KEY 是必须的**：未设置时系统拒绝启动，不存在"纯规则模式"
+- **兼容的 LLM API key 是必须的**：未设置时系统拒绝启动，不存在"纯规则模式"
 - 规则辅助函数（`build_signals` / `diagnose_state` / `build_plan`）保留代码，但仅用于：
   - 信号提取的软降级（LLM 信号提取失败时用规则补充）
   - 计划生成的软降级（LLM 计划生成失败时用模板补充）
@@ -405,7 +405,7 @@ new_state = apply_outcome(review_state, outcome)
 
 ### 模块结构
 
-`llm.py` 封装所有 OpenAI 调用：
+`llm.py` 封装所有 OpenAI-compatible 调用：
 
 ```python
 from xidea_agent.llm import (
@@ -414,7 +414,7 @@ from xidea_agent.llm import (
     generate_assistant_reply, enrich_plan_steps,
 )
 
-llm = build_llm_client()  # 无 OPENAI_API_KEY 时抛 RuntimeError
+llm = build_llm_client()  # 无兼容的 LLM API key 时抛 RuntimeError
 signals = llm_build_signals(llm, messages, observations, entry_mode, prior_state)
 diagnosis = llm_diagnose(llm, learner_state, signals, entry_mode, target_unit_id)
 plan = llm_build_plan(llm, topic, unit_title, candidate_modes, diagnosis, learner_state, user_msg)
@@ -450,8 +450,11 @@ reply = generate_assistant_reply(llm, diagnosis, plan, learner_state, user_messa
 
 | 变量 | 必须 | 默认值 | 说明 |
 |---|---|---|---|
-| `OPENAI_API_KEY` | **是** | 无（缺失时启动报错） | OpenAI API key |
-| `XIDEA_LLM_MODEL` | 否 | `gpt-4o-mini` | 使用的模型 |
+| `XIDEA_LLM_API_KEY` | 条件必填 | 无（缺失时启动报错） | 通用 LLM key，默认按智谱 OpenAI-compatible 入口使用 |
+| `ZAI_API_KEY` | 条件必填 | 无（缺失时启动报错） | 智谱官方环境变量名 |
+| `OPENAI_API_KEY` | 条件必填 | 无（缺失时启动报错） | OpenAI 兼容回退 |
+| `XIDEA_LLM_BASE_URL` | 否 | 智谱 `https://open.bigmodel.cn/api/paas/v4/` 或 OpenAI 默认 | 自定义 OpenAI-compatible base URL |
+| `XIDEA_LLM_MODEL` | 否 | `glm-5` 或 `gpt-4o-mini` | 使用的模型 |
 
 ## 前后端字段映射
 

@@ -9,6 +9,7 @@ description = "Python orchestration core for Xidea"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115.0",
+  "httpx>=0.27.0",
   "langchain>=0.3.0",
   "langgraph>=0.2.0",
   "openai>=1.0.0",
@@ -28,4 +29,3 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-

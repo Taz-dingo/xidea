@@ -1,8 +1,9 @@
 import json
 import os
 from collections.abc import Iterator
+from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import TypeAdapter
 from starlette.responses import StreamingResponse
@@ -10,7 +11,7 @@ from starlette.responses import StreamingResponse
 from xidea_agent.graph import describe_graph
 from xidea_agent.llm import LLMClient, build_llm_client
 from xidea_agent.repository import SQLiteRepository
-from xidea_agent.runtime import run_agent_v0
+from xidea_agent.runtime import iter_agent_v0_events, run_agent_v0
 from xidea_agent.state import (
     AgentRequest,
     AgentRunResult,
@@ -21,6 +22,7 @@ from xidea_agent.state import (
     StudyPlan,
     build_initial_graph_state,
 )
+from xidea_agent.tools import build_asset_summary_payload, build_review_context_payload
 
 
 def create_app(
@@ -29,7 +31,7 @@ def create_app(
 ) -> FastAPI:
     repository = repository or _build_default_repository()
     if llm is None:
-        llm = build_llm_client()  # raises RuntimeError if OPENAI_API_KEY is missing
+        llm = build_llm_client()  # raises RuntimeError if LLM API key is missing
     app = FastAPI(title="Xidea Agent")
     app.add_middleware(
         CORSMiddleware,
@@ -71,11 +73,8 @@ def create_app(
 
     @app.post("/runs/v0/stream")
     def run_v0_stream(request: AgentRequest) -> StreamingResponse:
-        result = run_agent_v0(request, repository=repository, llm=llm)
-        if repository is not None:
-            repository.save_run(request, result)
         return StreamingResponse(
-            _iter_sse_events(result),
+            _iter_agent_run_sse(request, repository=repository, llm=llm),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -90,10 +89,46 @@ def create_app(
             "db_path": str(repository.db_path) if repository is not None else None,
         }
 
+    @app.get("/assets/summary")
+    def asset_summary(asset_ids: str = "") -> dict[str, object]:
+        asset_id_list = [asset_id.strip() for asset_id in asset_ids.split(",") if asset_id.strip()]
+        return build_asset_summary_payload(asset_id_list)
+
     @app.get("/threads/{thread_id}/recent-messages")
     def recent_messages(thread_id: str, limit: int = 8) -> list[dict[str, str]]:
         repo = _require_repository(repository)
         return [message.model_dump() for message in repo.list_recent_messages(thread_id, limit)]
+
+    @app.get("/threads/{thread_id}/context", response_model=None)
+    def thread_context(thread_id: str) -> dict[str, object] | Response:
+        repo = _require_repository(repository)
+        context = repo.get_thread_context(thread_id)
+        if context is None:
+            return Response(status_code=204)
+        return context
+
+    @app.get("/threads/{thread_id}/inspector-bootstrap")
+    def inspector_bootstrap(thread_id: str, unit_id: str, days: int = 35) -> dict[str, object]:
+        repo = _require_repository(repository)
+        learner_state = repo.get_learner_unit_state(thread_id, unit_id)
+        thread_context = repo.get_thread_context(thread_id)
+        review_payload = build_review_context_payload(thread_id, unit_id, repo)
+        since = (
+            datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 120)))
+        ).isoformat()
+        review_payload["events"] = repo.list_review_events(thread_id, unit_id, since=since, limit=64)
+        has_review_data = bool(
+            review_payload["events"]
+            or review_payload["scheduledAt"]
+            or review_payload["reviewCount"]
+            or review_payload["lastReviewOutcome"]
+        )
+
+        return {
+            "thread_context": thread_context,
+            "learner_state": learner_state.model_dump(mode="json") if learner_state is not None else None,
+            "review_inspector": review_payload if has_review_data else None,
+        }
 
     @app.get("/threads/{thread_id}/units/{unit_id}")
     def learner_unit_state(thread_id: str, unit_id: str) -> dict[str, object]:
@@ -102,6 +137,16 @@ def create_app(
         if learner_state is None:
             raise HTTPException(status_code=404, detail="Learner unit state not found")
         return learner_state.model_dump(mode="json")
+
+    @app.get("/threads/{thread_id}/units/{unit_id}/review-inspector")
+    def review_inspector(thread_id: str, unit_id: str, days: int = 35) -> dict[str, object]:
+        repo = _require_repository(repository)
+        since = (
+            datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 120)))
+        ).isoformat()
+        payload = build_review_context_payload(thread_id, unit_id, repo)
+        payload["events"] = repo.list_review_events(thread_id, unit_id, since=since, limit=64)
+        return payload
 
     return app
 
@@ -134,9 +179,16 @@ def _require_repository(repository: SQLiteRepository | None) -> SQLiteRepository
     return repository
 
 
-def _iter_sse_events(result: AgentRunResult) -> Iterator[str]:
-    """Yield events in SSE wire format (event + data lines)."""
-    for stream_event in result.events:
+def _iter_agent_run_sse(
+    request: AgentRequest,
+    repository: SQLiteRepository | None,
+    llm: LLMClient,
+) -> Iterator[str]:
+    # Send an opening SSE comment immediately so clients know the stream is live
+    # before the first LLM-bound step finishes.
+    yield ": stream-open\n\n"
+
+    for stream_event in iter_agent_v0_events(request, repository=repository, llm=llm):
         event_type = stream_event.event
         payload = stream_event.model_dump(mode="json")
         data = json.dumps(payload, ensure_ascii=False)

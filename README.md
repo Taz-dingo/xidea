@@ -16,17 +16,17 @@ Xidea 是一个面向内部比赛的 **AI 学习编排系统** demo 仓库。目
 - Node.js 22 + `pnpm`
 - Python 3.11+
 - `uv`（Python 包管理）
-- OpenAI API Key
+- 一个 OpenAI-compatible LLM API Key（默认按智谱 `glm-5` 配置）
 
 ### 1. 启动 Agent 后端
 
 ```bash
 # 设置必须的环境变量
-export OPENAI_API_KEY="sk-你的key"
+export XIDEA_LLM_API_KEY="你的key"
 export XIDEA_AGENT_DB_PATH="$PWD/output/xidea-agent.db"
 
-# 可选：指定模型（默认 gpt-4o-mini）
-export XIDEA_LLM_MODEL="gpt-4o-mini"
+# 可选：显式指定模型（默认 glm-5）
+export XIDEA_LLM_MODEL="glm-5"
 
 # 启动 agent
 cd apps/agent
@@ -37,7 +37,7 @@ uv run python -m xidea_agent
 - 健康检查：`http://127.0.0.1:8000/health`
 - Schema 查看：`http://127.0.0.1:8000/schemas`
 
-> **注意**：`OPENAI_API_KEY` 是必须的。LLM 是系统的核心决策者，没有 key 系统会拒绝启动。
+> **注意**：必须提供兼容的 LLM key。后端会按 `XIDEA_LLM_API_KEY -> ZAI_API_KEY -> OPENAI_API_KEY` 的顺序读取；默认把通用 key 接到智谱 OpenAI-compatible 入口。
 
 ### 2. 启动 Web 前端
 
@@ -78,8 +78,14 @@ curl -X POST http://127.0.0.1:8000/runs/v0 \
 
 | 变量 | 必须 | 默认值 | 说明 |
 |------|------|--------|------|
-| `OPENAI_API_KEY` | **是** | 无 | OpenAI API key，LLM 是核心决策者 |
-| `XIDEA_LLM_MODEL` | 否 | `gpt-4o-mini` | 使用的 LLM 模型 |
+| `XIDEA_LLM_API_KEY` | 条件必填 | 无 | 通用 LLM key；默认按智谱 OpenAI-compatible 入口使用 |
+| `ZAI_API_KEY` | 条件必填 | 无 | 智谱官方环境变量名，作为 `XIDEA_LLM_API_KEY` 的回退 |
+| `OPENAI_API_KEY` | 条件必填 | 无 | OpenAI 兼容回退，保留旧配置可直接运行 |
+| `XIDEA_LLM_BASE_URL` | 否 | 智谱 `https://open.bigmodel.cn/api/paas/v4/` 或 OpenAI 默认 | 自定义 OpenAI-compatible base URL |
+| `XIDEA_LLM_MODEL` | 否 | `glm-5` 或 `gpt-4o-mini` | 使用的 LLM 模型 |
+| `XIDEA_LLM_TRUST_ENV` | 否 | `false` | 是否继承 `HTTP_PROXY/HTTPS_PROXY` 等代理环境变量 |
+| `XIDEA_LLM_CA_BUNDLE` | 否 | 无 | 自定义 CA 证书文件路径；证书链异常时优先使用 |
+| `XIDEA_LLM_ZHIPU_THINKING` | 否 | `disabled` | 智谱默认关闭 thinking，避免结构化输出落到空正文或 `reasoning_content` |
 | `XIDEA_AGENT_DB_PATH` | 否 | 无（不持久化） | SQLite 数据库路径，用于持久化会话和学习状态 |
 | `XIDEA_AGENT_ALLOW_ORIGINS` | 否 | `localhost:5173` | CORS 允许的前端域名（逗号分隔） |
 
@@ -90,7 +96,7 @@ cd apps/agent
 uv run pytest tests/ -v
 ```
 
-当前 95 个测试全部通过（使用 mock LLM，不需要真实 API key）。
+测试使用 mock LLM，不需要真实 API key。
 
 ## 仓库结构
 
@@ -105,7 +111,7 @@ docs/              按 operating docs / process / reference / archive 分层
 
 - **前端**：TypeScript / React / Tailwind CSS / shadcn/ui / Vercel AI SDK
 - **编排核心**：Python / LangGraph / FastAPI
-- **LLM**：OpenAI API（gpt-4o-mini 默认）
+- **LLM**：OpenAI-compatible API（默认智谱 `glm-5`，兼容 OpenAI）
 - **持久化**：SQLite（可选）
 
 ### LLM-first 设计
@@ -151,12 +157,32 @@ docs/              按 operating docs / process / reference / archive 分层
 uv --native-tls run --directory apps/agent python -m xidea_agent
 ```
 
-### 启动时报 `OPENAI_API_KEY is required`
+### 启动时报 `LLM API key is required`
 
 确保已设置环境变量：
 
 ```bash
-export OPENAI_API_KEY="sk-你的key"
+export XIDEA_LLM_API_KEY="你的key"
+```
+
+### 运行时报 `CERTIFICATE_VERIFY_FAILED`
+
+默认配置会让 LLM 请求直连，不继承代理环境变量。如果你的本机有代理或公司证书链：
+
+```bash
+# 需要显式走代理时
+export XIDEA_LLM_TRUST_ENV=true
+
+# 或显式指定 CA 证书
+export XIDEA_LLM_CA_BUNDLE="/path/to/ca.pem"
+```
+
+### 智谱返回空正文或 JSON 解析失败
+
+默认配置会对智谱关闭 `thinking`，并对结构化阶段启用更严格的 JSON 输出约束。只有你确实需要推理内容时，再手动打开：
+
+```bash
+export XIDEA_LLM_ZHIPU_THINKING=enabled
 ```
 
 ### Shell 找不到 `pnpm` 或 `node`

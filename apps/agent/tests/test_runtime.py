@@ -8,6 +8,7 @@ from xidea_agent.runtime import (
     build_signals,
     estimate_learner_state,
     diagnose_state,
+    iter_agent_v0_events,
     run_agent_v0,
 )
 from xidea_agent.review_engine import ReviewDecision
@@ -45,12 +46,78 @@ def test_run_agent_v0_prefers_clarify_for_confusion() -> None:
     assert result.graph_state.diagnosis.primary_issue == "concept-confusion"
     assert result.graph_state.plan.selected_mode == "contrast-drill"
     assert [event.event for event in result.events] == [
-        "text-delta",
         "diagnosis",
+        "text-delta",
         "plan",
         "state-patch",
         "done",
     ]
+
+
+def test_iter_agent_v0_events_yields_incrementally() -> None:
+    events = list(iter_agent_v0_events(build_request(), llm=build_mock_llm()))
+
+    event_types = [event.event for event in events]
+    assert event_types[0] == "diagnosis"
+    assert event_types[1] == "text-delta"
+    assert "plan" in event_types[1:-2]
+    assert event_types[-2:] == ["state-patch", "done"]
+    assert event_types.count("text-delta") >= 1
+
+
+def test_iter_agent_v0_events_streams_reply_in_multiple_chunks() -> None:
+    from unittest.mock import MagicMock
+    import json
+
+    from xidea_agent.llm import LLMClient
+
+    bundled_response = json.dumps({
+        "signals": [
+            {"kind": "concept-confusion", "score": 0.85, "confidence": 0.88, "summary": "用户混淆"},
+        ],
+        "diagnosis": {
+            "recommended_action": "clarify",
+            "reason": "用户明确表达分不清两个概念的职责边界",
+            "confidence": 0.88,
+            "primary_issue": "concept-confusion",
+            "needs_tool": False,
+        },
+    })
+    plan_response = json.dumps({
+        "headline": "围绕 retrieval vs reranking 的辨析路径",
+        "summary": "先辨析边界再追问验证",
+        "selected_mode": "contrast-drill",
+        "expected_outcome": "能清晰说出两者的职责差异",
+        "steps": [
+            {"id": "contrast-boundary", "title": "对比辨析", "mode": "contrast-drill",
+             "reason": "LLM-reason", "outcome": "LLM-outcome"},
+        ],
+    })
+    long_reply = "这不是简单拼接，因为检索、筛选、重排和上下文压缩各自承担不同职责，需要一起控制噪声、相关性和可解释性。"
+
+    def _response(content: str):
+        from types import SimpleNamespace
+
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message)
+        return SimpleNamespace(choices=[choice])
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = [
+        _response(bundled_response),
+        _response(long_reply),
+        _response(plan_response),
+    ]
+    llm = LLMClient(client=mock_client, model="GLM-4.1V-Thinking-Flash", provider="zhipu")
+
+    events = list(iter_agent_v0_events(build_request(), llm=llm))
+
+    event_types = [event.event for event in events]
+    assert event_types[0] == "diagnosis"
+    assert event_types[1] == "text-delta"
+    text_deltas = [event.delta for event in events if event.event == "text-delta"]
+    assert len(text_deltas) >= 2
+    assert "".join(text_deltas) == long_reply
 
 
 def test_run_agent_v0_uses_asset_summary_for_material_import() -> None:

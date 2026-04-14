@@ -8,7 +8,7 @@
 
 **LLM-first 架构**：LLM 是核心 pedagogical agent，规则仅作为 guardrails 约束 LLM 输出。
 
-- `OPENAI_API_KEY` 是必须的，未设置时系统拒绝启动
+- 兼容的 LLM API key 是必须的，未设置时系统拒绝启动
 - `run_agent_v0()` / `build_graph()` / `compile_graph()` 的 `llm` 参数为 keyword-only required
 - 规则辅助函数保留代码用于测试和局部软降级，但不再作为独立运行路径
 
@@ -35,13 +35,13 @@
 
 ### LLM-first 架构修正 — 已完成
 
-- [x] `build_llm_client()` 无 key 时抛 `RuntimeError` 而非返回 `None`
+- [x] `build_llm_client()` 无兼容的 LLM key 时抛 `RuntimeError` 而非返回 `None`
 - [x] `api.py` 启动时校验 LLM 可用性
 - [x] `diagnose_step()` 移除 fallback 分支，LLM 诊断为必须路径；guardrail 违规时修正而非 fallback
 - [x] `compose_response_step()` LLM plan + reply 为主路径
 - [x] `run_agent_v0()` / `build_graph()` / `compile_graph()` 的 `llm` 参数改为 keyword-only required
 - [x] 所有测试更新：去掉 "无 LLM fallback" 测试，新增 "无 key 报错" 测试
-- [x] 95 个测试全部通过
+- [x] agent 全量 97 个测试全部通过
 - [x] 文档更新
 
 ---
@@ -50,7 +50,7 @@
 
 | 文件 | 改动说明 |
 |------|---------|
-| `llm.py` | LLM 为核心，`build_llm_client` 无 key 时抛错；信号提取 / 诊断 / 计划 / 回复 prompt |
+| `llm.py` | LLM 为核心，`build_llm_client` 无兼容的 LLM key 时抛错；信号提取 / 诊断 / 计划 / 回复 prompt |
 | `runtime.py` | `diagnose_step` / `compose_response_step` 的 LLM 为必须路径；`llm` 参数 required |
 | `graph.py` | `build_graph` / `compile_graph` 的 `llm` 参数 keyword-only required |
 | `api.py` | 启动时调用 `build_llm_client()` 校验 |

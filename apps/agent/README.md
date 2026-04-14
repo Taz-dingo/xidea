@@ -18,8 +18,14 @@ LLM 是核心 pedagogical agent，规则仅作为 guardrails：
 
 | 变量 | 必须 | 默认值 | 说明 |
 |------|------|--------|------|
-| `OPENAI_API_KEY` | **是** | 无 | OpenAI API key |
-| `XIDEA_LLM_MODEL` | 否 | `gpt-4o-mini` | LLM 模型 |
+| `XIDEA_LLM_API_KEY` | 条件必填 | 无 | 通用 LLM key，默认按智谱 OpenAI-compatible 入口使用 |
+| `ZAI_API_KEY` | 条件必填 | 无 | 智谱官方环境变量名 |
+| `OPENAI_API_KEY` | 条件必填 | 无 | OpenAI 兼容回退 |
+| `XIDEA_LLM_BASE_URL` | 否 | 智谱 `https://open.bigmodel.cn/api/paas/v4/` 或 OpenAI 默认 | 自定义 OpenAI-compatible base URL |
+| `XIDEA_LLM_MODEL` | 否 | `glm-5` 或 `gpt-4o-mini` | LLM 模型 |
+| `XIDEA_LLM_TRUST_ENV` | 否 | `false` | 是否继承代理环境变量 |
+| `XIDEA_LLM_CA_BUNDLE` | 否 | 无 | 自定义 CA 证书文件路径 |
+| `XIDEA_LLM_ZHIPU_THINKING` | 否 | `disabled` | 智谱是否开启 thinking |
 | `XIDEA_AGENT_DB_PATH` | 否 | 无 | SQLite 数据库路径 |
 | `XIDEA_AGENT_ALLOW_ORIGINS` | 否 | `localhost:5173` | CORS 允许域名 |
 
@@ -28,7 +34,7 @@ LLM 是核心 pedagogical agent，规则仅作为 guardrails：
 ### 启动 API
 
 ```bash
-export OPENAI_API_KEY="sk-你的key"
+export XIDEA_LLM_API_KEY="你的key"
 export XIDEA_AGENT_DB_PATH="$PWD/output/xidea-agent.db"
 
 uv run python -m xidea_agent
@@ -40,7 +46,7 @@ uv run python -m xidea_agent
 uv run pytest tests/ -v
 ```
 
-测试使用 mock LLM，不需要真实 API key。当前 95 个测试全部通过。
+测试使用 mock LLM，不需要真实 API key。
 
 ## 核心模块
 
