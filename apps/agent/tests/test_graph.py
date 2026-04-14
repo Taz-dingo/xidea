@@ -5,6 +5,8 @@ from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import run_agent_v0
 from xidea_agent.state import build_initial_graph_state, AgentRequest
 
+from conftest import build_mock_llm
+
 
 def build_request(**overrides) -> AgentRequest:
     payload = {
@@ -23,7 +25,7 @@ def build_request(**overrides) -> AgentRequest:
 
 def test_compiled_graph_produces_structured_state() -> None:
     request = build_request()
-    graph = compile_graph()
+    graph = compile_graph(llm=build_mock_llm())
 
     result = graph.invoke(build_initial_graph_state(request))
 
@@ -34,14 +36,16 @@ def test_compiled_graph_produces_structured_state() -> None:
 
 def test_compiled_graph_uses_repository_context(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "agent.db")
-    first_request = build_request(messages=[{"role": "user", "content": "我最近总忘这些概念，想做一次复习巩固"}])
-    repository.save_run(first_request, run_agent_v0(first_request))
+    first_request = build_request(
+        messages=[{"role": "user", "content": "我最近总忘这些概念，想做一次复习巩固"}],
+    )
+    repository.save_run(first_request, run_agent_v0(first_request, llm=build_mock_llm()))
 
     second_request = build_request(
         entry_mode="coach-followup",
         messages=[{"role": "user", "content": "继续吧，我想再确认一下我刚才混淆的点"}],
     )
-    graph = compile_graph(repository=repository)
+    graph = compile_graph(repository=repository, llm=build_mock_llm())
     result = graph.invoke(build_initial_graph_state(second_request))
 
     assert len(result["recent_messages"]) >= 3

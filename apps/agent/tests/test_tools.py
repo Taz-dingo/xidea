@@ -10,6 +10,8 @@ from xidea_agent.tools import (
     retrieve_source_assets,
 )
 
+from conftest import build_mock_llm, build_mock_llm_for_review
+
 
 def _build_request(**overrides) -> AgentRequest:
     payload = {
@@ -103,7 +105,7 @@ def test_thread_memory_with_repository(tmp_path: Path) -> None:
     first_request = _build_request(
         messages=[{"role": "user", "content": "我分不清 retrieval 和 reranking 的职责"}],
     )
-    first_result = run_agent_v0(first_request, repository=repository)
+    first_result = run_agent_v0(first_request, repository=repository, llm=build_mock_llm())
     repository.save_run(first_request, first_result)
 
     second_request = _build_request(entry_mode="coach-followup")
@@ -135,7 +137,7 @@ def test_review_context_with_repository(tmp_path: Path) -> None:
     request = _build_request(
         messages=[{"role": "user", "content": "我最近总忘这些概念，想做一次复习巩固"}],
     )
-    result = run_agent_v0(request, repository=repository)
+    result = run_agent_v0(request, repository=repository, llm=build_mock_llm_for_review())
     repository.save_run(request, result)
 
     review_result = resolve_tool_result("review-context", request, repository=repository)

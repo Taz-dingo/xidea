@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from xidea_agent.guardrails import get_violations
+from xidea_agent.guardrails import get_violations, validate_diagnosis
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.review_engine import ReviewDecision, should_enter_review, schedule_next_review
 from xidea_agent.state import (
@@ -115,8 +115,8 @@ def _score_actions(
     understanding = learner_state.understanding_level
     transfer = learner_state.transfer_readiness
 
-    if confusion > 50:
-        scores["clarify"] = min(1.0, (confusion - 50) / 25)
+    if confusion > 40:
+        scores["clarify"] = min(1.0, (confusion - 40) / 25)
 
     if review_decision.should_review:
         scores["review"] = review_decision.priority
@@ -272,23 +272,27 @@ def estimate_learner_state(
     weak_signals: list[str] = list(prior_state.weak_signals) if prior_state else []
 
     signal_kinds_seen: set[str] = set()
+    kind_count: dict[str, int] = {}
     for signal in signals:
         w = signal.confidence
+        kind_count[signal.kind] = kind_count.get(signal.kind, 0) + 1
+        repeat_damping = 1.0 / kind_count[signal.kind]
+
         if signal.kind == "concept-confusion":
-            confusion += int(38 * w)
-            understanding -= int(12 * w)
-            mastery -= int(8 * w)
+            confusion += int(22 * w * repeat_damping)
+            understanding -= int(8 * w * repeat_damping)
+            mastery -= int(5 * w * repeat_damping)
             weak_signals.append("概念边界混淆")
         elif signal.kind == "concept-gap":
-            understanding -= int(24 * w)
-            mastery -= int(10 * w)
+            understanding -= int(16 * w * repeat_damping)
+            mastery -= int(7 * w * repeat_damping)
             weak_signals.append("理解框架不稳")
         elif signal.kind == "memory-weakness":
-            memory_strength -= int(28 * w)
+            memory_strength -= int(18 * w * repeat_damping)
             weak_signals.append("关键概念记忆不稳")
         elif signal.kind == "transfer-readiness":
-            transfer_readiness -= int(18 * w)
-            mastery -= int(6 * w)
+            transfer_readiness -= int(12 * w * repeat_damping)
+            mastery -= int(4 * w * repeat_damping)
             weak_signals.append("还不能稳定迁移到真实场景")
         signal_kinds_seen.add(signal.kind)
 
@@ -315,6 +319,7 @@ def diagnose_state(
     target_unit_id: str | None,
     learner_state: LearnerUnitState,
     prior_state: LearnerUnitState | None = None,
+    next_review_at: datetime | None = None,
 ) -> Diagnosis:
     needs_tool = entry_mode == "material-import"
 
@@ -336,6 +341,7 @@ def diagnose_state(
         understanding_level=learner_state.understanding_level,
         confusion_level=learner_state.confusion_level,
         memory_strength=learner_state.memory_strength,
+        next_review_at=next_review_at,
     )
 
     scores = _score_actions(learner_state, review_decision, prior_state=prior_state)
@@ -613,6 +619,13 @@ def load_context_step(
                     "load_context reused the latest learner unit state snapshot as the estimation baseline."
                 )
 
+            review_patch = repository.get_review_state(
+                state.request.thread_id, state.request.target_unit_id
+            )
+            if review_patch is not None and review_patch.scheduled_at is not None:
+                state.prior_next_review_at = review_patch.scheduled_at
+                state.rationale.append("load_context loaded prior review schedule from repository.")
+
     if state.request.source_asset_ids:
         state.source_assets = retrieve_source_assets(state.request.source_asset_ids)
         state.rationale.append(f"load_context attached {len(state.source_assets)} source assets.")
@@ -622,29 +635,94 @@ def load_context_step(
     return state
 
 
-def diagnose_step(state: GraphState) -> GraphState:
-    state.signals = build_signals(
+def diagnose_step(state: GraphState, llm: "LLMClient") -> GraphState:
+    from xidea_agent.llm import llm_build_signals, llm_diagnose
+
+    llm_signals = llm_build_signals(
+        llm,
         state.recent_messages,
         state.observations,
         state.request.entry_mode,
         prior_state=state.prior_learner_unit_state,
     )
+    if llm_signals is not None:
+        state.signals = llm_signals
+        signal_source = "LLM"
+    else:
+        state.signals = build_signals(
+            state.recent_messages,
+            state.observations,
+            state.request.entry_mode,
+            prior_state=state.prior_learner_unit_state,
+        )
+        signal_source = "rules"
+        state.rationale.append("LLM signal extraction returned None, using rule-based signals.")
+
     state.learner_unit_state = estimate_learner_state(
         state.request.target_unit_id,
         state.signals,
         prior_state=state.prior_learner_unit_state,
     )
-    state.diagnosis = diagnose_state(
+
+    review_decision = should_enter_review(
+        understanding_level=state.learner_unit_state.understanding_level,
+        confusion_level=state.learner_unit_state.confusion_level,
+        memory_strength=state.learner_unit_state.memory_strength,
+        next_review_at=state.prior_next_review_at,
+    )
+
+    llm_diag = llm_diagnose(
+        llm,
+        state.learner_unit_state,
+        state.signals,
         state.request.entry_mode,
         state.request.target_unit_id,
-        state.learner_unit_state,
         prior_state=state.prior_learner_unit_state,
+        review_should=review_decision.should_review,
+        review_priority=review_decision.priority,
+        review_reason=review_decision.reason,
     )
+
+    if llm_diag is not None:
+        violations = validate_diagnosis(llm_diag, state.learner_unit_state)
+        if violations:
+            names = ", ".join(f"{v.rule_id}({v.rule_name})" for v in violations)
+            state.rationale.append(
+                f"LLM diagnosis rejected by guardrails: {names}. "
+                "Applying guardrail corrections."
+            )
+            _apply_diagnosis_guardrail_corrections(llm_diag, state, violations)
+        state.diagnosis = llm_diag
+        diag_source = "LLM"
+    else:
+        raise RuntimeError(
+            "LLM diagnosis returned None. The LLM is the core decision-maker "
+            "and cannot be bypassed."
+        )
+
     state.learner_unit_state.recommended_action = state.diagnosis.recommended_action
+
     state.rationale.append(
-        f"diagnose selected {state.diagnosis.recommended_action} for {state.diagnosis.primary_issue}."
+        f"diagnose selected {state.diagnosis.recommended_action} "
+        f"for {state.diagnosis.primary_issue} "
+        f"(signals={signal_source}, diagnosis={diag_source})."
     )
     return state
+
+
+def _apply_diagnosis_guardrail_corrections(
+    diag: Diagnosis, state: GraphState, violations: list
+) -> None:
+    """Correct a guardrail-violating LLM diagnosis in-place."""
+    for v in violations:
+        if v.rule_id == "G2":
+            diag.recommended_action = "teach"
+            diag.reason = f"Guardrail 修正：{v.violation} 切换到 teach。"
+            diag.primary_issue = "insufficient-understanding"
+        elif v.rule_id == "G3":
+            diag.recommended_action = "clarify"
+            diag.reason = f"Guardrail 修正：{v.violation} 切换到 clarify。"
+            diag.primary_issue = "concept-confusion"
 
 
 def decide_action_step(state: GraphState) -> GraphState:
@@ -665,26 +743,91 @@ def maybe_tool_step(state: GraphState, repository: SQLiteRepository | None = Non
     return state
 
 
-def compose_response_step(state: GraphState) -> GraphState:
+def compose_response_step(state: GraphState, llm: "LLMClient") -> GraphState:
     if state.diagnosis is None or state.learner_unit_state is None:
         return state
 
+    from xidea_agent.llm import generate_assistant_reply, llm_build_plan
+
     unit_title = state.learning_unit.title if state.learning_unit else state.request.topic
     candidate_modes = state.learning_unit.candidate_modes if state.learning_unit else []
-    state.plan = build_plan(
+    user_msg = state.request.messages[-1] if state.request.messages else state.request.topic
+
+    llm_plan = llm_build_plan(
+        llm,
         state.request.topic,
         unit_title,
         candidate_modes,
         state.diagnosis,
         state.learner_unit_state,
+        user_msg,
     )
-    state.assistant_message = compose_assistant_message(
-        state.diagnosis, state.plan, state.tool_result
+    if llm_plan is not None:
+        state.plan = llm_plan
+        plan_source = "LLM"
+    else:
+        state.plan = build_plan(
+            state.request.topic,
+            unit_title,
+            candidate_modes,
+            state.diagnosis,
+            state.learner_unit_state,
+        )
+        plan_source = "template"
+        state.rationale.append("LLM plan generation returned None, using template plan.")
+
+    reply = generate_assistant_reply(
+        llm, state.diagnosis, state.plan, state.learner_unit_state,
+        user_msg, state.tool_result,
     )
+    if reply is not None:
+        state.assistant_message = reply
+        reply_source = "LLM"
+    else:
+        state.assistant_message = compose_assistant_message(
+            state.diagnosis, state.plan, state.tool_result
+        )
+        reply_source = "template"
+        state.rationale.append("LLM reply generation returned None, using template reply.")
+
     state.rationale.append(
-        f"compose_response built a {len(state.plan.steps)}-step plan with mode {state.plan.selected_mode}."
+        f"compose_response built a {len(state.plan.steps)}-step plan "
+        f"with mode {state.plan.selected_mode} (plan={plan_source}, reply={reply_source})."
     )
     return state
+
+
+def _apply_guardrail_corrections(state: GraphState, violations: list) -> bool:
+    """Apply corrections for guardrail violations. Returns True if any correction was made."""
+    corrected = False
+    for v in violations:
+        if v.rule_id == "G2" and state.diagnosis is not None:
+            state.diagnosis = Diagnosis(
+                recommended_action="teach",
+                reason=f"Guardrail 修正：{v.violation} 切换到 teach。",
+                confidence=state.diagnosis.confidence,
+                focus_unit_id=state.diagnosis.focus_unit_id,
+                primary_issue="insufficient-understanding",
+                needs_tool=state.diagnosis.needs_tool,
+                explanation=state.diagnosis.explanation,
+            )
+            if state.learner_unit_state is not None:
+                state.learner_unit_state.recommended_action = "teach"
+            corrected = True
+        elif v.rule_id == "G3" and state.diagnosis is not None:
+            state.diagnosis = Diagnosis(
+                recommended_action="clarify",
+                reason=f"Guardrail 修正：{v.violation} 切换到 clarify。",
+                confidence=state.diagnosis.confidence,
+                focus_unit_id=state.diagnosis.focus_unit_id,
+                primary_issue="concept-confusion",
+                needs_tool=state.diagnosis.needs_tool,
+                explanation=state.diagnosis.explanation,
+            )
+            if state.learner_unit_state is not None:
+                state.learner_unit_state.recommended_action = "clarify"
+            corrected = True
+    return corrected
 
 
 def writeback_step(state: GraphState) -> GraphState:
@@ -695,24 +838,31 @@ def writeback_step(state: GraphState) -> GraphState:
     violations = get_violations(state)
     if violations:
         names = ", ".join(f"{item.rule_id}({item.rule_name})" for item in violations)
-        state.rationale.append(f"Guardrail checks failed: {names}.")
+        state.rationale.append(f"Guardrail violations detected: {names}.")
         for item in violations:
             state.rationale.append(f"{item.rule_id}: {item.violation} -> {item.suggestion}")
+
+        if _apply_guardrail_corrections(state, violations):
+            state.state_patch = build_state_patch(state.diagnosis, state.learner_unit_state, state.plan)
+            state.rationale.append("Guardrail corrections applied, state_patch rebuilt.")
     else:
         state.rationale.append("Guardrail checks passed.")
     return state
 
 
 def run_agent_v0(
-    request: AgentRequest, repository: SQLiteRepository | None = None
+    request: AgentRequest,
+    repository: SQLiteRepository | None = None,
+    *,
+    llm: "LLMClient",
 ) -> AgentRunResult:
     state = build_initial_graph_state(request)
     for step in (
         lambda current: load_context_step(current, repository=repository),
-        diagnose_step,
+        lambda current: diagnose_step(current, llm=llm),
         decide_action_step,
         lambda current: maybe_tool_step(current, repository=repository),
-        compose_response_step,
+        lambda current: compose_response_step(current, llm=llm),
         writeback_step,
     ):
         state = step(state)
