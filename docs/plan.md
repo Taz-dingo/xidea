@@ -31,6 +31,12 @@
   - owner: 学习引擎 owner
 - [ ] 在主案例稳定后，再补 1 到 2 个能支撑主叙事的次级 demo surface
   - owner: 前端 owner / 产品 owner
+- [ ] 将学习画像从前端推断迁到真实 agent / learner state 信号
+  - owner: 学习引擎 owner / 前端 owner
+- [ ] 将复习热力图接到真实 `Review Engine` 状态，而不是只基于前端推断渲染
+  - owner: 学习引擎 owner / 前端 owner
+- [ ] 将材料面板接到真实 source asset / tool context，而不是长期依赖 fixture
+  - owner: 学习引擎 owner / 前端 owner
 - [x] 增加 planner explanation 的结构化字段
   - owner: 学习引擎 owner
 - [ ] 准备答辩素材和对比竞品摘要
@@ -92,6 +98,10 @@
 7. `apps/web` 保持比赛主案例聚焦
    - 默认围绕 RAG 项目学习
    - 确保证据链默认可见
+8. `apps/web` 右栏后续接真实状态
+   - 学习画像不长期停留在前端推断
+   - 复习热力图不长期停留在前端可视化占位
+   - 材料状态逐步接真实 asset / tool 数据
 
 ## Ready To Build
 

@@ -1,11 +1,13 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
-import { startTransition, useEffect, useMemo, useState, type ReactElement } from "react";
+import { startTransition, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import {
   Brain,
   ChevronDown,
   ChevronRight,
   FileInput,
+  Folder,
+  FolderOpen,
   MessageSquareText,
   Plus,
   RefreshCcw,
@@ -25,11 +27,17 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { learnerProfiles, learningUnits, projectContext, sourceAssets } from "@/data/demo";
-import { buildDefaultAgentPrompt, buildMockRuntimeSnapshot, type AgentEntryMode, type RuntimeSnapshot } from "@/domain/agent-runtime";
+import {
+  buildDefaultAgentPrompt,
+  buildMockRuntimeSnapshot,
+  hydrateRuntimeSnapshotFromLearnerState,
+  type AgentEntryMode,
+  type RuntimeSnapshot,
+} from "@/domain/agent-runtime";
 import { MODE_LABELS } from "@/domain/planner";
-import type { LearningMode } from "@/domain/types";
+import type { LearnerProfile, LearningMode } from "@/domain/types";
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
-import { getAgentBaseUrl } from "@/lib/agent-client";
+import { getAgentBaseUrl, getAgentHealth, getLearnerUnitState } from "@/lib/agent-client";
 
 const entryModes = [
   { id: "chat-question" as const, icon: MessageSquareText, title: "问答进入" },
@@ -59,7 +67,7 @@ const initialProjects: ReadonlyArray<ProjectItem> = [
 interface SessionItem {
   readonly id: string;
   readonly projectId: string;
-  readonly unitId: string;
+  readonly unitId: string | null;
   readonly title: string;
   readonly summary: string;
   readonly updatedAt: string;
@@ -104,6 +112,23 @@ function getMetricDotClass(tone: "emerald" | "amber" | "rose" | "sky"): string {
   }
 }
 
+function getAssetKindLabel(kind: (typeof sourceAssets)[number]["kind"]): string {
+  switch (kind) {
+    case "audio":
+      return "音频";
+    case "image":
+      return "图片";
+    case "note":
+      return "笔记";
+    case "pdf":
+      return "PDF";
+    case "video":
+      return "视频";
+    case "web":
+      return "网页";
+  }
+}
+
 function getMessageText(message: UIMessage): string {
   const text = message.parts
     .map((part) => (part.type === "text" ? part.text : ""))
@@ -113,67 +138,213 @@ function getMessageText(message: UIMessage): string {
   return text === "" ? "当前消息没有文本内容。" : text;
 }
 
+function getCollapsedAssistantText(text: string): string {
+  const normalized = text.trim();
+  if (normalized.length <= 96) {
+    return normalized;
+  }
+
+  const sentenceMatch = normalized.match(/^(.{1,96}?[。！？!?])/u);
+  if (sentenceMatch?.[1]) {
+    return sentenceMatch[1];
+  }
+
+  return `${normalized.slice(0, 96).trim()}...`;
+}
+
+function getLatestUserDraft(messages: ReadonlyArray<UIMessage>, draftPrompt: string): string {
+  const latestUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "user");
+
+  if (latestUserMessage !== undefined) {
+    const text = getMessageText(latestUserMessage);
+    if (text !== "当前消息没有文本内容。") {
+      return text;
+    }
+  }
+
+  return draftPrompt.trim();
+}
+
+function inferLearnerProfile(
+  draftOrLatestUserInput: string,
+  runtime: RuntimeSnapshot,
+  fallbackProfile: LearnerProfile,
+): LearnerProfile {
+  const normalized = draftOrLatestUserInput.toLowerCase();
+
+  if (
+    normalized.includes("答辩") ||
+    normalized.includes("评审") ||
+    normalized.includes("汇报") ||
+    runtime.state.transferReadiness !== null && runtime.state.transferReadiness >= 68 ||
+    runtime.state.recommendedAction === "apply"
+  ) {
+    return learnerProfiles[2] ?? fallbackProfile;
+  }
+
+  if (
+    normalized.includes("分不清") ||
+    normalized.includes("混淆") ||
+    normalized.includes("重排") ||
+    runtime.state.confusion >= 60 ||
+    runtime.state.recommendedAction === "clarify"
+  ) {
+    return learnerProfiles[1] ?? fallbackProfile;
+  }
+
+  return learnerProfiles[0] ?? fallbackProfile;
+}
+
+function buildGeneratedProfileSummary(
+  profile: LearnerProfile,
+  runtime: RuntimeSnapshot,
+  latestUserInput: string,
+): {
+  readonly title: string;
+  readonly summary: string;
+  readonly evidence: ReadonlyArray<string>;
+} {
+  const evidence = [
+    runtime.state.weakSignals[0] ?? "当前 thread 仍在积累稳定证据",
+    runtime.decision.reason,
+    latestUserInput === "" ? "还没有新的用户输入，先沿用当前 session 状态。" : `最近输入：${latestUserInput}`,
+  ];
+
+  return {
+    title: `系统当前将学习者归为「${profile.name}」`,
+    summary: `${profile.role} 系统会在后续对话里继续根据输入、诊断和状态回写动态调整这张画像。`,
+    evidence,
+  };
+}
+
+interface ReviewHeatmapCell {
+  readonly dateKey: string;
+  readonly tooltip: string;
+  readonly intensity: 0 | 1 | 2 | 3 | 4;
+}
+
+function toDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function buildReviewHeatmap(
+  runtime: RuntimeSnapshot,
+  messageCount: number,
+): ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>> {
+  const totalDays = 35;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const lastReviewedAt = runtime.state.lastReviewedAt;
+  const nextReviewAt = runtime.state.nextReviewAt;
+  const cells: ReviewHeatmapCell[] = [];
+
+  for (let index = totalDays - 1; index >= 0; index -= 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - index);
+
+    let intensity: 0 | 1 | 2 | 3 | 4 = 0;
+
+    if (lastReviewedAt !== null && toDateKey(date) === lastReviewedAt) {
+      intensity = 4;
+    } else if (nextReviewAt !== null && toDateKey(date) === nextReviewAt) {
+      intensity = 1;
+    } else if (index < Math.min(6, Math.max(2, messageCount))) {
+      intensity = runtime.state.confusion >= 60 ? 2 : 1;
+    } else if (
+      runtime.state.memoryStrength < 60 &&
+      index % Math.max(4, Math.round((100 - runtime.state.memoryStrength) / 10)) === 0
+    ) {
+      intensity = 1;
+    }
+
+    const tooltip =
+      intensity === 0
+        ? `${toDateKey(date)} 暂无复习动作`
+        : `${toDateKey(date)} 复习活跃度 ${intensity}`;
+
+    cells.push({
+      dateKey: toDateKey(date),
+      tooltip,
+      intensity,
+    });
+  }
+
+  return Array.from({ length: 5 }, (_, weekIndex) =>
+    cells.slice(weekIndex * 7, weekIndex * 7 + 7),
+  );
+}
+
+function buildEmptyReviewHeatmap(): ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>> {
+  const totalDays = 35;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const cells = Array.from({ length: totalDays }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (totalDays - index - 1));
+
+    return {
+      dateKey: toDateKey(date),
+      tooltip: `${toDateKey(date)} 暂无复习动作`,
+      intensity: 0 as const,
+    };
+  });
+
+  return Array.from({ length: 5 }, (_, weekIndex) =>
+    cells.slice(weekIndex * 7, weekIndex * 7 + 7),
+  );
+}
+
+function getHeatmapCellClass(intensity: ReviewHeatmapCell["intensity"]): string {
+  switch (intensity) {
+    case 0:
+      return "bg-[var(--xidea-parchment)]";
+    case 1:
+      return "bg-[#e7d8cf]";
+    case 2:
+      return "bg-[#ddb9a8]";
+    case 3:
+      return "bg-[#d98e70]";
+    case 4:
+      return "bg-[var(--xidea-terracotta)]";
+  }
+}
+
 function SessionCard({
   active,
   title,
-  summary,
-  status,
   updatedAt,
   onClick,
 }: {
   active: boolean;
   title: string;
-  summary: string;
-  status: string;
   updatedAt: string;
   onClick: () => void;
 }): ReactElement {
   return (
-    <Card
+    <button
       className={
         active
-          ? "rounded-[1rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none transition-colors"
-          : "rounded-[1rem] border-transparent bg-transparent shadow-none transition-colors hover:border-[var(--xidea-border)] hover:bg-[var(--xidea-white)]"
+          ? "flex w-full items-center justify-between gap-3 rounded-[0.9rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
+          : "flex w-full items-center justify-between gap-3 rounded-[0.9rem] border border-transparent bg-transparent px-3 py-2 text-left transition-colors hover:border-[var(--xidea-border)] hover:bg-[var(--xidea-white)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
       }
+      onClick={onClick}
+      type="button"
     >
-      <CardContent className="p-0">
-        <button
-          className="block w-full rounded-[1rem] px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
-          onClick={onClick}
-          type="button"
-        >
-          <div className="min-w-0 w-full">
-            <div className="flex items-center justify-between gap-3">
-              <p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
-              <span className={active ? "shrink-0 text-xs text-[var(--xidea-selection-text)]" : "shrink-0 text-xs text-[var(--xidea-stone)]"}>
-                {updatedAt}
-              </span>
-            </div>
-            <p
-              className={
-                active
-                  ? "mt-2 line-clamp-2 text-sm leading-6 text-[var(--xidea-charcoal)]"
-                  : "mt-2 line-clamp-2 text-sm leading-6 text-[var(--xidea-stone)]"
-              }
-            >
-              {summary}
-            </p>
-            <div className="mt-3">
-              <Badge
-                className={
-                  active
-                    ? "border-transparent bg-[var(--xidea-white)] text-[var(--xidea-selection-text)] shadow-none"
-                    : "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)] shadow-none"
-                }
-                variant="outline"
-              >
-                {status}
-              </Badge>
-            </div>
-          </div>
-        </button>
-      </CardContent>
-    </Card>
+      <p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
+      <span
+        className={
+          active
+            ? "shrink-0 text-[11px] text-[var(--xidea-selection-text)]"
+            : "shrink-0 text-[11px] text-[var(--xidea-stone)]"
+        }
+      >
+        {updatedAt}
+      </span>
+    </button>
   );
 }
 
@@ -181,79 +352,52 @@ function ProjectCard({
   active,
   expanded,
   name,
-  description,
-  sessionCount,
   onClick,
+  onCreateSession,
 }: {
   active: boolean;
   expanded: boolean;
   name: string;
-  description: string;
-  sessionCount: number;
   onClick: () => void;
+  onCreateSession: () => void;
 }): ReactElement {
   return (
-    <Card
+    <div
       className={
         active
-          ? "rounded-[1rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] shadow-none transition-colors"
-          : "rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7]"
+          ? "flex items-center justify-between gap-2 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] px-2 py-2 shadow-none transition-colors"
+          : "flex items-center justify-between gap-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-2 py-2 shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7]"
       }
     >
-      <CardContent className="p-0">
-        <button
-          className="block w-full rounded-[1rem] px-4 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
-          onClick={onClick}
-          type="button"
+      <button
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-[0.85rem] px-1 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)]"
+        onClick={onClick}
+        type="button"
+      >
+        <div
+          className={
+            active
+              ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.85rem] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)]"
+              : "flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.85rem] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)]"
+          }
         >
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 text-[var(--xidea-stone)]">
-              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-3">
-                <p className="min-w-0 flex-1 truncate text-sm font-medium">{name}</p>
-                <span className="shrink-0 text-xs text-[var(--xidea-stone)]">{sessionCount}</span>
-              </div>
-              <p className="mt-2 line-clamp-1 text-sm leading-6 text-[var(--xidea-stone)]">{description}</p>
-            </div>
-          </div>
-        </button>
-      </CardContent>
-    </Card>
-  );
-}
+          {expanded ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{name}</p>
+        </div>
+      </button>
 
-function ProfileCard({
-  active,
-  name,
-  role,
-  onClick,
-}: {
-  active: boolean;
-  name: string;
-  role: string;
-  onClick: () => void;
-}): ReactElement {
-  return (
-    <Card
-      className={
-        active
-          ? "rounded-[1rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none transition-colors"
-          : "rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7]"
-      }
-    >
-      <CardContent className="p-0">
-        <button
-          className="block w-full rounded-[1rem] px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-white)]"
-          onClick={onClick}
-          type="button"
-        >
-          <p className="text-sm font-medium leading-6">{name}</p>
-          <p className="mt-2 text-sm leading-6 text-[var(--xidea-stone)]">{role}</p>
-        </button>
-      </CardContent>
-    </Card>
+      <Button
+        className="h-8 w-8 shrink-0 rounded-[0.85rem] text-[var(--xidea-stone)] hover:bg-[var(--xidea-parchment)] hover:text-[var(--xidea-near-black)]"
+        onClick={onCreateSession}
+        size="icon"
+        type="button"
+        variant="ghost"
+      >
+        <Plus className="h-4 w-4" />
+      </Button>
+    </div>
   );
 }
 
@@ -264,7 +408,7 @@ function InspectorCard({
 }: {
   title: string;
   description?: string;
-  children: ReactElement | ReactElement[];
+  children: ReactNode;
 }): ReactElement {
   return (
     <Card className="rounded-[1.25rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
@@ -274,6 +418,71 @@ function InspectorCard({
       </CardHeader>
       <CardContent className="space-y-4">{children}</CardContent>
     </Card>
+  );
+}
+
+function MonitorSection({
+  title,
+  accent,
+  children,
+}: {
+  title: string;
+  accent?: string;
+  children: ReactNode;
+}): ReactElement {
+  return (
+    <Card className="min-w-0 overflow-hidden rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+      <CardHeader className="px-4 pb-3 pt-4">
+        <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">
+          {title}
+          {accent ? <span className="ml-2 text-[var(--xidea-selection-text)]">{accent}</span> : null}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="min-w-0 space-y-3 px-4 pb-4 pt-0">{children}</CardContent>
+    </Card>
+  );
+}
+
+function MetricTile({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "emerald" | "amber" | "rose" | "sky";
+}): ReactElement {
+  return (
+    <div className="min-w-0 overflow-hidden rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className={`inline-block h-2 w-2 rounded-full ${getMetricDotClass(tone)}`} />
+        <span className="truncate text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
+          {label}
+        </span>
+      </div>
+      <p className="mt-2 min-w-0 break-words text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function CompactNote({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}): ReactElement {
+  return (
+    <div className="flex min-w-0 items-start gap-2 rounded-[0.95rem] bg-[var(--xidea-parchment)] px-3 py-2.5">
+      <span className="shrink-0 pt-0.5 text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
+        {label}
+      </span>
+      <span className="min-w-0 flex-1 break-words text-right text-sm leading-5 text-[var(--xidea-charcoal)]">
+        {value}
+      </span>
+    </div>
   );
 }
 
@@ -303,7 +512,6 @@ export function App(): ReactElement {
     throw new Error("Demo data must contain at least one learner profile, learning unit, and project.");
   }
 
-  const [selectedProfileId, setSelectedProfileId] = useState(initialProfile.id);
   const [projects, setProjects] = useState<ReadonlyArray<ProjectItem>>(initialProjects);
   const [sessions, setSessions] = useState<ReadonlyArray<SessionItem>>(initialSessions);
   const [expandedProjectIds, setExpandedProjectIds] = useState<ReadonlyArray<string>>([
@@ -312,34 +520,76 @@ export function App(): ReactElement {
   const [selectedProjectId, setSelectedProjectId] = useState(initialSessions[0]?.projectId ?? initialProject.id);
   const [selectedSessionId, setSelectedSessionId] = useState(initialSessions[0]?.id ?? "");
   const [selectedEntryMode, setSelectedEntryMode] = useState<AgentEntryMode>("chat-question");
+  const [selectedSourceAssetIds, setSelectedSourceAssetIds] = useState<ReadonlyArray<string>>(
+    () => sourceAssets.map((asset) => asset.id),
+  );
+  const [isEvidenceExpanded, setIsEvidenceExpanded] = useState(false);
+  const [expandedAssistantMessageIds, setExpandedAssistantMessageIds] = useState<
+    Record<string, boolean>
+  >({});
   const [draftPrompt, setDraftPrompt] = useState(() =>
     buildDefaultAgentPrompt(initialProfile, initialUnit, projectContext),
   );
   const [sessionSnapshots, setSessionSnapshots] = useState<Record<string, RuntimeSnapshot>>({});
+  const [agentConnectionState, setAgentConnectionState] = useState<"checking" | "ready" | "offline">(
+    "checking",
+  );
   const [sessionMessagesById, setSessionMessagesById] = useState<Record<string, UIMessage[]>>(
     () => Object.fromEntries(initialSessions.map((session) => [session.id, []])),
   );
 
-  const selectedProfile =
-    learnerProfiles.find((profile) => profile.id === selectedProfileId) ?? initialProfile;
   const selectedSession = sessions.find((session) => session.id === selectedSessionId);
-  const selectedUnit =
-    learningUnits.find((unit) => unit.id === selectedSession?.unitId) ?? initialUnit;
+  const selectedUnit = selectedSession?.unitId
+    ? learningUnits.find((unit) => unit.id === selectedSession.unitId)
+    : undefined;
+  const runtimeUnit = selectedUnit ?? initialUnit;
+  const seedProfile = initialProfile;
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? initialProject;
   const agentBaseUrl = getAgentBaseUrl();
-  const mockRuntime = buildMockRuntimeSnapshot(selectedProfile, selectedUnit);
+  const seedRuntime = buildMockRuntimeSnapshot(seedProfile, runtimeUnit);
+  const latestUserInput = getLatestUserDraft(
+    selectedSession ? sessionMessagesById[selectedSession.id] ?? [] : [],
+    draftPrompt,
+  );
+  const inferredProfile = inferLearnerProfile(latestUserInput, seedRuntime, initialProfile);
+  const mockRuntime = buildMockRuntimeSnapshot(inferredProfile, runtimeUnit);
   const activeRuntime =
     selectedSession === undefined ? mockRuntime : sessionSnapshots[selectedSession.id] ?? mockRuntime;
+  const selectedProfile = inferLearnerProfile(latestUserInput, activeRuntime, initialProfile);
+  const generatedProfile = buildGeneratedProfileSummary(
+    selectedProfile,
+    activeRuntime,
+    latestUserInput,
+  );
+  const sessionMessageCount = selectedSession
+    ? sessionMessagesById[selectedSession.id]?.length ?? 0
+    : 0;
+  const isBlankSession =
+    selectedSession !== undefined &&
+    selectedSession.unitId === null &&
+    sessionMessageCount === 0 &&
+    sessionSnapshots[selectedSession.id] === undefined &&
+    draftPrompt.trim() === "";
+  const reviewHeatmap = isBlankSession
+    ? buildEmptyReviewHeatmap()
+    : buildReviewHeatmap(activeRuntime, sessionMessageCount);
+  const activeSourceAssets = useMemo(
+    () => sourceAssets.filter((asset) => selectedSourceAssetIds.includes(asset.id)),
+    [selectedSourceAssetIds],
+  );
 
   const transport = useMemo(
     () =>
       createAgentChatTransport({
+        projectId: selectedProject.id,
+        sessionId: selectedSession?.id ?? selectedProject.id,
         entryMode: selectedEntryMode,
         profile: selectedProfile,
         project: projectContext,
-        sourceAssets,
-        unit: selectedUnit,
+        sourceAssets: activeSourceAssets,
+        unit: runtimeUnit,
+        fallbackSnapshot: activeRuntime,
         onSnapshot: (snapshot) => {
           if (selectedSession === undefined) {
             return;
@@ -362,7 +612,15 @@ export function App(): ReactElement {
           );
         },
       }),
-    [selectedEntryMode, selectedProfile, selectedSession, selectedUnit],
+    [
+      activeRuntime,
+      activeSourceAssets,
+      selectedEntryMode,
+      selectedProfile,
+      selectedProject.id,
+      selectedSession,
+      runtimeUnit,
+    ],
   );
 
   const { clearError, messages, sendMessage, status, error } = useChat({
@@ -374,8 +632,46 @@ export function App(): ReactElement {
   const errorMessage = getErrorMessage(error);
 
   useEffect(() => {
-    setDraftPrompt(buildDefaultAgentPrompt(selectedProfile, selectedUnit, projectContext));
-  }, [selectedProfile.id, selectedSession?.id, selectedUnit.id]);
+    if (agentBaseUrl === null) {
+      setAgentConnectionState("offline");
+      return;
+    }
+
+    const abortController = new AbortController();
+    setAgentConnectionState("checking");
+
+    void getAgentHealth({ signal: abortController.signal })
+      .then((healthy) => {
+        if (!abortController.signal.aborted) {
+          setAgentConnectionState(healthy ? "ready" : "offline");
+        }
+      })
+      .catch(() => {
+        if (!abortController.signal.aborted) {
+          setAgentConnectionState("offline");
+        }
+      });
+
+    return () => {
+      abortController.abort();
+    };
+  }, [agentBaseUrl]);
+
+  useEffect(() => {
+    setDraftPrompt(
+      selectedSession?.unitId === null
+        ? ""
+        : buildDefaultAgentPrompt(selectedProfile, runtimeUnit, projectContext),
+    );
+  }, [runtimeUnit, selectedProfile, selectedSession?.id, selectedSession?.unitId]);
+
+  useEffect(() => {
+    setIsEvidenceExpanded(false);
+  }, [selectedSession?.id]);
+
+  useEffect(() => {
+    setExpandedAssistantMessageIds({});
+  }, [selectedSession?.id]);
 
   useEffect(() => {
     if (selectedSession === undefined) {
@@ -409,22 +705,62 @@ export function App(): ReactElement {
               }
           : session,
       ),
-    );
+      );
   }, [error, selectedSession?.id]);
 
-  function toggleProject(projectId: string): void {
-    setExpandedProjectIds((current) =>
-      current.includes(projectId)
-        ? current.filter((id) => id !== projectId)
-        : [...current, projectId],
-    );
-  }
+  useEffect(() => {
+    if (
+      agentConnectionState !== "ready" ||
+      selectedSession === undefined ||
+      selectedUnit === undefined ||
+      sessionSnapshots[selectedSession.id] !== undefined
+    ) {
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    void getLearnerUnitState(selectedSession.id, selectedUnit.id, {
+      signal: abortController.signal,
+    })
+      .then((learnerState) => {
+        if (abortController.signal.aborted || learnerState === null) {
+          return;
+        }
+
+        setSessionSnapshots((current) => ({
+          ...current,
+          [selectedSession.id]: hydrateRuntimeSnapshotFromLearnerState(learnerState, mockRuntime),
+        }));
+      })
+      .catch(() => {
+        // Keep the local fallback snapshot when no persisted state exists yet.
+      });
+
+    return () => {
+      abortController.abort();
+    };
+  }, [
+    agentConnectionState,
+    mockRuntime,
+    selectedSession,
+    selectedUnit,
+    sessionSnapshots,
+  ]);
 
   function handleSelectProject(projectId: string): void {
     setSelectedProjectId(projectId);
 
     const firstProjectSession = sessions.find((session) => session.projectId === projectId);
     setSelectedSessionId(firstProjectSession?.id ?? "");
+  }
+
+  function handleToggleProject(projectId: string): void {
+    setExpandedProjectIds((current) =>
+      current.includes(projectId)
+        ? current.filter((id) => id !== projectId)
+        : [...current, projectId],
+    );
   }
 
   function handleCreateProject(): void {
@@ -453,15 +789,18 @@ export function App(): ReactElement {
     const createdSession: SessionItem = {
       id: `session-${Date.now()}`,
       projectId: targetProject.id,
-      unitId: selectedUnit.id,
-      title: `${selectedUnit.title} / 新对话 ${nextIndex}`,
-      summary: "等待本轮输入",
+      unitId: null,
+      title: `新对话 ${nextIndex}`,
+      summary: "暂无内容",
       updatedAt: "刚刚",
-      status: "草稿",
+      status: "空白",
     };
 
     setSessions((current) => [createdSession, ...current]);
     setSessionMessagesById((current) => ({ ...current, [createdSession.id]: [] }));
+    setDraftPrompt("");
+    setSelectedEntryMode("chat-question");
+    setSelectedSourceAssetIds([]);
     setSelectedProjectId(targetProject.id);
     setSelectedSessionId(createdSession.id);
     setExpandedProjectIds((current) =>
@@ -498,67 +837,55 @@ export function App(): ReactElement {
 
   return (
     <main className="xidea-shell min-h-screen bg-[var(--xidea-parchment)] text-[var(--xidea-near-black)]">
-      <div className="relative mx-auto min-h-screen max-w-[1600px] px-4 py-4 md:px-5 md:py-5 xl:h-screen xl:min-h-0">
-        <div className="grid items-start gap-4 xl:h-full xl:grid-cols-[340px_minmax(0,1fr)] xl:items-stretch 2xl:grid-cols-[340px_minmax(0,1fr)_320px]">
-          <Card className="overflow-hidden rounded-[1.6rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none xl:h-full">
-            <CardContent className="flex h-full flex-col p-4">
-              <Button
-                className="justify-start rounded-[1rem] border-[var(--xidea-charcoal)] bg-[var(--xidea-white)] text-[var(--xidea-near-black)] shadow-none transition-colors hover:bg-[#f8f6f1]"
-                onClick={handleCreateProject}
-                type="button"
-                variant="outline"
-              >
-                <Plus className="h-4 w-4" />
-                新建 project
-              </Button>
-
-              <Separator className="my-5 bg-[var(--xidea-border)]" />
-
+      <div className="relative mx-auto min-h-screen max-w-[1520px] px-3 py-3 lg:h-screen lg:min-h-0 lg:px-4 lg:py-4">
+        <div className="grid items-start gap-3 lg:h-full lg:grid-cols-[280px_minmax(0,1fr)_328px] lg:items-stretch">
+          <Card className="overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none lg:h-full">
+            <CardContent className="flex h-full flex-col p-3">
               <div className="flex min-h-0 flex-1 flex-col space-y-3">
-                <p className="xidea-kicker">Projects</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="xidea-kicker">Projects</p>
+                  <Button
+                    className="h-8 w-8 rounded-[0.85rem] text-[var(--xidea-stone)] hover:bg-[var(--xidea-white)] hover:text-[var(--xidea-near-black)]"
+                    onClick={handleCreateProject}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
                 <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                  <div className="space-y-3 pr-2">
+                  <div className="space-y-2 pr-1">
                     {projects.map((project) => {
                       const projectSessions = sessions.filter((session) => session.projectId === project.id);
-                      const expanded = expandedProjectIds.includes(project.id);
                       const activeProject = project.id === selectedProject?.id;
+                      const expanded = expandedProjectIds.includes(project.id);
 
                       return (
                         <div key={project.id}>
                           <ProjectCard
                             active={activeProject}
-                            description={project.description}
                             expanded={expanded}
                             name={project.name}
                             onClick={() => {
-                              handleSelectProject(project.id);
-                              toggleProject(project.id);
+                              if (!activeProject) {
+                                handleSelectProject(project.id);
+                              }
+                              handleToggleProject(project.id);
                             }}
-                            sessionCount={projectSessions.length}
+                            onCreateSession={() => {
+                              handleCreateSession(project.id);
+                            }}
                           />
 
-                          {expanded ? (
-                            <div className="mt-2 ml-3 box-border w-[calc(100%-0.75rem)] border-l border-[var(--xidea-sand)] pl-3">
-                              <div className="mb-3 space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="xidea-kicker">Sessions</p>
-                                  <span className="shrink-0 text-xs text-[var(--xidea-stone)]">
-                                    {projectSessions.length}
-                                  </span>
-                                </div>
-                                <Button
-                                  className="w-full justify-start rounded-full px-3 text-xs shadow-none transition-colors hover:bg-[var(--xidea-white)]"
-                                  onClick={() => {
-                                    handleCreateSession(project.id);
-                                  }}
-                                  size="sm"
-                                  type="button"
-                                  variant="ghost"
-                                >
-                                  <Plus className="h-3.5 w-3.5" />
-                                  新建 session
-                                </Button>
-                              </div>
+                          <div
+                            className={
+                              expanded
+                                ? "xidea-sidebar-reveal mt-2 ml-4 box-border grid w-[calc(100%-1rem)] grid-rows-[1fr] border-l border-[var(--xidea-sand)] pl-3 opacity-100"
+                                : "xidea-sidebar-reveal ml-4 box-border grid w-[calc(100%-1rem)] grid-rows-[0fr] border-l border-[var(--xidea-sand)] pl-3 opacity-0"
+                            }
+                          >
+                            <div className="overflow-hidden">
                               <div className="space-y-2">
                                 {projectSessions.length === 0 ? (
                                   <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
@@ -577,15 +904,13 @@ export function App(): ReactElement {
                                         setSelectedSessionId(session.id);
                                       });
                                     }}
-                                    status={session.status}
-                                    summary={session.summary}
                                     title={session.title}
                                     updatedAt={session.updatedAt}
                                   />
                                 ))}
                               </div>
                             </div>
-                          ) : null}
+                          </div>
                         </div>
                       );
                     })}
@@ -595,8 +920,8 @@ export function App(): ReactElement {
             </CardContent>
           </Card>
 
-          <Card className="flex min-h-0 flex-col overflow-hidden rounded-[1.6rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none xl:h-full">
-            <CardHeader className="gap-3 border-b border-[var(--xidea-border)] pb-4">
+          <Card className="flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none lg:h-full">
+            <CardHeader className="gap-3 border-b border-[var(--xidea-border)] px-5 pb-4 pt-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                   <CardTitle className="truncate text-sm font-medium text-[var(--xidea-near-black)]">
@@ -612,17 +937,19 @@ export function App(): ReactElement {
                 >
                   {status === "streaming" || status === "submitted"
                     ? "Streaming"
-                    : activeRuntime.source === "live-agent"
+                    : agentConnectionState === "offline"
+                      ? "Offline"
+                      : activeRuntime.source === "live-agent"
                       ? "Live Agent"
-                      : agentBaseUrl
-                        ? "Mock Fallback"
-                        : "Mock Demo"}
+                      : agentConnectionState === "ready"
+                        ? "Agent Ready"
+                        : "Checking"}
                 </Badge>
               </div>
             </CardHeader>
 
             <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
-              <div className="px-5 pt-5 md:px-6">
+              <div className="px-5 pt-5 lg:px-6">
                 <div className="flex flex-wrap gap-2">
                   {entryModes.map((entry) => {
                     const Icon = entry.icon;
@@ -638,6 +965,12 @@ export function App(): ReactElement {
                         key={entry.id}
                         onClick={() => {
                           setSelectedEntryMode(entry.id);
+                          if (
+                            entry.id === "material-import" &&
+                            selectedSourceAssetIds.length === 0
+                          ) {
+                            setSelectedSourceAssetIds(sourceAssets.map((asset) => asset.id));
+                          }
                         }}
                         type="button"
                         variant="outline"
@@ -652,81 +985,137 @@ export function App(): ReactElement {
 
               <Separator className="bg-[var(--xidea-border)]" />
 
-              <div className="min-h-0 flex-1 px-5 md:px-6">
+              <div className="min-h-0 flex-1 px-5 lg:px-6">
                 <ScrollArea className="h-full pr-3">
-                  <div className="space-y-3 pb-4">
-                    {selectedSession === undefined ? (
-                      <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                        <CardHeader className="pb-3">
-                          <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">当前 project</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                          <p>这个 project 还没有 session。</p>
-                          <p>先在左侧当前 project 下新建 session，再开始这一轮 agent 运行。</p>
-                        </CardContent>
-                      </Card>
-                    ) : messages.length === 0 ? (
-                      <>
-                        <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                          <CardHeader className="pb-3">
-                            <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">当前输入</CardTitle>
-                          </CardHeader>
-                          <CardContent className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                            {draftPrompt.trim() || "输入为空。"}
-                          </CardContent>
-                        </Card>
-                        <Card className="rounded-[1.2rem] border-[#ebd5cc] bg-[#f5ede9] shadow-none">
-                          <CardHeader className="pb-3">
-                            <CardTitle className="xidea-kicker text-[var(--xidea-selection-text)]">系统判断</CardTitle>
-                          </CardHeader>
-                          <CardContent className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                            {activeRuntime.decision.reason}
-                          </CardContent>
-                        </Card>
-                      </>
-                    ) : (
-                      messages.map((message) => (
-                        <Card
-                          className={
-                            message.role === "assistant"
-                              ? "rounded-[1.2rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] shadow-none"
-                              : "rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none"
-                          }
-                          key={message.id}
-                        >
-                          <CardHeader className="pb-3">
-                            <CardTitle
-                              className={
-                                message.role === "assistant"
-                                  ? "xidea-kicker text-[var(--xidea-selection-text)]"
-                                  : "xidea-kicker text-[var(--xidea-stone)]"
-                              }
-                            >
-                              {message.role === "assistant" ? "当前动作" : "当前输入"}
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                            {getMessageText(message)}
-                          </CardContent>
-                        </Card>
-                      ))
+                  <div className="space-y-4 pb-4">
+                    {selectedEntryMode === "material-import" ? (
+                      <section className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
+                            <FileInput className="h-4 w-4" />
+                          </div>
+                          <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
+                        </div>
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          {sourceAssets.map((asset) => {
+                            const selected = selectedSourceAssetIds.includes(asset.id);
+
+                            return (
+                              <button
+                                className={
+                                  selected
+                                    ? "rounded-[1rem] bg-[var(--xidea-selection)] px-4 py-4 text-left transition-colors"
+                                    : "rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4 text-left transition-colors hover:bg-[#f8f2ee]"
+                                }
+                                key={asset.id}
+                                onClick={() => {
+                                  setSelectedSourceAssetIds((current) =>
+                                    current.includes(asset.id)
+                                      ? current.filter((id) => id !== asset.id)
+                                      : [...current, asset.id],
+                                  );
+                                }}
+                                type="button"
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                                    {asset.title}
+                                  </p>
+                                  <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+                                    {getAssetKindLabel(asset.kind)}
+                                  </span>
+                                </div>
+                                <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
+                                  {asset.topic}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {selectedSession === undefined || messages.length === 0 ? null : (
+                      messages.map((message) => {
+                        const isAssistant = message.role === "assistant";
+                        const rawText = getMessageText(message);
+                        const shouldCollapseAssistant =
+                          isAssistant && rawText.length > 96;
+                        const isExpanded =
+                          expandedAssistantMessageIds[message.id] ?? false;
+                        const visibleText =
+                          shouldCollapseAssistant && !isExpanded
+                            ? getCollapsedAssistantText(rawText)
+                            : rawText;
+
+                        return (
+                          <div
+                            className={isAssistant ? "flex justify-start" : "flex justify-end"}
+                            key={message.id}
+                          >
+                            {isAssistant ? (
+                              <div className="w-full max-w-[82%] py-1">
+                                <div className="mb-2 flex items-center gap-2">
+                                  <span className="xidea-kicker text-[var(--xidea-selection-text)]">
+                                    Agent
+                                  </span>
+                                  {shouldCollapseAssistant ? (
+                                    <Button
+                                      className="h-6 rounded-full px-2 text-[11px] text-[var(--xidea-stone)] hover:bg-[var(--xidea-parchment)] hover:text-[var(--xidea-near-black)]"
+                                      onClick={() => {
+                                        setExpandedAssistantMessageIds((current) => ({
+                                          ...current,
+                                          [message.id]: !isExpanded,
+                                        }));
+                                      }}
+                                      size="sm"
+                                      type="button"
+                                      variant="ghost"
+                                    >
+                                      {isExpanded ? "收起" : "展开"}
+                                    </Button>
+                                  ) : null}
+                                </div>
+                                {shouldCollapseAssistant && !isExpanded ? (
+                                  <span className="mb-2 block text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+                                    摘要
+                                  </span>
+                                ) : null}
+                                <div className="text-[14px] leading-6 whitespace-pre-wrap text-[var(--xidea-charcoal)]">
+                                  {visibleText}
+                                </div>
+                              </div>
+                            ) : (
+                              <Card className="w-full max-w-[72%] rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                                <CardHeader className="pb-3">
+                                  <div className="flex items-center gap-2">
+                                    <Badge
+                                      className="border-[var(--xidea-border)] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)] shadow-none"
+                                      variant="outline"
+                                    >
+                                      用户
+                                    </Badge>
+                                  </div>
+                                </CardHeader>
+                                <CardContent className="text-sm leading-7 text-[var(--xidea-charcoal)]">
+                                  <div>{visibleText}</div>
+                                </CardContent>
+                              </Card>
+                            )}
+                          </div>
+                        );
+                      })
                     )}
 
-                    <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
-                            <Route className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">下一步路径</CardTitle>
-                            <CardDescription className="text-sm text-[var(--xidea-stone)]">
-                              由当前 runtime 决定的前三步。
-                            </CardDescription>
-                          </div>
+                    {!isBlankSession ? (
+                    <section className="space-y-3 py-2">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
+                          <Route className="h-4 w-4" />
                         </div>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
+                        <p className="xidea-kicker text-[var(--xidea-stone)]">路径</p>
+                      </div>
+                      <div className="space-y-3">
                         {activeRuntime.plan.steps.slice(0, 3).map((step, index) => (
                           <div
                             className="flex items-start gap-4 rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4"
@@ -749,26 +1138,138 @@ export function App(): ReactElement {
                             </div>
                           </div>
                         ))}
-                      </CardContent>
-                    </Card>
+                      </div>
+                    </section>
+                    ) : null}
+
+                    {!isBlankSession ? (
+                    <section className="space-y-4 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="xidea-kicker text-[var(--xidea-stone)]">编排证据</p>
+                        <div className="flex items-center gap-2">
+                          {activeRuntime.decision.confidence !== null ? (
+                            <span className="text-[12px] font-medium text-[var(--xidea-selection-text)]">
+                              {(activeRuntime.decision.confidence * 100).toFixed(0)}%
+                            </span>
+                          ) : null}
+                          <div className="flex items-center gap-2">
+                            <Button
+                              className="h-8 w-8 rounded-[0.85rem] text-[var(--xidea-stone)] hover:bg-[var(--xidea-parchment)] hover:text-[var(--xidea-near-black)]"
+                              onClick={() => {
+                                setIsEvidenceExpanded((current) => !current);
+                              }}
+                              size="icon"
+                              type="button"
+                              variant="ghost"
+                            >
+                              {isEvidenceExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-sm leading-7 text-[var(--xidea-charcoal)]">
+                        {activeRuntime.decision.reason}
+                      </div>
+
+                      {isEvidenceExpanded ? (
+                        <>
+                          <div className="grid gap-3 lg:grid-cols-3">
+                            {activeRuntime.signalCards.map((signal) => (
+                              <div className="space-y-2 rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4" key={signal.id}>
+                                <p className="xidea-kicker text-[var(--xidea-selection-text)]">
+                                  {signal.label}
+                                </p>
+                                <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+                                  {signal.observation}
+                                </p>
+                                <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                                  {signal.implication}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="xidea-kicker text-[var(--xidea-stone)]">Rationale</p>
+                            {activeRuntime.rationale.length > 0 ? (
+                              activeRuntime.rationale.map((item, index) => (
+                                <div
+                                  className="flex items-start gap-3 text-sm leading-7 text-[var(--xidea-charcoal)]"
+                                  key={`${item}-${index}`}
+                                >
+                                  <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-[var(--xidea-terracotta)]" />
+                                  <span>{item}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">
+                                {activeRuntime.decision.reason}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="space-y-3">
+                            <p className="xidea-kicker text-[var(--xidea-stone)]">Writeback</p>
+                            {activeRuntime.writeback.map((item) => (
+                              <div className="space-y-1 rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4" key={item.id}>
+                                <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                                  {item.target}
+                                </p>
+                                <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                                  {item.change}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : null}
+                    </section>
+                    ) : null}
                   </div>
                 </ScrollArea>
               </div>
 
-              <div className="shrink-0 border-t border-[var(--xidea-border)] px-5 py-4 md:px-6">
+              <div className="shrink-0 border-t border-[var(--xidea-border)] px-5 py-4 lg:px-6">
                 <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                   <CardContent className="p-4">
-                    <Textarea
-                      className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
-                      onChange={(event) => {
-                        if (error !== undefined) {
-                          clearError();
+                    <div className="relative">
+                      <Textarea
+                        className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] pr-28 pb-12 text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
+                        onChange={(event) => {
+                          if (error !== undefined) {
+                            clearError();
+                          }
+                          setDraftPrompt(event.target.value);
+                        }}
+                        placeholder={
+                          selectedEntryMode === "material-import"
+                            ? "补一句你希望系统围绕这些材料先判断什么、澄清什么，或生成什么训练动作。"
+                            : "输入这一轮你想推进的问题或材料。"
                         }
-                        setDraftPrompt(event.target.value);
-                      }}
-                      placeholder="输入这一轮你想推进的问题或材料。"
-                      value={draftPrompt}
-                    />
+                        value={draftPrompt}
+                      />
+
+                      <Button
+                        className="absolute right-3 bottom-3 rounded-full bg-[var(--xidea-terracotta)] px-4 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                        disabled={
+                          selectedSession === undefined ||
+                          (selectedEntryMode === "material-import" &&
+                            activeSourceAssets.length === 0) ||
+                          status === "submitted" ||
+                          status === "streaming" ||
+                          agentBaseUrl === null
+                        }
+                        onClick={handleSubmitPrompt}
+                        type="button"
+                      >
+                        {status === "submitted" || status === "streaming" ? "运行中..." : "发送"}
+                      </Button>
+                    </div>
 
                     {errorMessage ? (
                       <Card className="mt-4 rounded-[1rem] border-[#ebd5cc] bg-[#f9efea] shadow-none">
@@ -777,95 +1278,78 @@ export function App(): ReactElement {
                         </CardContent>
                       </Card>
                     ) : null}
-
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                      <div className="text-sm text-[var(--xidea-stone)]">
-                        {errorMessage ?? projectContext.currentThread}
-                      </div>
-                      <Button
-                        className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                        disabled={
-                          selectedSession === undefined ||
-                          status === "submitted" ||
-                          status === "streaming" ||
-                          agentBaseUrl === null
-                        }
-                        onClick={handleSubmitPrompt}
-                        type="button"
-                      >
-                        {status === "submitted" || status === "streaming" ? "运行中..." : "运行 agent"}
-                      </Button>
-                    </div>
                   </CardContent>
                 </Card>
               </div>
             </CardContent>
           </Card>
 
-          <div className="min-h-0 xl:col-span-2 2xl:col-span-1 2xl:h-full">
+          <div className="min-h-0 min-w-0 lg:h-full">
             <ScrollArea className="h-full pr-1">
-              <div className="flex flex-col gap-3 pb-1">
-                <InspectorCard description="当前 session 绑定哪个学习者阶段。" title="学习画像">
-                  <div className="space-y-2">
-                    {learnerProfiles.map((profile) => (
-                      <ProfileCard
-                        active={profile.id === selectedProfile.id}
-                        key={profile.id}
-                        name={profile.name}
-                        onClick={() => {
-                          startTransition(() => {
-                            setSelectedProfileId(profile.id);
-                          });
-                        }}
-                        role={profile.role}
+              <div className="grid gap-3 pb-1">
+                <MonitorSection accent={activeRuntime.source === "live-agent" ? "Live" : "Mock"} title="Session">
+                  <CompactNote label="Project" value={selectedProject.name} />
+                  <CompactNote label="Thread" value={selectedSession?.status ?? "等待创建"} />
+                  <CompactNote label="Mode" value={isBlankSession ? "未生成" : activeRuntime.decision.title} />
+                  <CompactNote
+                    label="Agent"
+                    value={
+                      isBlankSession
+                        ? "--"
+                        : activeRuntime.decision.confidence !== null
+                        ? `${(activeRuntime.decision.confidence * 100).toFixed(0)}% confidence`
+                        : "heuristic"
+                    }
+                  />
+                </MonitorSection>
+
+                <MonitorSection title="Learner">
+                  <div className="grid grid-cols-2 gap-2">
+                    {metricCopy.map((metric) => (
+                      <MetricTile
+                        key={metric.key}
+                        label={metric.label}
+                        tone={metric.tone}
+                        value={
+                          isBlankSession || activeRuntime.state[metric.key] === null
+                            ? "--"
+                            : `${activeRuntime.state[metric.key]}%`
+                        }
                       />
                     ))}
                   </div>
-                </InspectorCard>
-
-                <InspectorCard description="由当前 runtime 回写出来的学习状态。" title="学习状态">
-                  <div className="flex flex-wrap gap-2">
-                    {metricCopy.map((metric) => (
-                      <Badge
-                        className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2 text-sm font-medium text-[var(--xidea-charcoal)] shadow-none"
-                        key={metric.key}
-                        variant="outline"
-                      >
-                        <span className={`mr-2 inline-block h-2.5 w-2.5 rounded-full ${getMetricDotClass(metric.tone)}`} />
-                        {metric.label} {activeRuntime.state[metric.key] === null ? "--" : `${activeRuntime.state[metric.key]}%`}
-                      </Badge>
-                    ))}
+                  <div className="rounded-[0.95rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-selection-text)]">
+                      Profile
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">
+                      {isBlankSession ? "--" : generatedProfile.title}
+                    </p>
+                    {!isBlankSession ? (
+                      <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                        {generatedProfile.evidence[0]}
+                      </p>
+                    ) : null}
                   </div>
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                    <CardContent className="p-4 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                      {activeRuntime.stateSource}
-                    </CardContent>
-                  </Card>
-                </InspectorCard>
+                </MonitorSection>
 
-                <InspectorCard description="当前复习节点和弱信号。" title="复习系统">
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                    <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                      <CardContent className="p-4">
-                        <p className="text-sm text-[var(--xidea-stone)]">最近复盘</p>
-                        <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">
-                          {activeRuntime.state.lastReviewedAt ?? "未记录"}
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                      <CardContent className="p-4">
-                        <p className="text-sm text-[var(--xidea-stone)]">下一次提醒</p>
-                        <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">
-                          {activeRuntime.state.nextReviewAt ?? "待本轮决定"}
-                        </p>
-                      </CardContent>
-                    </Card>
+                <MonitorSection title="Review">
+                  <div className="grid grid-cols-2 gap-2">
+                    <MetricTile
+                      label="Last"
+                      tone="amber"
+                      value={isBlankSession ? "--" : activeRuntime.state.lastReviewedAt ?? "未记录"}
+                    />
+                    <MetricTile
+                      label="Next"
+                      tone="sky"
+                      value={isBlankSession ? "--" : activeRuntime.state.nextReviewAt ?? "待决定"}
+                    />
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {activeRuntime.state.weakSignals.map((signal) => (
+                    {(isBlankSession ? [] : activeRuntime.state.weakSignals.slice(0, 3)).map((signal) => (
                       <Badge
-                        className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-3 py-2 text-sm text-[var(--xidea-charcoal)] shadow-none"
+                        className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
                         key={signal}
                         variant="outline"
                       >
@@ -873,60 +1357,70 @@ export function App(): ReactElement {
                       </Badge>
                     ))}
                   </div>
-                </InspectorCard>
-
-                <InspectorCard description="项目上下文和当前主训练动作。" title="项目面板">
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                    <CardContent className="p-4">
-                      <p className="text-sm font-medium text-[var(--xidea-near-black)]">{selectedProject.name}</p>
-                      <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                        当前 project 下共有 {sessions.filter((session) => session.projectId === selectedProject.id).length} 个 session。
+                  <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
+                        Heatmap
                       </p>
-                    </CardContent>
-                  </Card>
+                      <span className="text-[11px] text-[var(--xidea-stone)]">5w</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-5 gap-1.5">
+                      {reviewHeatmap.map((week, weekIndex) => (
+                        <div className="grid grid-rows-7 gap-1.5" key={`week-${weekIndex}`}>
+                          {week.map((cell) => (
+                            <div
+                              className={`h-3.5 w-full rounded-[3px] ${getHeatmapCellClass(cell.intensity)}`}
+                              key={cell.dateKey}
+                              title={cell.tooltip}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </MonitorSection>
 
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Brain className="h-4 w-4 text-[var(--xidea-terracotta)]" />
-                        <p className="text-sm font-medium text-[var(--xidea-near-black)]">{activeRuntime.decision.title}</p>
-                      </div>
-                      <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">{activeRuntime.decision.objective}</p>
-                    </CardContent>
-                  </Card>
-
+                <MonitorSection title="Materials">
+                  <CompactNote
+                    label="Selected"
+                    value={
+                      isBlankSession
+                        ? "0 assets"
+                        : selectedEntryMode === "material-import"
+                        ? `${activeSourceAssets.length} assets`
+                        : `${sourceAssets.length} linked`
+                    }
+                  />
+                  <CompactNote label="Unit" value={selectedUnit?.title ?? "未指定"} />
+                  <CompactNote
+                    label="Writeback"
+                    value={isBlankSession ? "未生成" : activeRuntime.writeback[0]?.target ?? "Project Thread"}
+                  />
+                  <div className="rounded-[0.95rem] bg-[var(--xidea-parchment)] px-3 py-3">
+                    <div className="flex items-center gap-2">
+                      <Brain className="h-4 w-4 text-[var(--xidea-terracotta)]" />
+                      <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                        {isBlankSession ? "--" : activeRuntime.decision.title}
+                      </p>
+                    </div>
+                    {!isBlankSession ? (
+                      <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                        {activeRuntime.decision.objective}
+                      </p>
+                    ) : null}
+                  </div>
                   <div className="flex flex-wrap gap-2">
-                    {selectedUnit.candidateModes.map((mode) => (
-                      <Badge className={`border shadow-none ${getModeBadgeClass(mode)}`} key={mode} variant="outline">
+                    {(selectedUnit?.candidateModes ?? []).slice(0, 3).map((mode) => (
+                      <Badge
+                        className={`border px-2 py-1 text-[12px] shadow-none ${getModeBadgeClass(mode)}`}
+                        key={mode}
+                        variant="outline"
+                      >
                         {MODE_LABELS[mode]}
                       </Badge>
                     ))}
                   </div>
-
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Target className="h-4 w-4 text-[var(--xidea-terracotta)]" />
-                        <p className="text-sm font-medium text-[var(--xidea-near-black)]">当前材料</p>
-                      </div>
-                      <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                        {sourceAssets.length} 份材料已接入当前项目线程，默认不展开详情。
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2">
-                        <RefreshCcw className="h-4 w-4 text-[var(--xidea-terracotta)]" />
-                        <p className="text-sm font-medium text-[var(--xidea-near-black)]">状态回写</p>
-                      </div>
-                      <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">
-                        {activeRuntime.writeback[0]?.change ?? "本轮结果会写回 learner state 和 review engine。"}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </InspectorCard>
+                </MonitorSection>
               </div>
             </ScrollArea>
           </div>

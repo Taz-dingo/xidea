@@ -55,8 +55,22 @@
 - 新增效果评估：检测上一轮动作是否改善对应指标，无效动作自动降权
 - 新增 `POST /runs/v0/stream` SSE streaming endpoint，事件序列 text-delta → diagnosis → plan → state-patch → done
 - 新增 19 个测试（15 决策路径 + 4 SSE），总计 54 个全部通过
+- `apps/web` 请求已按当前 `project / session` 真实绑定到 agent `project_id / thread_id`，不同 session 不再共用后端线程状态
+- `apps/web` 已切到真实 SSE 消费 `/runs/v0/stream`，thread 区改为跟随后端流式事件逐步渲染
+- `apps/web` 已把编排证据链默认展开，当前可直接查看诊断信号、动作依据与完整状态回写预览
+- `apps/web` 的 `material-import` 已升级为真实材料入口面板，支持选择本轮带入材料并约束发送条件
+- `apps/web` 中栏输入区已收成单一输入框 + 内嵌发送按钮，thread 与 inspector 滚动区默认显示可见滚动条
+- `apps/web` 左栏已收敛为更紧凑的 codex-style workspace 导航：project 用图标行呈现，session 只保留标题级信息
+- `apps/web` 的学习画像已改为根据当前对话与运行态自动生成，不再由用户手动切换
+- `apps/web` 的复习系统已新增 GitHub-style 近 5 周复习热力图
+- `apps/web` 主布局已收敛为基础态 + `lg` 两段响应式，不再继续细分更碎的宽度区间
+- `apps/web` 的左栏 project 已改为文件夹开关图标，并为 session reveal 补上轻量展开收起动画
+- `apps/web` 的 agent 输出已默认收成核心摘要，长解释与证据链需要显式展开，用户输入与系统输出的视觉层级已拉开
+- `apps/web` 的右栏已重构为监控型高信息密度面板，当前聚焦 session、learner、review 和 materials 四组状态
+- `apps/web` 中栏已进一步收敛到“只有用户输入保留卡片，系统输出与诊断改走无边框信息流”，同时空白 session 不再显示解释性提示文案
+- `apps/web` 现已在页面加载时主动探测 agent `/health`，并会为已选 session 尝试回读持久化 learner state；顶部状态徽标不再把“未 hydrate 的前端 fallback”误显示成后端断连
 - 重新整理 `docs/` 结构：根目录保留 operating docs，流程文档下沉到 `docs/process/`，参考材料下沉到 `docs/reference/`
-- 生成 [docs/reference/agent-state-design.md](reference/agent-state-design.md) 设计文档
+- 生成 `docs/reference/agent-state-design.md` 设计文档
 - 将 `docs/memory/decision-log.md` 收敛为活跃决策薄层，历史条目归档到 `docs/archive/decision-log-history.md`
 - 将路线图并入 `docs/plan.md`，不再单独维护 `reference/backlog.md`
 - 将 demo 展示规则并入 `docs/reference/competition-defense-kit.md`
@@ -65,11 +79,11 @@
 ### In Progress
 
 - 保持 web demo 简洁可演示，同时继续对齐后续 agent runtime 接口
+- 规划学习画像 / 复习热力图 / 材料面板接真实系统
 
 ### Next
 
 - 决定第一版 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
-- 前端切换到 SSE 消费 `/runs/v0/stream`，实现流式渲染
 
 ### Risks
 

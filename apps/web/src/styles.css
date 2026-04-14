@@ -146,3 +146,10 @@ button {
 .xidea-divider {
   border-color: var(--xidea-border);
 }
+
+.xidea-sidebar-reveal {
+  transition:
+    grid-template-rows 180ms ease,
+    opacity 180ms ease,
+    margin-top 180ms ease;
+}
