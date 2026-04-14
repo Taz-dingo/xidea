@@ -27,14 +27,14 @@ GRAPH_NODES = [
 ]
 
 
-def build_graph(repository: SQLiteRepository | None = None):
+def build_graph(repository: SQLiteRepository | None = None, *, llm: object):
     graph = StateGraph(GraphState)
 
     graph.add_node("load_context", _load_context_node(repository))
-    graph.add_node("diagnose", diagnose_node)
+    graph.add_node("diagnose", _diagnose_node(llm))
     graph.add_node("decide_action", decide_action_node)
     graph.add_node("maybe_tool", _maybe_tool_node(repository))
-    graph.add_node("compose_response", compose_response_node)
+    graph.add_node("compose_response", _compose_response_node(llm))
     graph.add_node("writeback", writeback_node)
 
     graph.add_edge(START, "load_context")
@@ -48,8 +48,8 @@ def build_graph(repository: SQLiteRepository | None = None):
     return graph
 
 
-def compile_graph(repository: SQLiteRepository | None = None):
-    return build_graph(repository=repository).compile()
+def compile_graph(repository: SQLiteRepository | None = None, *, llm: object):
+    return build_graph(repository=repository, llm=llm).compile()
 
 
 def describe_graph() -> dict[str, object]:
@@ -84,9 +84,12 @@ def _load_context_node(repository: SQLiteRepository | None):
     return node
 
 
-def diagnose_node(state: GraphState) -> dict[str, object]:
-    updated = diagnose_step(state)
-    return updated.model_dump(mode="python")
+def _diagnose_node(llm: object):
+    def node(state: GraphState) -> dict[str, object]:
+        updated = diagnose_step(state, llm=llm)
+        return updated.model_dump(mode="python")
+
+    return node
 
 
 def decide_action_node(state: GraphState) -> dict[str, object]:
@@ -102,9 +105,12 @@ def _maybe_tool_node(repository: SQLiteRepository | None):
     return node
 
 
-def compose_response_node(state: GraphState) -> dict[str, object]:
-    updated = compose_response_step(state)
-    return updated.model_dump(mode="python")
+def _compose_response_node(llm: object):
+    def node(state: GraphState) -> dict[str, object]:
+        updated = compose_response_step(state, llm=llm)
+        return updated.model_dump(mode="python")
+
+    return node
 
 
 def writeback_node(state: GraphState) -> dict[str, object]:

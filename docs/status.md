@@ -1,6 +1,6 @@
 # Status
 
-## As Of 2026-04-14
+## As Of 2026-04-12
 
 ### Done
 
@@ -26,9 +26,9 @@
 - 将 web demo 数据统一收敛到 RAG 主案例，不再并列展示跨学科样例
 - 将主案例映射成更可信的状态来源、诊断信号和回写预览
 - 将编排证据链做成默认可见输出，并把 planner explanation 结构化为主决策与写回预览
-- 完成 web 前端 v0 首页重构，强化“项目线程 -> 诊断 -> 动作选择 -> 学习路径 -> 回写”的默认叙事结构
+- 完成 web 前端 v0 首页重构，强化"项目线程 -> 诊断 -> 动作选择 -> 学习路径 -> 回写"的默认叙事结构
 - 首页信息架构已进一步改成更克制的 codex-style workspace：左侧 `project / session` 侧栏，中间保留当前 thread 必要内容，右侧放学习画像、复习系统和项目特有 inspector
-- 当前 workspace 的视觉规则已收敛为“轻选中态 + 中性色主导 + 侧栏单行排版”，不再使用大面积黑色 active 和多彩状态块
+- 当前 workspace 的视觉规则已收敛为"轻选中态 + 中性色主导 + 侧栏单行排版"，不再使用大面积黑色 active 和多彩状态块
 - `apps/web` 已接入真实 `/runs/v0` 结果，可用本地代理和运行面板把 mock 证据链切到 agent 返回的 `diagnosis / plan / state-patch`
 - `apps/web` 已正式接入 `shadcn/ui` 基础组件，当前 workspace 的按钮、卡片、徽标、滚动区和输入区不再是纯手写 primitive
 - `apps/web` 已正式接入 Vercel AI SDK 的 `useChat + custom transport`，中间 thread 区开始按消息流方式承接 `/runs/v0` 返回，而不是只靠本地面板状态拼接
@@ -67,14 +67,20 @@
 - `apps/web` 的左栏 project 已改为文件夹开关图标，并为 session reveal 补上轻量展开收起动画
 - `apps/web` 的 agent 输出已默认收成核心摘要，长解释与证据链需要显式展开，用户输入与系统输出的视觉层级已拉开
 - `apps/web` 的右栏已重构为监控型高信息密度面板，当前聚焦 session、learner、review 和 materials 四组状态
-- `apps/web` 中栏已进一步收敛到“只有用户输入保留卡片，系统输出与诊断改走无边框信息流”，同时空白 session 不再显示解释性提示文案
-- `apps/web` 现已在页面加载时主动探测 agent `/health`，并会为已选 session 尝试回读持久化 learner state；顶部状态徽标不再把“未 hydrate 的前端 fallback”误显示成后端断连
+- `apps/web` 中栏已进一步收敛到"只有用户输入保留卡片，系统输出与诊断改走无边框信息流"，同时空白 session 不再显示解释性提示文案
+- `apps/web` 现已在页面加载时主动探测 agent `/health`，并会为已选 session 尝试回读持久化 learner state；顶部状态徽标不再把"未 hydrate 的前端 fallback"误显示成后端断连
 - 重新整理 `docs/` 结构：根目录保留 operating docs，流程文档下沉到 `docs/process/`，参考材料下沉到 `docs/reference/`
 - 生成 `docs/reference/agent-state-design.md` 设计文档
 - 将 `docs/memory/decision-log.md` 收敛为活跃决策薄层，历史条目归档到 `docs/archive/decision-log-history.md`
 - 将路线图并入 `docs/plan.md`，不再单独维护 `reference/backlog.md`
 - 将 demo 展示规则并入 `docs/reference/competition-defense-kit.md`
 - 将科学复习相关产品表述收敛到 `docs/reference/product-brief.md`
+- LLM 接入全链路改造（A/B/C 三层）：信号提取 + 诊断决策 + 路径规划 + 回复生成全部由 LLM 驱动
+- 架构修正为 LLM-first：LLM 是核心 pedagogical agent，规则仅作为 guardrails；`OPENAI_API_KEY` 是启动必须项
+- Guardrails 从 advisory 升级为 blocking，违规时在 LLM 诊断上直接修正（不 fallback 到规则）
+- 修复 review engine 的 `next_review_at` 传参问题，规则 4 恢复生效
+- 状态数值边界保护：delta 衰减 + 同类信号重复衰减
+- 新增 24 个 LLM + guardrail 测试，总计 95 个全部通过
 
 ### In Progress
 
@@ -87,6 +93,8 @@
 - 先把 `docs/plan.md` 中仍未完成的前端真实化项按优先级排顺：学习画像 -> 复习热力图 -> 材料面板
 - 决定第一版 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
 - 补答辩素材与竞品对比摘要，避免 demo 能演示但叙事支撑不足
+- 可选：用真实 API key 做端到端测试，迭代 LLM prompt 效果
+- 可选：清理 `enrich_plan_steps`（已被 `llm_build_plan` 替代）
 
 ### Risks
 

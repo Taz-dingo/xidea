@@ -188,6 +188,7 @@ class GraphState(StrictModel):
     learning_unit: LearningUnit | None = None
     signals: list[Signal] = Field(default_factory=list)
     prior_learner_unit_state: LearnerUnitState | None = None
+    prior_next_review_at: datetime | None = None
     learner_unit_state: LearnerUnitState | None = None
     diagnosis: Diagnosis | None = None
     tool_intent: ToolIntent = "none"

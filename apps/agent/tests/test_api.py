@@ -6,17 +6,19 @@ from fastapi.testclient import TestClient
 from xidea_agent.api import create_app
 from xidea_agent.repository import SQLiteRepository
 
+from conftest import build_mock_llm, build_mock_llm_for_review
+
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(create_app())
+    return TestClient(create_app(llm=build_mock_llm()))
 
 
 @pytest.fixture
 def persisted_client(tmp_path: Path) -> TestClient:
     repository = SQLiteRepository(tmp_path / "agent.db")
     repository.initialize()
-    return TestClient(create_app(repository=repository))
+    return TestClient(create_app(repository=repository, llm=build_mock_llm_for_review()))
 
 
 def test_schemas_endpoint_exposes_stream_event_schema(client: TestClient) -> None:
@@ -46,7 +48,6 @@ def test_run_v0_endpoint_returns_structured_result(client: TestClient) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["graph_state"]["diagnosis"]["recommended_action"] == "clarify"
-    assert payload["graph_state"]["plan"]["selected_mode"] == "contrast-drill"
     assert payload["events"][-1]["event"] == "done"
 
 
@@ -147,3 +148,13 @@ def test_stream_endpoint_persists_to_repository(persisted_client: TestClient) ->
     assert len(messages) == 2
     assert messages[0]["role"] == "user"
     assert messages[1]["role"] == "assistant"
+
+
+def test_create_app_fails_without_api_key() -> None:
+    """Without OPENAI_API_KEY, create_app should raise RuntimeError."""
+    import os
+    from unittest.mock import patch
+
+    with patch.dict(os.environ, {}, clear=True):
+        with pytest.raises(RuntimeError, match="OPENAI_API_KEY is required"):
+            create_app()

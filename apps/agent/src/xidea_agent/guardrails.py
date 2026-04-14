@@ -104,6 +104,51 @@ def check_reason_not_empty(state: GraphState) -> GuardrailResult:
     return GuardrailResult(rule_id="G5", rule_name="必须解释", passed=True)
 
 
+def validate_diagnosis(
+    diagnosis: "Diagnosis",
+    learner_state: "LearnerUnitState | None",
+) -> list[GuardrailResult]:
+    """Pre-validate a diagnosis before it enters the graph.
+
+    Used to reject LLM diagnoses that violate hard constraints, triggering
+    fallback to rule-based diagnosis.
+    """
+    from xidea_agent.state import Diagnosis, LearnerUnitState
+
+    results: list[GuardrailResult] = []
+
+    if learner_state is not None:
+        if learner_state.understanding_level < 40 and diagnosis.recommended_action == "review":
+            results.append(
+                GuardrailResult(
+                    rule_id="G2",
+                    rule_name="不懂不复习",
+                    passed=False,
+                    violation=(
+                        f"understanding={learner_state.understanding_level} < 40，"
+                        "但 LLM 诊断仍选择了 review。"
+                    ),
+                    suggestion="应切到 teach 或 clarify。",
+                )
+            )
+
+        if learner_state.confusion_level > 70 and diagnosis.recommended_action not in ("clarify", "teach"):
+            results.append(
+                GuardrailResult(
+                    rule_id="G3",
+                    rule_name="高混淆先澄清",
+                    passed=False,
+                    violation=(
+                        f"confusion={learner_state.confusion_level} > 70，"
+                        f"但 LLM 诊断选择了 {diagnosis.recommended_action}。"
+                    ),
+                    suggestion="应优先 clarify 或 teach。",
+                )
+            )
+
+    return results
+
+
 ALL_GUARDRAILS = [
     check_diagnosis_required,
     check_no_review_when_not_understood,

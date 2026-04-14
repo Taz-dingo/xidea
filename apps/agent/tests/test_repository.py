@@ -4,6 +4,8 @@ from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import run_agent_v0
 from xidea_agent.state import AgentRequest
 
+from conftest import build_mock_llm_for_review
+
 
 def build_request(**overrides) -> AgentRequest:
     payload = {
@@ -23,7 +25,7 @@ def build_request(**overrides) -> AgentRequest:
 def test_repository_initializes_and_persists_run(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "agent.db")
     request = build_request()
-    run_result = run_agent_v0(request)
+    run_result = run_agent_v0(request, llm=build_mock_llm_for_review())
 
     repository.save_run(request, run_result)
 
@@ -37,7 +39,6 @@ def test_repository_initializes_and_persists_run(tmp_path: Path) -> None:
 
     assert learner_state is not None
     assert learner_state.recommended_action == "review"
-    assert "关键概念记忆不稳" in learner_state.weak_signals
 
     assert review_state is not None
     assert review_state.due_unit_ids == ["unit-rag-retrieval"]

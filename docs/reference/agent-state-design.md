@@ -379,6 +379,80 @@ new_state = apply_outcome(review_state, outcome)
 - `ReviewPatch` 已扩展 `review_count` / `lapse_count` 字段
 - `review_state` 表已对应增加两列
 
+## LLM 接入 — LLM 是核心决策者，规则仅作为 Guardrails
+
+### 设计原则
+
+- **LLM 是核心 pedagogical agent**：信号提取、诊断决策、计划生成、教学回复全部由 LLM 驱动
+- **规则仅作为 guardrails**：约束 LLM 输出，确保教学安全性（如不懂不复习、高混淆先澄清）
+- **Guardrails 违规时修正而非 fallback**：guardrail 拒绝 LLM 诊断后，直接在 LLM 诊断上修正，而非回退到规则诊断
+- **OPENAI_API_KEY 是必须的**：未设置时系统拒绝启动，不存在"纯规则模式"
+- 规则辅助函数（`build_signals` / `diagnose_state` / `build_plan`）保留代码，但仅用于：
+  - 信号提取的软降级（LLM 信号提取失败时用规则补充）
+  - 计划生成的软降级（LLM 计划生成失败时用模板补充）
+  - 测试辅助（不 mock LLM 时可单独测试规则逻辑）
+- Schema（`Signal / Diagnosis / StudyPlan`）不变，前端 contract 不受影响
+
+### 全链路 LLM 参与
+
+| 环节 | 主路径（LLM） | 软降级 | 硬失败 |
+|------|--------------|--------|--------|
+| 信号提取 | `llm_build_signals()` | `build_signals()` 规则补充 | — |
+| 状态估算 | `estimate_learner_state()` 规则辅助 | — | — |
+| 诊断决策 | `llm_diagnose()` + guardrail 校验 | — | 抛 RuntimeError |
+| 计划生成 | `llm_build_plan()` | `build_plan()` 模板补充 | — |
+| 回复生成 | `generate_assistant_reply()` | `compose_assistant_message()` 模板 | — |
+
+### 模块结构
+
+`llm.py` 封装所有 OpenAI 调用：
+
+```python
+from xidea_agent.llm import (
+    LLMClient, build_llm_client,
+    llm_build_signals, llm_diagnose, llm_build_plan,
+    generate_assistant_reply, enrich_plan_steps,
+)
+
+llm = build_llm_client()  # 无 OPENAI_API_KEY 时抛 RuntimeError
+signals = llm_build_signals(llm, messages, observations, entry_mode, prior_state)
+diagnosis = llm_diagnose(llm, learner_state, signals, entry_mode, target_unit_id)
+plan = llm_build_plan(llm, topic, unit_title, candidate_modes, diagnosis, learner_state, user_msg)
+reply = generate_assistant_reply(llm, diagnosis, plan, learner_state, user_message)
+```
+
+### 编排层集成
+
+`runtime.py` 的 `diagnose_step()` 和 `compose_response_step()` 的 `llm` 参数是 **required**（非可选）：
+
+1. `diagnose_step(state, llm=llm)`:
+   - LLM 信号提取失败 → 用规则信号补充（软降级）
+   - LLM 诊断 → `validate_diagnosis` guardrail 校验
+   - Guardrail 违规 → 在 LLM 诊断上直接修正（不 fallback 到规则诊断）
+   - LLM 诊断返回 None → 抛 RuntimeError（硬失败）
+2. `compose_response_step(state, llm=llm)`:
+   - LLM 计划生成失败 → 用模板补充（软降级）
+   - LLM 回复生成失败 → 用模板补充（软降级）
+
+`run_agent_v0()` 的 `llm` 参数为 keyword-only required。
+`graph.py` 的 `build_graph()` / `compile_graph()` 的 `llm` 参数同样为 keyword-only required。
+
+### System Prompts
+
+| Prompt | 用途 | 关键约束 |
+|--------|------|---------|
+| `SIGNAL_EXTRACTION_SYSTEM_PROMPT` | 信号提取 | 输出 JSON 数组，kind 限定枚举 |
+| `DIAGNOSIS_SYSTEM_PROMPT` | 诊断决策 | 输出 JSON 对象，遵守 G2/G3 教学约束 |
+| `PLAN_GENERATION_SYSTEM_PROMPT` | 计划生成 | 输出完整 StudyPlan JSON |
+| `REPLY_SYSTEM_PROMPT` | 教学回复 | 不改变诊断结论，2-4 句话 |
+
+### 环境变量
+
+| 变量 | 必须 | 默认值 | 说明 |
+|---|---|---|---|
+| `OPENAI_API_KEY` | **是** | 无（缺失时启动报错） | OpenAI API key |
+| `XIDEA_LLM_MODEL` | 否 | `gpt-4o-mini` | 使用的模型 |
+
 ## 前后端字段映射
 
 Python 使用 `snake_case`，前端使用 `camelCase`，字段一一对应：

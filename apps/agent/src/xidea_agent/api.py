@@ -8,6 +8,7 @@ from pydantic import TypeAdapter
 from starlette.responses import StreamingResponse
 
 from xidea_agent.graph import describe_graph
+from xidea_agent.llm import LLMClient, build_llm_client
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import run_agent_v0
 from xidea_agent.state import (
@@ -22,8 +23,13 @@ from xidea_agent.state import (
 )
 
 
-def create_app(repository: SQLiteRepository | None = None) -> FastAPI:
+def create_app(
+    repository: SQLiteRepository | None = None,
+    llm: LLMClient | None = None,
+) -> FastAPI:
     repository = repository or _build_default_repository()
+    if llm is None:
+        llm = build_llm_client()  # raises RuntimeError if OPENAI_API_KEY is missing
     app = FastAPI(title="Xidea Agent")
     app.add_middleware(
         CORSMiddleware,
@@ -58,14 +64,14 @@ def create_app(repository: SQLiteRepository | None = None) -> FastAPI:
 
     @app.post("/runs/v0")
     def run_v0(request: AgentRequest) -> AgentRunResult:
-        result = run_agent_v0(request, repository=repository)
+        result = run_agent_v0(request, repository=repository, llm=llm)
         if repository is not None:
             repository.save_run(request, result)
         return result
 
     @app.post("/runs/v0/stream")
     def run_v0_stream(request: AgentRequest) -> StreamingResponse:
-        result = run_agent_v0(request, repository=repository)
+        result = run_agent_v0(request, repository=repository, llm=llm)
         if repository is not None:
             repository.save_run(request, result)
         return StreamingResponse(
