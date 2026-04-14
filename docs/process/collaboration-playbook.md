@@ -14,7 +14,7 @@
 
 - 负责比赛 story
 - 控范围和优先级
-- 维护 `docs/product-brief.md`
+- 维护 `docs/reference/product-brief.md`
 
 ### 学习引擎 owner
 
@@ -86,7 +86,7 @@
 
 - 同步 `main`
 - 看一眼 `docs/memory/open-questions.md`
-- 看一眼 backlog
+- 看一眼 `docs/plan.md`
 
 ### 每天结束
 

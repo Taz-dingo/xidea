@@ -15,6 +15,8 @@ Help agents answer three questions consistently:
 2. where a new fact or change should be written
 3. how to update docs without creating duplicate or drifting sources of truth
 
+Default entrypoint for the doc system is `docs/README.md`.
+
 ## Canonical Layers
 
 ### 1. Operating layer
@@ -33,27 +35,38 @@ Use these for information that should survive across sessions:
 - `docs/memory/decision-log.md`: confirmed decisions, reasons, impact
 - `docs/memory/open-questions.md`: unresolved questions with owner
 
-### 3. Collaboration rules
+### 3. Process guides
+
+Use these as the current source of truth for recurring workflow and maintenance rules:
+
+- `docs/process/agent-memory.md`: how long-term memory is maintained
+- `docs/process/collaboration-playbook.md`: how the team collaborates day to day
+
+### 4. Collaboration rules
 
 Use these for process and team conventions:
 
 - `AGENTS.md`: project rules for agents
 - `CONTRIBUTING.md`: branch, PR, and collaboration conventions
 
-### 4. Reference layer
+### 5. Reference layer
 
 These are supporting docs, not the first source of truth:
 
-- `docs/product-brief.md`
-- `docs/architecture.md`
-- `docs/tech-stack.md`
-- `docs/demo-showcase-strategy.md`
-- `docs/backlog.md`
-- `docs/collaboration.md`
-- `docs/collaboration-playbook.md`
-- `docs/agent-memory.md`
+- `docs/reference/agent-state-design.md`
+- `docs/reference/competition-defense-kit.md`
+- `docs/reference/product-brief.md`
+- `docs/reference/architecture.md`
+- `docs/reference/tech-stack.md`
 
 Read them only when the task actually needs broader context or historical framing.
+
+### 6. Archive layer
+
+Use these only for historical context, not current execution:
+
+- `docs/archive/*`
+- `docs/archive/collaboration.md`
 
 ## Read Strategy
 
@@ -62,13 +75,14 @@ Read them only when the task actually needs broader context or historical framin
 Read in this order:
 
 1. `AGENTS.md`
-2. `docs/spec.md`
-3. `docs/status.md`
-4. `docs/plan.md`
-5. `docs/memory/project-context.md`
-6. `docs/memory/decision-log.md`
-7. `docs/memory/open-questions.md`
-8. `CONTRIBUTING.md`
+2. `docs/README.md`
+3. `docs/spec.md`
+4. `docs/status.md`
+5. `docs/plan.md`
+6. `docs/memory/project-context.md`
+7. `docs/memory/decision-log.md`
+8. `docs/memory/open-questions.md`
+9. `CONTRIBUTING.md`
 
 ### For a product or scope change
 
@@ -85,15 +99,18 @@ Read:
 
 - `AGENTS.md`
 - `CONTRIBUTING.md`
-- `docs/collaboration-playbook.md` only if needed
+- `docs/process/collaboration-playbook.md`
+- `docs/process/agent-memory.md` if memory handling is involved
 
 ### For documentation cleanup
 
 Read:
 
+- `docs/README.md`
 - `docs/spec.md`
 - `docs/status.md`
 - `docs/plan.md`
+- `docs/process/*`
 - `docs/memory/*`
 
 Then treat other docs as candidates for consolidation, not default truth.
@@ -127,6 +144,12 @@ Then treat other docs as candidates for consolidation, not default truth.
 
 - the team confirms a product, technical, or collaboration decision
 - the decision is durable and affects later work
+- the decision is still active enough to deserve staying in the active log
+
+### Update `docs/archive/decision-log-history.md` when
+
+- an older active decision is replaced but still worth preserving as history
+- implementation-era detail is useful for traceability but no longer belongs in the active log
 
 ### Update `docs/memory/open-questions.md` when
 
@@ -140,6 +163,9 @@ Then treat other docs as candidates for consolidation, not default truth.
 - keep one fact owned by one main file whenever possible
 - write conclusions, not chat transcripts
 - keep durable memory short and reviewable
+- keep `docs/memory/decision-log.md` as an active log, not an append-only history dump
+- move superseded, overly detailed, or purely historical decisions into `docs/archive/`
+- prefer merging overlapping reference docs instead of keeping multiple thin docs with the same job
 - do not turn brainstorms into fake decisions
 - if a point is still unsettled, write it as an open question, not as spec
 
@@ -151,6 +177,7 @@ Before finishing doc work, check:
 2. did I accidentally duplicate the same rule in multiple places
 3. did I record durable decisions in `docs/memory/decision-log.md`
 4. did I update `docs/status.md` or `docs/plan.md` if execution changed
+5. did I leave a reference doc around that no longer has a unique job
 
 ## Task Routing
 

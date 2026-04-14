@@ -39,7 +39,6 @@
 - 定义 agent tool schema：4 个最小必要工具 + mock 实现 + TOOL_REGISTRY
 - 定义 agent guardrail schema：5 条行为约束规则 + 统一检查入口
 - 搭建 LangGraph 最小编排图：5 个节点 + StateGraph + 规则 mock 实现
-- 生成 `docs/agent-state-design.md` 设计文档
 - 将 `learn-engine` 分支上的 agent contract 对齐到 `AgentRequest / diagnosis / plan / state-patch / StreamEvent`
 - 在 `apps/agent` 补上 v0 runtime、SQLite repository 与 FastAPI `/runs/v0` / `/schemas` / storage endpoints
 - LangGraph 编排图已切到 `load_context -> diagnose -> decide_action -> maybe_tool -> compose_response -> writeback`
@@ -70,6 +69,12 @@
 - `apps/web` 的右栏已重构为监控型高信息密度面板，当前聚焦 session、learner、review 和 materials 四组状态
 - `apps/web` 中栏已进一步收敛到“只有用户输入保留卡片，系统输出与诊断改走无边框信息流”，同时空白 session 不再显示解释性提示文案
 - `apps/web` 现已在页面加载时主动探测 agent `/health`，并会为已选 session 尝试回读持久化 learner state；顶部状态徽标不再把“未 hydrate 的前端 fallback”误显示成后端断连
+- 重新整理 `docs/` 结构：根目录保留 operating docs，流程文档下沉到 `docs/process/`，参考材料下沉到 `docs/reference/`
+- 生成 `docs/reference/agent-state-design.md` 设计文档
+- 将 `docs/memory/decision-log.md` 收敛为活跃决策薄层，历史条目归档到 `docs/archive/decision-log-history.md`
+- 将路线图并入 `docs/plan.md`，不再单独维护 `reference/backlog.md`
+- 将 demo 展示规则并入 `docs/reference/competition-defense-kit.md`
+- 将科学复习相关产品表述收敛到 `docs/reference/product-brief.md`
 
 ### In Progress
 
