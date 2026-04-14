@@ -145,6 +145,67 @@ export interface AgentRunResult {
   readonly events: ReadonlyArray<AgentStreamEvent>;
 }
 
+export interface AgentThreadContext {
+  readonly thread_id: string;
+  readonly entry_mode: AgentEntryMode;
+  readonly source_asset_ids: ReadonlyArray<string>;
+  readonly updated_at: string;
+}
+
+export interface AgentAssetSummaryAsset {
+  readonly id: string;
+  readonly title: string;
+  readonly kind: SourceAsset["kind"];
+  readonly topic: string;
+  readonly contentExcerpt: string;
+  readonly keyConcepts: ReadonlyArray<string>;
+  readonly relevanceHint: string;
+}
+
+export interface AgentAssetSummary {
+  readonly assetIds: ReadonlyArray<string>;
+  readonly assets: ReadonlyArray<AgentAssetSummaryAsset>;
+  readonly keyConcepts: ReadonlyArray<string>;
+  readonly summary: string;
+}
+
+export interface AgentReviewEvent {
+  readonly event_kind: "reviewed" | "scheduled";
+  readonly event_at: string;
+  readonly review_reason: string | null;
+}
+
+export interface AgentReviewInspector {
+  readonly focusUnitId: string;
+  readonly dueUnitIds: ReadonlyArray<string> | null;
+  readonly scheduledAt: string | null;
+  readonly reviewCount: number;
+  readonly lapseCount: number;
+  readonly performanceTrend: {
+    readonly memoryStrength: number;
+    readonly understandingLevel: number;
+    readonly confusionLevel: number;
+    readonly weakSignals: ReadonlyArray<string>;
+    readonly trendHint: string;
+  } | null;
+  readonly decayRisk: "unknown" | "low" | "medium" | "high" | "critical";
+  readonly lastReviewOutcome: {
+    readonly scheduledAt: string | null;
+    readonly reviewReason: string | null;
+    readonly dueUnitIds: ReadonlyArray<string> | null;
+    readonly reviewCount: number;
+    readonly lapseCount: number;
+  } | null;
+  readonly summary: string;
+  readonly events: ReadonlyArray<AgentReviewEvent>;
+}
+
+export interface AgentInspectorBootstrap {
+  readonly thread_context: AgentThreadContext | null;
+  readonly learner_state: AgentLearnerUnitState | null;
+  readonly review_inspector: AgentReviewInspector | null;
+}
+
 export interface RuntimeSignalCard {
   readonly id: string;
   readonly label: string;
@@ -153,7 +214,7 @@ export interface RuntimeSignalCard {
 }
 
 export interface RuntimeSnapshot {
-  readonly source: "mock" | "live-agent";
+  readonly source: "mock" | "hydrated-state" | "live-agent";
   readonly state: {
     readonly mastery: number;
     readonly understandingLevel: number;
@@ -361,11 +422,19 @@ function buildAssistantMessageFromStreamEvents(events: ReadonlyArray<AgentStream
 }
 
 export function buildDefaultAgentPrompt(
-  profile: LearnerProfile,
   unit: LearningUnit,
   project: ProjectContext,
 ): string {
-  return `我正在推进「${project.name}」，当前目标是${project.goal}。我现在属于「${profile.name}」这个阶段：${profile.role}。请围绕「${unit.title}」判断我这轮更适合先学什么，并解释为什么。`;
+  return `我正在推进「${project.name}」，当前目标是${project.goal}。请围绕「${unit.title}」判断我这轮更适合先学什么，并解释为什么。`;
+}
+
+export function getRequestSourceAssetIds(
+  entryMode: AgentEntryMode,
+  sourceAssets: ReadonlyArray<SourceAsset>,
+): ReadonlyArray<string> {
+  return entryMode === "material-import"
+    ? sourceAssets.map((asset) => asset.id)
+    : sourceAssets.slice(0, 2).map((asset) => asset.id);
 }
 
 export function buildAgentRequest(input: {
@@ -373,18 +442,13 @@ export function buildAgentRequest(input: {
   readonly sessionId: string;
   readonly entryMode: AgentEntryMode;
   readonly prompt: string;
-  readonly profile: LearnerProfile;
   readonly project: ProjectContext;
   readonly sourceAssets: ReadonlyArray<SourceAsset>;
   readonly unit: LearningUnit;
 }): AgentRequest {
   const normalizedPrompt = input.prompt.trim();
-  const fallbackPrompt =
-    normalizedPrompt || buildDefaultAgentPrompt(input.profile, input.unit, input.project);
-  const sourceAssetIds =
-    input.entryMode === "material-import"
-      ? input.sourceAssets.map((asset) => asset.id)
-      : input.sourceAssets.slice(0, 2).map((asset) => asset.id);
+  const fallbackPrompt = normalizedPrompt || buildDefaultAgentPrompt(input.unit, input.project);
+  const sourceAssetIds = getRequestSourceAssetIds(input.entryMode, input.sourceAssets);
 
   return {
     project_id: input.projectId,
@@ -394,7 +458,7 @@ export function buildAgentRequest(input: {
     messages: [{ role: "user", content: fallbackPrompt }],
     source_asset_ids: sourceAssetIds,
     target_unit_id: input.unit.id,
-    context_hint: `${input.project.currentThread} 当前学习者画像：${input.profile.role}`,
+    context_hint: input.project.currentThread,
     response_mode: "stream",
   };
 }
@@ -455,7 +519,7 @@ export function hydrateRuntimeSnapshotFromLearnerState(
 
   return {
     ...fallbackSnapshot,
-    source: "live-agent",
+    source: "hydrated-state",
     state: {
       mastery: learnerState.mastery,
       understandingLevel: learnerState.understanding_level,
@@ -595,5 +659,103 @@ export function normalizeAgentStreamResult(input: {
     writeback: buildWritebackFromAgent(statePatchEvent?.state_patch ?? null),
     assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
     rationale: diagnosis.explanation?.evidence ?? [],
+  };
+}
+
+export function normalizePartialAgentStreamResult(input: {
+  readonly events: ReadonlyArray<AgentStreamEvent>;
+  readonly fallbackSnapshot: RuntimeSnapshot;
+}): RuntimeSnapshot {
+  const diagnosisEvent = input.events.find(
+    (event): event is Extract<AgentStreamEvent, { event: "diagnosis" }> =>
+      event.event === "diagnosis",
+  );
+  const planEvent = input.events.find(
+    (event): event is Extract<AgentStreamEvent, { event: "plan" }> => event.event === "plan",
+  );
+  const statePatchEvent = input.events.find(
+    (event): event is Extract<AgentStreamEvent, { event: "state-patch" }> =>
+      event.event === "state-patch",
+  );
+
+  const diagnosis = diagnosisEvent?.diagnosis;
+  const plan = planEvent?.plan;
+  const learnerPatch = statePatchEvent?.state_patch.learner_state_patch;
+  const fallbackState = input.fallbackSnapshot.state;
+
+  if (diagnosis === undefined && plan === undefined && statePatchEvent === undefined) {
+    return {
+      ...input.fallbackSnapshot,
+      assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
+    };
+  }
+
+  return {
+    source: "live-agent",
+    state: {
+      mastery: learnerPatch?.mastery ?? fallbackState.mastery,
+      understandingLevel: learnerPatch?.understanding_level ?? fallbackState.understandingLevel,
+      memoryStrength: learnerPatch?.memory_strength ?? fallbackState.memoryStrength,
+      confusion: learnerPatch?.confusion_level ?? fallbackState.confusion,
+      transferReadiness: learnerPatch?.transfer_readiness ?? fallbackState.transferReadiness,
+      weakSignals: learnerPatch?.weak_signals ?? fallbackState.weakSignals,
+      recommendedAction:
+        diagnosis?.recommended_action ??
+        learnerPatch?.recommended_action ??
+        fallbackState.recommendedAction,
+      lastReviewedAt: formatDateLabel(
+        learnerPatch?.last_reviewed_at ?? fallbackState.lastReviewedAt,
+      ),
+      nextReviewAt: formatDateLabel(
+        learnerPatch?.next_review_at ??
+          statePatchEvent?.state_patch.review_patch?.scheduled_at ??
+          fallbackState.nextReviewAt,
+      ),
+    },
+    stateSource:
+      diagnosis !== undefined
+        ? `来源：实时 /runs/v0/stream 事件。${PRIMARY_ISSUE_COPY[diagnosis.primary_issue]}`
+        : "来源：实时 /runs/v0/stream 事件，持久化 learner state 尚未回读。",
+    signalCards:
+      diagnosis !== undefined
+        ? [
+            {
+              id: "stream-primary-issue",
+              label: "主要问题",
+              observation: PRIMARY_ISSUE_COPY[diagnosis.primary_issue],
+              implication: `${diagnosis.reason} 当前置信度 ${(diagnosis.confidence * 100).toFixed(0)}%。`,
+            },
+          ]
+        : input.fallbackSnapshot.signalCards,
+    decision: {
+      title:
+        plan !== undefined
+          ? MODE_LABELS[plan.selected_mode]
+          : diagnosis !== undefined
+          ? MODE_LABELS[diagnosis.recommended_action === "clarify"
+              ? "contrast-drill"
+              : diagnosis.recommended_action === "teach"
+              ? "guided-qa"
+              : diagnosis.recommended_action === "review"
+              ? "guided-qa"
+              : diagnosis.recommended_action === "apply"
+              ? "scenario-sim"
+              : "socratic"]
+          : input.fallbackSnapshot.decision.title,
+      reason: diagnosis?.reason ?? input.fallbackSnapshot.decision.reason,
+      objective: plan?.expected_outcome ?? input.fallbackSnapshot.decision.objective,
+      confidence: diagnosis?.confidence ?? input.fallbackSnapshot.decision.confidence,
+    },
+    plan: {
+      headline: plan?.headline ?? input.fallbackSnapshot.plan.headline,
+      summary: plan?.summary ?? input.fallbackSnapshot.plan.summary,
+      steps: plan?.steps ?? input.fallbackSnapshot.plan.steps,
+      highlightedModes:
+        plan?.steps.map((step) => step.mode) ?? input.fallbackSnapshot.plan.highlightedModes,
+      primaryMode: plan?.selected_mode ?? input.fallbackSnapshot.plan.primaryMode,
+    },
+    writeback: buildWritebackFromAgent(statePatchEvent?.state_patch ?? null),
+    assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
+    rationale: diagnosis?.explanation?.evidence ?? input.fallbackSnapshot.rationale,
   };
 }
