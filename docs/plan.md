@@ -6,13 +6,13 @@
 
 - [x] 锁定比赛主案例和讲述顺序
   - owner: 产品 owner
-- [ ] 稳定单 pedagogical agent 的输入输出结构
+- [x] 稳定单 pedagogical agent 的输入输出结构
   - owner: 学习引擎 owner
-- [ ] 划清 `Review Engine / Agent Memory / Consolidation` 的边界
+- [x] 划清 `Review Engine / Agent Memory / Consolidation` 的边界
   - owner: 学习引擎 owner
-- [ ] 定义 agent 的 state / action / tool / guardrail schema
+- [x] 定义 agent 的 state / action / tool / guardrail schema
   - owner: 学习引擎 owner
-- [ ] 搭出 LangGraph 最小 graph 骨架
+- [x] 搭出 LangGraph 最小 graph 骨架
   - owner: 学习引擎 owner
 - [ ] 保持 web demo 简洁可演示
   - owner: 前端 owner
@@ -20,9 +20,9 @@
   - owner: 前端 owner / 学习引擎 owner
 - [x] 只保留 2 到 3 个最能证明主案例的训练动作
   - owner: 产品 owner / 学习引擎 owner
-- [ ] 建立可复用的项目接手和协作规则
+- [x] 建立可复用的项目接手和协作规则
   - owner: 全员
-- [ ] 定义 web 与 agent 之间的最小 API contract
+- [x] 定义 web 与 agent 之间的最小 API contract
   - owner: 学习引擎 owner / 前端 owner
 
 ### P1
@@ -31,14 +31,16 @@
   - owner: 学习引擎 owner
 - [ ] 在主案例稳定后，再补 1 到 2 个能支撑主叙事的次级 demo surface
   - owner: 前端 owner / 产品 owner
-- [ ] 将学习画像从前端推断迁到真实 agent / learner state 信号
+- [ ] 将学习画像进一步从前端推断迁到真实 agent / learner state 信号
   - owner: 学习引擎 owner / 前端 owner
-- [ ] 将复习热力图接到真实 `Review Engine` 状态，而不是只基于前端推断渲染
+- [ ] 将复习热力图接到真实 `Review Engine` timeline，而不是只基于当前 session 状态渲染
   - owner: 学习引擎 owner / 前端 owner
-- [ ] 将材料面板接到真实 source asset / tool context，而不是长期依赖 fixture
+- [ ] 将材料面板接到真实 source asset / tool context，而不是长期依赖 fixture 数据
   - owner: 学习引擎 owner / 前端 owner
 - [x] 增加 planner explanation 的结构化字段
   - owner: 学习引擎 owner
+- [ ] 决定第一版 `Consolidation` 是手动触发演示还是模拟定时入口
+  - owner: 学习引擎 owner / 产品 owner
 - [ ] 准备答辩素材和对比竞品摘要
   - owner: 产品 owner
 - [x] 整理 `docs/memory/decision-log.md` 与文档分层，控制长期记忆体积
@@ -94,13 +96,13 @@
 6. `apps/web` 接入真实 agent API
    - 使用 Vercel AI SDK 管理 message stream
    - 渲染 diagnosis、plan、state-patch 三类结构化结果
-   - 首页前端 v0 叙事壳已完成，下一步优先把 mock 证据链切到真实 `/runs/v0` 数据
+   - 首页前端 v0 叙事壳已完成，当前重点从“接通真实 `/runs/v0` 数据”转到“减少 fallback / fixture 依赖”
 7. `apps/web` 保持比赛主案例聚焦
    - 默认围绕 RAG 项目学习
    - 确保证据链默认可见
 8. `apps/web` 右栏后续接真实状态
-   - 学习画像不长期停留在前端推断
-   - 复习热力图不长期停留在前端可视化占位
+   - 学习画像不长期停留在前端推断与 fallback snapshot
+   - 复习热力图不长期停留在当前 session 级可视化推断
    - 材料状态逐步接真实 asset / tool 数据
 
 ## Ready To Build
