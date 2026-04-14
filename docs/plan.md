@@ -14,7 +14,7 @@
   - owner: 学习引擎 owner
 - [x] 搭出 LangGraph 最小 graph 骨架
   - owner: 学习引擎 owner
-- [ ] 保持 web demo 简洁可演示
+- [x] 保持 web demo 简洁可演示
   - owner: 前端 owner
 - [x] 把编排证据链做成默认可见输出
   - owner: 前端 owner / 学习引擎 owner
@@ -31,13 +31,15 @@
   - owner: 学习引擎 owner
 - [ ] 在主案例稳定后，再补 1 到 2 个能支撑主叙事的次级 demo surface
   - owner: 前端 owner / 产品 owner
-- [ ] 将学习画像进一步从前端推断迁到真实 agent / learner state 信号
+- [x] 将学习画像进一步从前端推断迁到真实 agent / learner state 信号
   - owner: 学习引擎 owner / 前端 owner
-- [ ] 将复习热力图接到真实 `Review Engine` timeline，而不是只基于当前 session 状态渲染
+- [x] 将复习热力图接到真实 `Review Engine` timeline，而不是只基于当前 session 状态渲染
   - owner: 学习引擎 owner / 前端 owner
-- [ ] 将材料面板接到真实 source asset / tool context，而不是长期依赖 fixture 数据
+- [x] 将材料面板接到真实 source asset / tool context，而不是长期依赖 fixture 数据
   - owner: 学习引擎 owner / 前端 owner
 - [x] 增加 planner explanation 的结构化字段
+  - owner: 学习引擎 owner
+- [x] 将 `/runs/v0/stream` 从伪流式改成真实按步骤推送
   - owner: 学习引擎 owner
 - [ ] 决定第一版 `Consolidation` 是手动触发演示还是模拟定时入口
   - owner: 学习引擎 owner / 产品 owner
@@ -50,7 +52,7 @@
 
 ### V1
 
-- 接真实模型 API
+- [x] 接真实模型 API（已默认接到智谱 OpenAI-compatible / `glm-5`，保留 OpenAI 兼容）
 - 增加上传材料入口
 - 增加更可信的内容摘要或结构化提炼结果
 - 增加 1 到 2 个次级 demo surface
@@ -100,10 +102,10 @@
 7. `apps/web` 保持比赛主案例聚焦
    - 默认围绕 RAG 项目学习
    - 确保证据链默认可见
-8. `apps/web` 右栏后续接真实状态
-   - 学习画像不长期停留在前端推断与 fallback snapshot
-   - 复习热力图不长期停留在当前 session 级可视化推断
-   - 材料状态逐步接真实 asset / tool 数据
+8. `apps/web` 右栏接真实状态
+   - 学习画像改为基于真实 learner state / diagnosis 动态生成
+   - 复习热力图改为读取 review inspector / review events
+   - 材料状态改为读取真实 asset summary / thread context
 
 ## Ready To Build
 

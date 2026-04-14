@@ -1,6 +1,6 @@
 # Status
 
-## As Of 2026-04-12
+## As Of 2026-04-14
 
 ### Done
 
@@ -53,7 +53,7 @@
 - `build_signals()` 支持多轮信号累积 + prior state 趋势检测
 - `estimate_learner_state()` 改为 confidence 加权 delta + 动态 confidence
 - 新增效果评估：检测上一轮动作是否改善对应指标，无效动作自动降权
-- 新增 `POST /runs/v0/stream` SSE streaming endpoint，事件序列 text-delta → diagnosis → plan → state-patch → done
+- 新增 `POST /runs/v0/stream` SSE streaming endpoint，并已改成真实按步骤推送：diagnosis → text-delta → plan → state-patch → done，不再先完整执行再一次性返回
 - 新增 19 个测试（15 决策路径 + 4 SSE），总计 54 个全部通过
 - `apps/web` 请求已按当前 `project / session` 真实绑定到 agent `project_id / thread_id`，不同 session 不再共用后端线程状态
 - `apps/web` 已切到真实 SSE 消费 `/runs/v0/stream`，thread 区改为跟随后端流式事件逐步渲染
@@ -69,6 +69,13 @@
 - `apps/web` 的右栏已重构为监控型高信息密度面板，当前聚焦 session、learner、review 和 materials 四组状态
 - `apps/web` 中栏已进一步收敛到"只有用户输入保留卡片，系统输出与诊断改走无边框信息流"，同时空白 session 不再显示解释性提示文案
 - `apps/web` 现已在页面加载时主动探测 agent `/health`，并会为已选 session 尝试回读持久化 learner state；顶部状态徽标不再把"未 hydrate 的前端 fallback"误显示成后端断连
+- `apps/web` 已将学习画像从前端角色猜测收敛为基于真实 learner state / diagnosis 的动态画像摘要，不再把预设 demo profile 注入 agent prompt
+- `apps/web` 已将复习热力图切到真实 review inspector 数据，热力图单元基于持久化 review event / scheduled review 渲染，而不再按当前 session 消息数脑补
+- `apps/web` 已将材料面板切到真实 asset summary context，右栏默认显示后端返回的材料摘要、关键概念和 excerpt，而不是只靠 fixture 文案拼接
+- `apps/web` 已补上 session 级 inspector bootstrap / thread context 读取，首屏 hydration 改为一次性拉取 `thread_context / learner_state / review_inspector`
+- `apps/web` 的 entry mode 与 source asset 选择已改成按 session 维度维护，切换 session 时不会再串用上一个 thread 的材料选择
+- `apps/agent` 已补充 `thread_context` / `review_events` 持久化，以及 `assets/summary`、`review-inspector`、`inspector-bootstrap` 读取接口，用于支撑前端 inspector 真状态
+- 已补 `favicon` 与首屏 hydration 循环修正；浏览器验证下页面可正常加载、材料入口可展开、console 无业务错误
 - 重新整理 `docs/` 结构：根目录保留 operating docs，流程文档下沉到 `docs/process/`，参考材料下沉到 `docs/reference/`
 - 生成 `docs/reference/agent-state-design.md` 设计文档
 - 将 `docs/memory/decision-log.md` 收敛为活跃决策薄层，历史条目归档到 `docs/archive/decision-log-history.md`
@@ -76,22 +83,24 @@
 - 将 demo 展示规则并入 `docs/reference/competition-defense-kit.md`
 - 将科学复习相关产品表述收敛到 `docs/reference/product-brief.md`
 - LLM 接入全链路改造（A/B/C 三层）：信号提取 + 诊断决策 + 路径规划 + 回复生成全部由 LLM 驱动
-- 架构修正为 LLM-first：LLM 是核心 pedagogical agent，规则仅作为 guardrails；`OPENAI_API_KEY` 是启动必须项
+- 架构修正为 LLM-first：LLM 是核心 pedagogical agent，规则仅作为 guardrails；兼容的 LLM API key 是启动必须项
 - Guardrails 从 advisory 升级为 blocking，违规时在 LLM 诊断上直接修正（不 fallback 到规则）
 - 修复 review engine 的 `next_review_at` 传参问题，规则 4 恢复生效
 - 状态数值边界保护：delta 衰减 + 同类信号重复衰减
-- 新增 24 个 LLM + guardrail 测试，总计 95 个全部通过
+- 新增 26 个 LLM + guardrail / provider 兼容测试，当前 agent 全量 97 个全部通过
+- `build_llm_client()` 切到 OpenAI-compatible 兼容层，默认接智谱 `glm-5`，同时保留 OpenAI 旧环境变量兼容
+- 智谱运行时默认关闭 `thinking`，结构化阶段启用更严格的 JSON 输出约束；LLM HTTP client 默认不继承代理环境变量，减少本地代理/证书链导致的空正文和 TLS 问题
+- `/runs/v0/stream` 已切到真实流式执行：API 直接消费 runtime 事件生成器，连接建立后会立即打开 SSE；当前事件顺序为 `diagnosis -> text-delta -> plan -> state-patch -> done`
+- agent 主路径已将 `signal extraction + diagnosis` 合并为一次 bundled LLM 调用；正常链路从 4 次模型请求降到 3 次，且 reply 已从 plan 依赖里拆开，首屏等待主要收敛在 `bundled diagnosis -> reply`
 
 ### In Progress
 
-- 保持 web demo 简洁可演示，同时继续减少右栏与空态对前端 fallback snapshot 的依赖
-- 规划并逐步落地学习画像 / 复习热力图 / 材料面板接真实系统
 - 收敛第一版 `Consolidation` 的演示路径，决定是手动触发还是模拟定时入口
 
 ### Next
 
-- 先把 `docs/plan.md` 中仍未完成的前端真实化项按优先级排顺：学习画像 -> 复习热力图 -> 材料面板
 - 决定第一版 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
+- 决定主案例稳定后优先补哪个次级 demo surface：继续放大“材料导入”，还是转向“导师对练”
 - 补答辩素材与竞品对比摘要，避免 demo 能演示但叙事支撑不足
 - 可选：用真实 API key 做端到端测试，迭代 LLM prompt 效果
 - 可选：清理 `enrich_plan_steps`（已被 `llm_build_plan` 替代）
