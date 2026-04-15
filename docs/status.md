@@ -104,6 +104,7 @@
 - `apps/web` 已补多张 learning activity 的 deck 视觉和 dev fixture；当前可以本地预览一组连续小卡叠放在最后一条 agent 回复后，并按顺序一张张翻下去
 - 已确认下一步学习体验增强优先项之一是 Duolingo 风格的答对 / 答错 / 跳过 / 翻卡音效与动效，先记入 backlog，后续再实现
 - 已确认前端新增学习交互需要同步反推后端 tutor prompt 和 event contract；否则只会出现 UI 有壳、agent 不会稳定配合的落差
+- 已将这轮前端交互对后端的具体支撑要求补进 reference：包括随时加材料、card deck、作答 verdict / 短反馈、以及 tutor prompt 的回合节奏要求
 
 ### In Progress
 

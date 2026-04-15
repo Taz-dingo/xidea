@@ -51,6 +51,7 @@
   - owner: 学习引擎 owner
 - [ ] 为前端已存在的学习交互补对应的 tutor prompt / contract 支撑，至少覆盖“随时加材料、多 card deck、hint、作答后短反馈”
   - owner: 学习引擎 owner / 前端 owner
+  - 参考实现要求已写入 `docs/reference/architecture.md` 和 `docs/reference/agent-state-design.md`
 - [ ] 将学习模式优先借鉴项整理成可实现 backlog，并按轻交互优先级推进
   - owner: 前端 owner / 学习引擎 owner
   - 当前优先项：

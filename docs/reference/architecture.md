@@ -112,12 +112,12 @@
 
 ## 当前推荐运行形态
 
-1. 用户在 `apps/web` 发起问题、材料导入或训练请求
+1. 用户在 `apps/web` 发起问题、补充材料或训练请求
 2. `apps/web` 用 Vercel AI SDK 管理会话状态、消息协议和流式渲染
 3. 请求通过 API contract 发到 `apps/agent`
 4. `apps/agent` 读取 `project / thread / learner state`，通过 LangGraph 做路径判断
 5. agent 返回学习动作、解释信息和必要的增量消息
-6. `apps/web` 把这些结果渲染成聊天内容、学习面板和 planner explanation
+6. `apps/web` 把这些结果渲染成聊天内容、学习动作卡组和右侧 inspector
 
 ## 当前边界原则
 
@@ -142,17 +142,26 @@
 
 - `project_id`: 当前项目上下文
 - `thread_id`: 当前会话上下文
-- `entry_mode`: `chat-question | material-import | coach-followup`
+- `entry_mode`: 当前轮意图；仍可保留 `chat-question | material-import | coach-followup`，但它不再对应前端互斥页面模式
 - `topic`: 当前轮聚焦主题
 - `messages`: 当前轮消息列表，至少包含一条用户输入
-- `source_asset_ids`: 可选，本轮相关材料
+- `source_asset_ids`: 兼容字段；当前仍可用来传本轮相关材料
+- `thread_material_ids`: 推荐新增，可选；表示这个线程已挂载过的材料集合
+- `turn_attachment_ids`: 推荐新增，可选；表示这一轮实际带给 agent 的材料子集
 - `target_unit_id`: 可选，本轮聚焦的学习单元
 - `context_hint`: 可选，当前项目或线程的补充说明
 - `response_mode`: 当前默认 `stream`
 
+当前推荐做法是：
+
+- `thread_material_ids` 负责线程级材料库
+- `turn_attachment_ids` 负责这一轮附带给 agent 的材料
+- `source_asset_ids` 暂时作为兼容字段，直到前后端都切到新字段
+
 ### Stream Events
 
-当前先收敛为 5 类事件：
+当前已经跑通的主事件仍以 `text-delta / diagnosis / plan / state-patch / done` 为主；
+后续为了支持现有前端学习交互，推荐补成以下结构化事件集：
 
 1. `text-delta`
    - 增量文本片段
@@ -160,13 +169,19 @@
 2. `diagnosis`
    - 当前轮的判断结果
    - 包含 `recommendedAction` 和简要原因
-3. `plan`
-   - 当前轮生成的学习路径
-   - 对应 `StudyPlan`
-4. `state-patch`
+3. `activity`
+   - 当前轮触发的 learning activity
+   - 可包含 `activities` 数组；数组第一张视为当前激活卡，其余卡作为 deck 中的后续卡
+4. `activity-feedback`
+   - 当前卡提交或跳过后的短反馈
+   - 用于前端驱动正确 / 错误 / 跳过 / 进入下一张卡的反馈状态
+5. `plan`
+   - 可选执行摘要
+   - 不是前端主渲染轴
+6. `state-patch`
    - 对学习者状态的增量更新
    - 只传本轮变化，不要求整份状态重发
-5. `done`
+7. `done`
    - 流结束信号
    - 表示本轮结构化结果已经完整送达
 
@@ -177,6 +192,8 @@
 ```json
 { "event": "text-delta", "delta": "我先帮你把这个概念边界拉清楚。" }
 { "event": "diagnosis", "diagnosis": { "recommended_action": "clarify", "reason": "当前混淆风险高" } }
+{ "event": "activity", "activities": [{ "id": "a1", "kind": "quiz" }, { "id": "a2", "kind": "recall" }] }
+{ "event": "activity-feedback", "activity_feedback": { "activity_id": "a1", "verdict": "correct", "summary": "这一步判断是对的，继续下一张。", "advance_to_next": true } }
 { "event": "plan", "plan": { "headline": "先辨析再迁移", "summary": "先澄清，再追问，再迁移", "selected_mode": "contrast-drill", "expected_outcome": "建立稳定区分标准", "steps": [] } }
 { "event": "state-patch", "state_patch": { "learner_state_patch": { "confusion_level": 72, "recommended_action": "clarify" } } }
 { "event": "done", "final_message": "这轮我会先帮你把概念边界拉清楚。" }
@@ -186,7 +203,56 @@
 
 - 比纯文本流更适合 Xidea，因为系统不仅要“回答”，还要“判断和编排”
 - 比一次性 JSON 更适合前端 demo，因为用户能看到系统逐步生成内容
-- 前端可以把 `text-delta` 渲染成聊天内容，把 `diagnosis / plan / state-patch` 渲染成学习面板
+- 前端可以把 `text-delta` 渲染成聊天内容，把 `activity / activity-feedback` 渲染成学习动作卡与短反馈，把 `state-patch` 渲染到右侧状态面板
+
+## 当前前端已落地、后端需要补齐的支持项
+
+这部分是给学习引擎 owner 的直接实现清单。
+前端已经出现这些交互，如果后端不跟上，体验会停留在壳子阶段。
+
+### 1. 随时加材料
+
+后端需要支持：
+
+- 不再把“材料进入”理解成单独页面模式
+- 同一线程里，任意一轮都可以附带材料
+- 区分线程级材料库与当前轮附件
+- diagnosis 和 activity 选择都必须真正受当前轮附件影响，而不是只做摘要展示
+
+### 2. 多张 card deck
+
+后端需要支持：
+
+- 一轮可以返回 1 到 N 张顺序 learning activity
+- 第一张是当前激活卡，其余卡作为同一卡组中的后续卡
+- card deck 默认围绕一个回合目标组织，例如“先辨析 -> 再回忆 -> 再迁移表达”
+
+### 3. 作答后的短反馈
+
+后端需要支持：
+
+- 对每次提交给出非常短的回合反馈，而不是长篇解释
+- 至少返回：
+  - `verdict`: `correct | incorrect | partial | skipped`
+  - `summary`: 1 到 2 句短反馈
+  - `advance_to_next`: 是否翻到下一张卡
+- 这类信号会直接决定前端后续的音效、动画和翻卡节奏
+
+### 4. `hint / more questions`
+
+后端需要支持：
+
+- 同一 activity 可以衍生出 hint
+- 同一轮完成后，agent 可以继续追加一张追问卡，而不是重开一整轮长回复
+
+### 5. prompt 与交互节奏对齐
+
+后端 tutor prompt 需要明确：
+
+- 当前优先目标是主持学习回合，而不是给完整答案
+- 当需要发卡时，文本回复只保留短引导
+- 当 card 未完成时，不继续展开自由讲解
+- 当用户提交后，优先给 verdict 和下一步动作，而不是先写大段 explanation
 
 ### Current Constraint
 
