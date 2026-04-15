@@ -149,6 +149,26 @@
 - 学习引擎 owner 后续实现时，需要把前端已存在的交互件当成 prompt 需求来源，而不是只看当前后端结构
 - `status / plan` 需要持续记录哪些前端交互已经出现、哪些还只是过渡壳子
 
+## 2026-04-15 — 通用工程 skill 优先使用外部来源，项目内只保留 Xidea 特有 skill
+
+### 决策
+
+项目默认不再自己维护通用工程类 skill 的内容版本。
+像前端设计、React / TypeScript、Python、agent、LangGraph、LangChain 这类通用技能，优先使用外部来源并 vendored 到 repo；
+项目内只保留 Xidea 特有的 skill，例如 onboarding、docs governance、branch workflow、PR 协作。
+
+### 原因
+
+- 通用工程 skill 更适合复用社区或官方持续维护的内容，而不是在项目里重复养一套私有版本
+- 项目自写的通用 skill 容易随时间失真，也会让“项目特有规则”和“通用工程常识”混在一起
+- Xidea 当前更需要维护的是项目上下文和协作约束，不是重新发明 React / TypeScript / LangGraph 的最佳实践
+
+### 影响
+
+- repo 下的通用工程 skill 改为 vendored 外部 skill
+- AGENTS.md 默认指向这些外部 skill 名称，而不是旧的项目私有通用 skill
+- 项目内 skill 后续重点只放在 Xidea 特有规则与协作流程
+
 ## 2026-04-15 — 文档默认用“当前 / 下一步”表达，不混用阶段版本号
 
 ### 决策

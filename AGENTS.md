@@ -19,16 +19,18 @@
 
 ## Project Skills
 
-本项目维护了 8 个项目级 skill：
+本项目当前默认使用 10 个技能入口，其中通用工程 skill 优先采用 vendored 外部 skill，项目内只维护 Xidea 特有的协作与文档 skill：
 
 - `project-onboarding`
 - `branch-workflow`
 - `docs-governance`
-- `frontend-design`
+- `frontend-skill`
 - `pr-description`
-- `react-xidea`
-- `typescript-xidea`
-- `agent-python-xidea`
+- `react-typescript`
+- `python-pro`
+- `ai-agent-basics`
+- `langgraph-docs`
+- `langchain-architecture`
 
 这些 skills 位于 `.agents/skills/` 下。
 
@@ -37,14 +39,16 @@
 - 开始接手项目、隔一段时间重新进入、或 agent 需要快速建立上下文时，用 `project-onboarding`
 - 需要拉分支、改分支名、检查分支命名、决定 `type/owner/topic`、或准备符合规范的 PR 时，用 `branch-workflow`
 - 需要理解文档结构、判断该读哪几份、决定信息该写到哪里、或清理重复文档时，用 `docs-governance`
-- 设计或改版页面时，用 `frontend-design`
+- 做视觉方向、页面布局、动效和高层前端表达时，用 `frontend-skill`
 - 需要起 PR、填写 PR 描述、整理 `Summary / Screenshots / Risks` 时，用 `pr-description`
-- 写 React 页面、组件、状态流转时，用 `react-xidea`
-- 设计类型、domain model、planner 逻辑时，用 `typescript-xidea`
-- 写 `apps/agent/src/xidea_agent` 的 Python runtime、prompt、LangChain / LangGraph 编排、repository 或 stream contract 时，用 `agent-python-xidea`
+- 写 React 页面、组件、状态流转，以及大部分 TS 前端实现时，用 `react-typescript`
+- 写 Python 后端、类型标注、测试、异步逻辑时，用 `python-pro`
+- 设计 agent loop、ReAct / Plan-and-Execute、tool / memory 模式时，用 `ai-agent-basics`
+- 改 LangGraph 节点、状态流和框架用法时，用 `langgraph-docs`
+- 改 LangChain 集成、agent / memory / tool 结构时，用 `langchain-architecture`
 
 如果一个任务同时涉及 UI、React 和类型设计，可以组合使用。
-如果一个任务同时涉及前端交互与后端 agent contract，优先组合 `react-xidea` 和 `agent-python-xidea`。
+如果一个任务同时涉及前端交互与后端 agent contract，优先组合 `react-typescript`、`ai-agent-basics`、`langgraph-docs`。
 
 默认建议先运行 `project-onboarding`；涉及开分支、重命名分支或 PR 协作时，再加 `branch-workflow`；需要补 PR 描述时，再加 `pr-description`。
 
