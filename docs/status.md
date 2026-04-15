@@ -102,6 +102,8 @@
 - 已整理一版可借鉴的学习模式 feature 清单，当前优先参考 `ChatGPT Study Mode / Claude 教育场景 / Gemini 学习工具` 的轻交互能力：quiz、flashcards、study guide、hint、more questions、作答后短反馈
 - `apps/web` 已将“问答 / 材料”互斥入口收敛为单线程里的随时加材料 tray；当前材料以附加上下文方式挂进这一轮，不再要求用户先切模式
 - `apps/web` 已补多张 learning activity 的 deck 视觉和 dev fixture；当前可以本地预览一组连续小卡叠放在最后一条 agent 回复后，并按顺序一张张翻下去
+- 已确认下一步学习体验增强优先项之一是 Duolingo 风格的答对 / 答错 / 跳过 / 翻卡音效与动效，先记入 backlog，后续再实现
+- 已确认前端新增学习交互需要同步反推后端 tutor prompt 和 event contract；否则只会出现 UI 有壳、agent 不会稳定配合的落差
 
 ### In Progress
 
@@ -113,6 +115,7 @@
 - 规划并后续实现学习模式借鉴项：`hint / more questions / performance feedback / 材料直出 quiz 或 study guide`
 - 将“thread-level material library + turn-level attachments”收成稳定 contract，替换当前前端先行适配的数据壳
 - 将多 activity / card deck 从前端 fixture 和过渡归一化推进到真实后端事件
+- 将前端已出现的学习交互件整理成后端 prompt / contract 需求清单，供学习引擎 owner 对齐实现
 - 收敛 tutor system prompt：明确何时发起 activity、何时只给短引导、何时禁止继续自由讲解
 - 收敛当前 `Consolidation` 的演示路径，决定是手动触发还是模拟定时入口
 

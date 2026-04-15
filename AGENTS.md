@@ -19,7 +19,7 @@
 
 ## Project Skills
 
-本项目维护了 7 个项目级 skill：
+本项目维护了 8 个项目级 skill：
 
 - `project-onboarding`
 - `branch-workflow`
@@ -28,6 +28,7 @@
 - `pr-description`
 - `react-xidea`
 - `typescript-xidea`
+- `agent-python-xidea`
 
 这些 skills 位于 `.agents/skills/` 下。
 
@@ -40,8 +41,10 @@
 - 需要起 PR、填写 PR 描述、整理 `Summary / Screenshots / Risks` 时，用 `pr-description`
 - 写 React 页面、组件、状态流转时，用 `react-xidea`
 - 设计类型、domain model、planner 逻辑时，用 `typescript-xidea`
+- 写 `apps/agent/src/xidea_agent` 的 Python runtime、prompt、LangChain / LangGraph 编排、repository 或 stream contract 时，用 `agent-python-xidea`
 
 如果一个任务同时涉及 UI、React 和类型设计，可以组合使用。
+如果一个任务同时涉及前端交互与后端 agent contract，优先组合 `react-xidea` 和 `agent-python-xidea`。
 
 默认建议先运行 `project-onboarding`；涉及开分支、重命名分支或 PR 协作时，再加 `branch-workflow`；需要补 PR 描述时，再加 `pr-description`。
 

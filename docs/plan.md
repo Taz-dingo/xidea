@@ -41,12 +41,16 @@
   - owner: 前端 owner / 学习引擎 owner
 - [ ] 将单 activity 进一步扩到轻量 card deck：允许一轮下发多张顺序卡，但始终只激活最上面一张
   - owner: 前端 owner / 学习引擎 owner
+- [ ] 为学习动作补高反馈密度的正确 / 错误 / 跳过 / 翻卡音效与动画，优先参考 Duolingo 的轻反馈节奏
+  - owner: 前端 owner
 - [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环
   - owner: 学习引擎 owner / 前端 owner
 - [ ] 细化 agent 决策路径与 evaluation 维度
   - owner: 学习引擎 owner
 - [ ] 为 tutor agent 补专门的 system prompt：明确何时必须触发 activity、何时只给短引导、不再把“完整解释”当默认目标
   - owner: 学习引擎 owner
+- [ ] 为前端已存在的学习交互补对应的 tutor prompt / contract 支撑，至少覆盖“随时加材料、多 card deck、hint、作答后短反馈”
+  - owner: 学习引擎 owner / 前端 owner
 - [ ] 将学习模式优先借鉴项整理成可实现 backlog，并按轻交互优先级推进
   - owner: 前端 owner / 学习引擎 owner
   - 当前优先项：
