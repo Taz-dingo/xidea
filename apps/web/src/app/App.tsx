@@ -37,6 +37,12 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { learnerProfiles, learningUnits, projectContext, sourceAssets } from "@/data/demo";
 import {
+  getTutorFixtureScenario,
+  tutorFixtureScenarios,
+  type TutorFixtureMessage,
+  type TutorFixtureScenario,
+} from "@/data/tutor-fixtures";
+import {
   buildDefaultAgentPrompt,
   formatActivitySubmissionForAgent,
   buildMockRuntimeSnapshot,
@@ -97,6 +103,27 @@ interface SessionItem {
 }
 
 type ActivityResolution = "submitted" | "skipped";
+
+interface DevTutorFixtureState {
+  readonly fixtureId: string;
+  readonly messages: ReadonlyArray<UIMessage>;
+  readonly snapshot: RuntimeSnapshot;
+  readonly errorMessage: string | null;
+}
+
+function setDevTutorFixtureQueryParam(fixtureId: string | null): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  if (fixtureId === null) {
+    url.searchParams.delete("mockTutor");
+  } else {
+    url.searchParams.set("mockTutor", fixtureId);
+  }
+  window.history.replaceState({}, "", url);
+}
 
 const initialSessions: ReadonlyArray<SessionItem> = learningUnits.map((unit) => {
   const meta = sessionMetaByUnitId[unit.id] ?? { updatedAt: "刚刚", status: "进行中" };
@@ -215,6 +242,32 @@ function getLatestUserDraft(messages: ReadonlyArray<UIMessage>, draftPrompt: str
   }
 
   return draftPrompt.trim();
+}
+
+function createFixtureUiMessage(
+  role: "assistant" | "user",
+  content: string,
+  seed: string,
+): UIMessage {
+  return {
+    id: `fixture-${seed}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    parts: [{ type: "text", text: content }],
+    content,
+  } as UIMessage;
+}
+
+function buildDevTutorFixtureState(
+  fixture: TutorFixtureScenario,
+): DevTutorFixtureState {
+  return {
+    fixtureId: fixture.id,
+    messages: fixture.messages.map((message, index) =>
+      createFixtureUiMessage(message.role, message.content, `${fixture.id}-${index}`),
+    ),
+    snapshot: fixture.snapshot,
+    errorMessage: null,
+  };
 }
 
 function getDefaultSourceAssetIds(entryMode: AgentEntryMode): ReadonlyArray<string> {
@@ -589,6 +642,7 @@ export function App(): ReactElement {
   const initialProfile = learnerProfiles[1] ?? learnerProfiles[0];
   const initialUnit = learningUnits[0];
   const initialProject = initialProjects[0];
+  const isDevEnvironment = import.meta.env.DEV;
 
   if (initialProfile === undefined || initialUnit === undefined || initialProject === undefined) {
     throw new Error("Demo data must contain at least one learner profile, learning unit, and project.");
@@ -613,6 +667,17 @@ export function App(): ReactElement {
   const [isEvidenceExpanded, setIsEvidenceExpanded] = useState(false);
   const [draftPrompt, setDraftPrompt] = useState(() =>
     buildDefaultAgentPrompt(initialUnit, projectContext),
+  );
+  const [devTutorFixtureState, setDevTutorFixtureState] = useState<DevTutorFixtureState | null>(
+    () => {
+      if (!isDevEnvironment || typeof window === "undefined") {
+        return null;
+      }
+
+      const fixtureId = new URLSearchParams(window.location.search).get("mockTutor");
+      const fixture = getTutorFixtureScenario(fixtureId);
+      return fixture ? buildDevTutorFixtureState(fixture) : null;
+    },
   );
   const [sessionSnapshots, setSessionSnapshots] = useState<Record<string, RuntimeSnapshot>>({});
   const [sessionReviewInspectors, setSessionReviewInspectors] = useState<
@@ -659,8 +724,19 @@ export function App(): ReactElement {
     draftPrompt,
   );
   const mockRuntime = seedRuntime;
+  const fixtureIdFromUrl =
+    isDevEnvironment && typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("mockTutor")
+      : null;
+  const activeTutorFixture =
+    devTutorFixtureState === null ? null : getTutorFixtureScenario(devTutorFixtureState.fixtureId);
+  const isUsingDevTutorFixture = activeTutorFixture !== null;
   const activeRuntime =
-    selectedSession === undefined ? mockRuntime : sessionSnapshots[selectedSession.id] ?? mockRuntime;
+    selectedSession === undefined
+      ? mockRuntime
+      : isUsingDevTutorFixture
+        ? devTutorFixtureState?.snapshot ?? mockRuntime
+        : sessionSnapshots[selectedSession.id] ?? mockRuntime;
   const currentActivity = activeRuntime.activity;
   const currentActivityKey =
     currentActivity === null
@@ -710,7 +786,12 @@ export function App(): ReactElement {
         );
   const transportSessionId = selectedSession?.id ?? selectedProject.id;
   const fallbackSnapshotForTransport = activeRuntime;
-  const isAgentRunning = selectedSessionKey === null ? false : runningSessionIds[selectedSessionKey] === true;
+  const isAgentRunning =
+    isUsingDevTutorFixture
+      ? false
+      : selectedSessionKey === null
+        ? false
+        : runningSessionIds[selectedSessionKey] === true;
   const hasPendingActivity =
     hasStructuredRuntime && currentActivity !== null && currentActivityResolution === null;
 
@@ -777,11 +858,31 @@ export function App(): ReactElement {
     messages: selectedSession ? sessionMessagesById[selectedSession.id] ?? [] : [],
     transport,
   });
-  const latestAssistantMessageId = [...messages]
+  const displayMessages = isUsingDevTutorFixture
+    ? devTutorFixtureState?.messages ?? []
+    : messages;
+  const latestAssistantMessageId = [...displayMessages]
     .reverse()
     .find((message) => message.role === "assistant")?.id ?? null;
 
-  const errorMessage = getErrorMessage(error);
+  const errorMessage = isUsingDevTutorFixture
+    ? devTutorFixtureState?.errorMessage ?? null
+    : getErrorMessage(error);
+
+  useEffect(() => {
+    if (!isDevEnvironment) {
+      return;
+    }
+
+    const fixtureFromUrl = getTutorFixtureScenario(fixtureIdFromUrl);
+    if (fixtureFromUrl === null) {
+      return;
+    }
+
+    if (devTutorFixtureState?.fixtureId !== fixtureFromUrl.id) {
+      setDevTutorFixtureState(buildDevTutorFixtureState(fixtureFromUrl));
+    }
+  }, [devTutorFixtureState?.fixtureId, fixtureIdFromUrl, isDevEnvironment]);
 
   useEffect(() => {
     if (agentBaseUrl === null) {
@@ -1109,6 +1210,34 @@ export function App(): ReactElement {
       return;
     }
 
+    if (isUsingDevTutorFixture) {
+      setDevTutorFixtureState((current) => {
+        if (current === null) {
+          return current;
+        }
+
+        const assistantReply =
+          "这是 dev fixture 的本地回复，用来继续打磨消息流密度、markdown 样式和无卡片场景。";
+
+        return {
+          ...current,
+          errorMessage: null,
+          messages: [
+            ...current.messages,
+            createFixtureUiMessage("user", text, "free-user"),
+            createFixtureUiMessage("assistant", assistantReply, "free-assistant"),
+          ],
+          snapshot: {
+            ...current.snapshot,
+            activity: null,
+            assistantMessage: assistantReply,
+          },
+        };
+      });
+      setDraftPrompt("");
+      return;
+    }
+
     handleSendToAgent({
       text,
       sessionSummary: text,
@@ -1160,6 +1289,54 @@ export function App(): ReactElement {
         [currentActivityKey]: "submitted",
       },
     }));
+
+    if (isUsingDevTutorFixture && activeTutorFixture !== null) {
+      if (activeTutorFixture.submitErrorMessage !== null) {
+        setActivityResolutionsBySession((current) => {
+          const sessionResolutions = current[selectedSession.id] ?? {};
+          const nextSessionResolutions = { ...sessionResolutions };
+          delete nextSessionResolutions[currentActivityKey];
+          return {
+            ...current,
+            [selectedSession.id]: nextSessionResolutions,
+          };
+        });
+        setDevTutorFixtureState((current) =>
+          current === null
+            ? current
+            : {
+                ...current,
+                errorMessage: activeTutorFixture.submitErrorMessage,
+              },
+        );
+        return;
+      }
+
+      const submissionText = formatActivitySubmissionForAgent({
+        activity: currentActivity,
+        submission,
+      });
+      setDevTutorFixtureState((current) =>
+        current === null
+          ? current
+          : {
+              ...current,
+              errorMessage: null,
+              messages: [
+                ...current.messages,
+                createFixtureUiMessage("user", submissionText, "submit-user"),
+                createFixtureUiMessage("assistant", activeTutorFixture.submitReply, "submit-assistant"),
+              ],
+              snapshot: {
+                ...current.snapshot,
+                activity: null,
+                assistantMessage: activeTutorFixture.submitReply,
+              },
+            },
+      );
+      return;
+    }
+
     handleSendToAgent({
       text: formatActivitySubmissionForAgent({
         activity: currentActivity,
@@ -1185,6 +1362,33 @@ export function App(): ReactElement {
         [currentActivityKey]: "skipped",
       },
     }));
+
+    if (isUsingDevTutorFixture && activeTutorFixture !== null) {
+      setDevTutorFixtureState((current) =>
+        current === null
+          ? current
+          : {
+              ...current,
+              errorMessage: null,
+              messages: [
+                ...current.messages,
+                createFixtureUiMessage(
+                  "user",
+                  `我先跳过「${currentActivity.title}」这轮学习动作。`,
+                  "skip-user",
+                ),
+                createFixtureUiMessage("assistant", activeTutorFixture.skipReply, "skip-assistant"),
+              ],
+              snapshot: {
+                ...current.snapshot,
+                activity: null,
+                assistantMessage: activeTutorFixture.skipReply,
+              },
+            },
+      );
+      return;
+    }
+
     handleSendToAgent({
       text: `我先跳过「${currentActivity.title}」这轮学习动作。请基于当前状态重新安排下一步，并告诉我为什么要这样推进。`,
       sessionSummary: `${currentActivity.title} / 跳过后重新编排`,
@@ -1409,8 +1613,8 @@ export function App(): ReactElement {
                       </section>
                     ) : null}
 
-                    {selectedSession === undefined || messages.length === 0 ? null : (
-                      messages.map((message) => {
+                    {selectedSession === undefined || displayMessages.length === 0 ? null : (
+                      displayMessages.map((message) => {
                         const isAssistant = message.role === "assistant";
                         const rawText = getMessageText(message);
                         if (isAssistant && rawText === "") {
@@ -1565,6 +1769,16 @@ export function App(): ReactElement {
                           if (error !== undefined) {
                             clearError();
                           }
+                          if (isUsingDevTutorFixture) {
+                            setDevTutorFixtureState((current) =>
+                              current === null
+                                ? current
+                                : {
+                                    ...current,
+                                    errorMessage: null,
+                                  },
+                            );
+                          }
                           setDraftPrompt(event.target.value);
                         }}
                         placeholder={
@@ -1614,6 +1828,71 @@ export function App(): ReactElement {
           <div className="min-h-0 min-w-0 lg:h-full">
             <ScrollArea className="h-full pr-1">
               <div className="grid gap-3 pb-1">
+                {isDevEnvironment ? (
+                  <MonitorSection accent="Mock" title="Tutor Fixtures">
+                    <div className="space-y-2">
+                      <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                        用前端本地场景直接打磨 activity 插卡、gating 和失败回滚，不用起后端。
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          className="h-8 rounded-full px-3"
+                          onClick={() => {
+                            setDevTutorFixtureQueryParam(null);
+                            setDevTutorFixtureState(null);
+                          }}
+                          size="sm"
+                          type="button"
+                          variant={isUsingDevTutorFixture ? "outline" : "default"}
+                        >
+                          关闭
+                        </Button>
+                        {tutorFixtureScenarios.map((fixture) => (
+                          <Button
+                            className="h-8 rounded-full px-3"
+                            key={fixture.id}
+                            onClick={() => {
+                              setDevTutorFixtureQueryParam(fixture.id);
+                              setDevTutorFixtureState(buildDevTutorFixtureState(fixture));
+                            }}
+                            size="sm"
+                            type="button"
+                            variant={
+                              activeTutorFixture?.id === fixture.id ? "default" : "outline"
+                            }
+                          >
+                            {fixture.label}
+                          </Button>
+                        ))}
+                      </div>
+                      {activeTutorFixture !== null ? (
+                        <div className="rounded-[0.95rem] bg-[var(--xidea-selection)] px-3 py-3">
+                          <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                            {activeTutorFixture.label}
+                          </p>
+                          <p className="mt-1 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                            {activeTutorFixture.description}
+                          </p>
+                          <Button
+                            className="mt-3 h-8 rounded-full px-3"
+                            onClick={() => {
+                              setDevTutorFixtureQueryParam(activeTutorFixture.id);
+                              setDevTutorFixtureState(
+                                buildDevTutorFixtureState(activeTutorFixture),
+                              );
+                            }}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            重置场景
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </MonitorSection>
+                ) : null}
+
                 <MonitorSection
                   accent={
                     activeRuntime.source === "live-agent"

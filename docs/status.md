@@ -96,6 +96,7 @@
 - `apps/web` 中栏已新增 activity-first 学习动作卡：当前会优先把 agent `diagnosis / plan` 归一化成可执行动作，并支持在对话里直接完成辨析 / 回忆 / 导师追问后，把结果回传给现有 agent 对话流；学习动作卡已从固定底部区块收成跟随最后一条 agent 回复出现的 inline card
 - 已补充共享约束：当前前端的 activity-first 卡片仍是过渡适配；长期形态应由 agent 在消息流中发出结构化 activity / tool result 事件，前端按事件插 card，而不是固定保留整段学习动作 / 路径 / 证据面板
 - 已补充共享约束：当 activity 是当前必须完成的学习动作时，主输入区不应继续开放自由聊天；当前 web 已补上“完成当前动作 / 跳过当前动作”的 gating。tutor agent 的专门 system prompt 仍记录在后续实现项中
+- `apps/web` 现已补充 dev-only tutor fixture 面板：可以本地切换“边界辨析 / 主动回忆 / 导师追问 / 提交报错 / 无卡片回复”等场景，用于打磨 activity 插卡、gating 和失败回滚，不依赖后端联调
 
 ### In Progress
 
