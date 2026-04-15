@@ -162,6 +162,7 @@ Then treat other docs as candidates for consolidation, not default truth.
 - prefer updating the smallest authoritative doc instead of many docs
 - keep one fact owned by one main file whenever possible
 - write conclusions, not chat transcripts
+- describe docs in terms of "what is true now" and "what we will do next"; avoid mixing direction with version labels like `v0`, `v1`, or `vNext` unless they are literal code / API names
 - keep durable memory short and reviewable
 - keep `docs/memory/decision-log.md` as an active log, not an append-only history dump
 - move superseded, overly detailed, or purely historical decisions into `docs/archive/`
