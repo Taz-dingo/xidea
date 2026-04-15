@@ -92,6 +92,10 @@
 - 智谱运行时默认关闭 `thinking`，结构化阶段启用更严格的 JSON 输出约束；LLM HTTP client 默认不继承代理环境变量，减少本地代理/证书链导致的空正文和 TLS 问题
 - `/runs/v0/stream` 已切到真实流式执行：API 直接消费 runtime 事件生成器，连接建立后会立即打开 SSE；当前事件顺序为 `diagnosis -> text-delta -> plan -> state-patch -> done`
 - agent 主路径已将 `signal extraction + diagnosis` 合并为一次 bundled LLM 调用；正常链路从 4 次模型请求降到 3 次，且 reply 已从 plan 依赖里拆开，首屏等待主要收敛在 `bundled diagnosis -> reply`
+- 完成真实 LLM API 端到端验证：使用 OpenAI-compatible 中转站 (gpt-5.4) 跑通 4 个端到端测试（基础问答、混淆场景、材料导入、SSE 流式），全部通过
+- 新增 `XIDEA_LLM_FORCE_STREAM` 环境变量，适配要求所有请求 `stream=true` 的 API 代理
+- 为所有 LLM 调用添加按步骤标记的计时日志（`bundled_diagnose / generate_reply / stream_reply / build_plan`），每条日志包含 model、provider、耗时(s)和输出字符数
+- 当前 agent 全量 118 个测试全部通过（114 mock + 4 real LLM）
 
 ### In Progress
 
@@ -102,7 +106,7 @@
 - 决定第一版 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
 - 决定主案例稳定后优先补哪个次级 demo surface：继续放大“材料导入”，还是转向“导师对练”
 - 补答辩素材与竞品对比摘要，避免 demo 能演示但叙事支撑不足
-- 可选：用真实 API key 做端到端测试，迭代 LLM prompt 效果
+- 可选：迭代 LLM prompt 效果（真实 API 测试已通过）
 - 可选：清理 `enrich_plan_steps`（已被 `llm_build_plan` 替代）
 
 ### Risks
@@ -110,3 +114,4 @@
 - 如果过早引入复杂 graph 或多 agent，当前 demo 容易被工程结构拖慢
 - 如果 demo 展示很多能力但没有主线，差异点会不明显
 - 如果主案例虽然锁定，但状态来源和动作理由不够可信，评委仍会把它看成概念样机
+- 中转站 API 单次端到端请求约 27-33s（3 次串行 LLM 调用），延迟主要在中转站/模型侧
