@@ -1,6 +1,6 @@
 # Status
 
-## As Of 2026-04-14
+## As Of 2026-04-15
 
 ### Done
 
@@ -18,35 +18,35 @@
 - 明确技术方向切到"受约束单 agent + LangChain / LangGraph 最小接入"
 - 新增 `branch-workflow` 项目级 skill，把开分支、改分支名和 PR 协作约束变成可触发流程
 - 明确 Vercel AI SDK 属于 web 交互层，Python + LangGraph 继续作为核心编排层
-- 明确 web 与 agent 第一版采用事件流协议，先收敛 `text-delta / diagnosis / plan / state-patch / done`
+- 明确 web 与 agent 当前采用事件流协议，先收敛 `text-delta / diagnosis / plan / state-patch / done`
 - 锁定当前比赛版主案例为"AI 工程师围绕真实项目学习 RAG 系统设计"
 - 明确当前比赛叙事只服务于 project-backed learning，而不是泛化 all-in-one 学习平台
-- 明确第一版 demo 必须让编排过程可见：至少展示输入上下文、学习状态、动作理由、路径输出和状态回写
+- 明确当前 demo 必须让编排过程可见：至少展示输入上下文、学习状态、动作理由、路径输出和状态回写
 - 明确比赛版主案例只是证明路径，不改变长期产品的扩展方向
 - 将 web demo 数据统一收敛到 RAG 主案例，不再并列展示跨学科样例
 - 将主案例映射成更可信的状态来源、诊断信号和回写预览
 - 将编排证据链做成默认可见输出，并把 planner explanation 结构化为主决策与写回预览
-- 完成 web 前端 v0 首页重构，强化"项目线程 -> 诊断 -> 动作选择 -> 学习路径 -> 回写"的默认叙事结构
+- 完成 web 前端首页重构，强化"项目线程 -> 诊断 -> 动作选择 -> 学习路径 -> 回写"的默认叙事结构
 - 首页信息架构已进一步改成更克制的 codex-style workspace：左侧 `project / session` 侧栏，中间保留当前 thread 必要内容，右侧放学习画像、复习系统和项目特有 inspector
 - 当前 workspace 的视觉规则已收敛为"轻选中态 + 中性色主导 + 侧栏单行排版"，不再使用大面积黑色 active 和多彩状态块
 - `apps/web` 已接入真实 `/runs/v0` 结果，可用本地代理和运行面板把 mock 证据链切到 agent 返回的 `diagnosis / plan / state-patch`
 - `apps/web` 已正式接入 `shadcn/ui` 基础组件，当前 workspace 的按钮、卡片、徽标、滚动区和输入区不再是纯手写 primitive
 - `apps/web` 已正式接入 Vercel AI SDK 的 `useChat + custom transport`，中间 thread 区开始按消息流方式承接 `/runs/v0` 返回，而不是只靠本地面板状态拼接
 - 为本地前后端联调补上 Vite `/agent-api` 代理与 agent CORS 默认配置
-- 前端 v0 已收尾到可提 PR 状态：当前 workspace 支持 `project -> sessions` 导航、`新建 project / 新建 session`、project 展开收起、宽屏三栏稳定布局，以及 agent `500` 时的非崩溃错误态
-- 初版架构讨论已收敛到可开工状态，并明确 SQLite 状态层与启发式 `Review Engine v0`
+- 前端当前已收尾到可提 PR 状态：当前 workspace 支持 `project -> sessions` 导航、`新建 project / 新建 session`、project 展开收起、宽屏三栏稳定布局，以及 agent `500` 时的非崩溃错误态
+- 当前架构讨论已收敛到可开工状态，并明确 SQLite 状态层与启发式 `Review Engine`
 - 完善 `state.py` 数据模型：双轨 LearnerState + 6 个领域模型 + 2 个枚举
 - 定义 agent tool schema：4 个最小必要工具 + mock 实现 + TOOL_REGISTRY
 - 定义 agent guardrail schema：5 条行为约束规则 + 统一检查入口
 - 搭建 LangGraph 最小编排图：5 个节点 + StateGraph + 规则 mock 实现
 - 将 `learn-engine` 分支上的 agent contract 对齐到 `AgentRequest / diagnosis / plan / state-patch / StreamEvent`
-- 在 `apps/agent` 补上 v0 runtime、SQLite repository 与 FastAPI `/runs/v0` / `/schemas` / storage endpoints
+- 在 `apps/agent` 补上当前 runtime、SQLite repository 与 FastAPI `/runs/v0` / `/schemas` / storage endpoints
 - LangGraph 编排图已切到 `load_context -> diagnose -> decide_action -> maybe_tool -> compose_response -> writeback`
 - `load_context` 已可读取 SQLite 中的 recent messages 与 prior learner state 作为本轮基线
 - 为 runtime、graph、API、repository roundtrip 补上 10 个测试，当前全部通过
-- 明确当前 v0 默认按学习引擎 / 前端 / 产品叙事三条主线并行推进，并要求每次新开工先完成 workstream routing
+- 明确当前默认按学习引擎 / 前端 / 产品叙事三条主线并行推进，并要求每次新开工先完成 workstream routing
 - 丰富 `maybe_tool` 的 4 个 tool intent：asset-summary / unit-detail / thread-memory / review-context 全部从 stub 升级为结构化上下文输出
-- 独立化 `Review Engine v0`：从 runtime 内联逻辑拆为独立模块，实现 6 条启发式规则 + 间隔调度 + 回忆成功/失败处理
+- 独立化 `Review Engine`：从 runtime 内联逻辑拆为独立模块，实现 6 条启发式规则 + 间隔调度 + 回忆成功/失败处理
 - `ReviewPatch` 和 `review_state` 表增加 `review_count / lapse_count`
 - 新增 25 个测试（12 tools + 13 review engine），总计 35 个全部通过
 - 将 `diagnose_state()` 从 if-elif 瀑布升级为综合 action scoring 评分模型
@@ -92,14 +92,19 @@
 - 智谱运行时默认关闭 `thinking`，结构化阶段启用更严格的 JSON 输出约束；LLM HTTP client 默认不继承代理环境变量，减少本地代理/证书链导致的空正文和 TLS 问题
 - `/runs/v0/stream` 已切到真实流式执行：API 直接消费 runtime 事件生成器，连接建立后会立即打开 SSE；当前事件顺序为 `diagnosis -> text-delta -> plan -> state-patch -> done`
 - agent 主路径已将 `signal extraction + diagnosis` 合并为一次 bundled LLM 调用；正常链路从 4 次模型请求降到 3 次，且 reply 已从 plan 依赖里拆开，首屏等待主要收敛在 `bundled diagnosis -> reply`
+- 已确认当前 `3` 次串行 LLM 调用 + 展示型 `StudyPlan` 属于过渡实现；下一阶段将对齐成熟 agent 方案，收敛为“预取上下文 -> 单次主决策调用 -> tool / activity loop -> 状态回写”
 
 ### In Progress
 
-- 收敛第一版 `Consolidation` 的演示路径，决定是手动触发还是模拟定时入口
+- 收敛学习引擎下一步运行形态：让学习资料、thread memory、learner state、review context 在主决策前完成预取，并进入同一证据上下文
+- 将展示型 `StudyPlan` 收敛为可执行 learning activity contract，支持 agent 在对话里直接触发出题 / 复习 / 导师追问
+- 收敛当前 `Consolidation` 的演示路径，决定是手动触发还是模拟定时入口
 
 ### Next
 
-- 决定第一版 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
+- 压缩主链路 LLM 调用次数，取消 `diagnosis -> reply -> plan` 这种独立串行文本调用，改成单次主决策 turn + loop
+- 打通 `exercise-result / review-result` 回传与状态回写闭环，让练习结果和复习表现真正影响下一轮诊断
+- 决定当前 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
 - 决定主案例稳定后优先补哪个次级 demo surface：继续放大“材料导入”，还是转向“导师对练”
 - 补答辩素材与竞品对比摘要，避免 demo 能演示但叙事支撑不足
 - 可选：用真实 API key 做端到端测试，迭代 LLM prompt 效果
@@ -110,3 +115,4 @@
 - 如果过早引入复杂 graph 或多 agent，当前 demo 容易被工程结构拖慢
 - 如果 demo 展示很多能力但没有主线，差异点会不明显
 - 如果主案例虽然锁定，但状态来源和动作理由不够可信，评委仍会把它看成概念样机
+- 如果继续沿用“展示型 plan + 串行文本调用”，agent 会更像会解释的脚本，而不是会安排真实学习动作的系统
