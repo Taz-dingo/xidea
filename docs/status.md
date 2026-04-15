@@ -57,17 +57,31 @@
 - 新增 `POST /runs/v0/stream` SSE streaming endpoint，事件序列 text-delta → diagnosis → plan → state-patch → done
 - 新增 19 个测试（15 决策路径 + 4 SSE），总计 54 个全部通过
 
+- 完成 LLM 真实接入：`diagnose_step` 和 `compose_response_step` 已对接 LLM，启发式逻辑保留为降级路径
+- 新增 `llm.py` 模块：统一管理 LLM 客户端初始化、结构化 prompt、双 wire API dispatch
+- 支持 completions 和 responses 两种 wire API 模式，通过 `XIDEA_LLM_WIRE_API` 环境变量切换
+- completions 模式使用 LangChain `ChatOpenAI` + `with_structured_output`，兼容 GLM / DeepSeek / 通用代理
+- responses 模式使用 OpenAI SDK `client.responses.create` + JSON Schema，适配 OpenAI 原生 API
+- 新增 `langchain-openai` 和 `python-dotenv` 依赖
+- 新增 `.env` / `.env.example` 配置文件，`.gitignore` 已保护 `.env`
+- 新增 `tests/conftest.py` 测试配置：启发式测试自动禁用 LLM，LLM 测试使用 `@pytest.mark.llm` 标记
+- 新增 `tests/test_llm_integration.py`，8 个 LLM 集成测试
+- 54 个启发式测试全部通过，LLM 集成测试等待 API 额度恢复后验证
+
 ### In Progress
 
 - 保持 web demo 简洁可演示，同时继续对齐后续 agent runtime 接口
 
 ### Next
 
+- [ ] **LLM 集成测试端到端验证**：API 额度恢复后运行 `uv run pytest tests/test_llm_integration.py -m llm -v` 确认全部通过
 - 决定第一版 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
 - 前端切换到 SSE 消费 `/runs/v0/stream`，实现流式渲染
+- 后续可在 LLM 接入后升级 SSE 为真正的逐 token streaming
 
 ### Risks
 
 - 如果过早引入复杂 graph 或多 agent，当前 demo 容易被工程结构拖慢
 - 如果 demo 展示很多能力但没有主线，差异点会不明显
 - 如果主案例虽然锁定，但状态来源和动作理由不够可信，评委仍会把它看成概念样机
+- LLM 中转站 API 稳定性和额度是当前测试的外部依赖风险

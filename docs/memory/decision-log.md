@@ -657,3 +657,41 @@ LangGraph 第一版采用 6 节点最小主链路：`load_context -> diagnose ->
 
 - 前端 owner 可在 `agent-chat-transport.ts` 中切换到 `EventSource` 或 `fetch + ReadableStream`
 - 后续可在 LLM 接入后升级为真正的逐 token streaming
+
+---
+
+## 2026-04-14: 接入真实 LLM，支持 completions / responses 双 wire API
+
+### 决策
+
+将 `diagnose_step` 和 `compose_response_step` 从纯启发式逻辑升级为真实 LLM 调用，同时保留启发式作为降级路径。新增 `llm.py` 模块统一管理 LLM 客户端和 prompt，支持 completions 和 responses 两种 wire API 模式。
+
+### 原因
+
+- 之前整个 agent 后端没有任何真实 LLM 调用，`diagnose` 是关键词匹配 + 数值评分，`compose_response` 是 f-string 模板拼接
+- 文档和依赖声称了 LangChain 集成，但代码中零 LLM import
+- 比赛 demo 需要真实 AI 能力来证明编排系统的价值
+- 不同 provider 支持不同的 wire API（GLM 只支持 completions，OpenAI 新版支持 responses），需要适配
+
+### 实现
+
+- `llm.py`：
+  - `get_llm()` 返回 LangChain `ChatOpenAI`（completions 模式）
+  - `_get_openai_client()` 返回 OpenAI SDK 原生客户端（responses 模式）
+  - `diagnose_with_llm()` / `compose_with_llm()` 作为公共 API，内部根据 `XIDEA_LLM_WIRE_API` dispatch
+  - completions 模式用 `with_structured_output(LLMDiagnosisOutput)` 获取结构化诊断
+  - responses 模式用 `json_schema` format + Pydantic `model_json_schema()` 约束输出
+  - `_map_diagnosis_output()` 统一将 LLM 返回映射到现有 `Signal / LearnerUnitState / Diagnosis` 类型
+- `runtime.py`：
+  - `diagnose_step` 检测 LLM 是否配置，配置则走 LLM 路径，失败自动降级到启发式
+  - `compose_response_step` 同理
+  - 原有启发式逻辑完整保留，不依赖 LLM 仍可运行
+- 配置通过 `.env` 管理，`.gitignore` 保护敏感信息
+
+### 影响
+
+- `pyproject.toml` 新增 `langchain-openai>=1.1.12` 和 `python-dotenv>=1.2.2`
+- 新增 8 个 LLM 集成测试（`@pytest.mark.llm`）
+- 54 个启发式测试全部通过，LLM 测试需 API 额度恢复后验证
+- `state.py` / `graph.py` / `api.py` 未修改，完全向后兼容
+- 前端不需要任何修改

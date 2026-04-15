@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import logging
+
 from xidea_agent.guardrails import get_violations
+from xidea_agent.llm import compose_with_llm, diagnose_with_llm, get_llm
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.review_engine import ReviewDecision, should_enter_review, schedule_next_review
 from xidea_agent.state import (
@@ -36,6 +39,7 @@ from xidea_agent.tools import resolve_tool_result, retrieve_learning_unit, retri
 
 
 UTC = timezone.utc
+logger = logging.getLogger(__name__)
 
 CONFUSION_KEYWORDS = ("分不清", "混淆", "区别", "差别", "搞不清", "边界")
 UNDERSTANDING_KEYWORDS = ("为什么", "原理", "什么意思", "怎么理解", "不懂", "没懂", "解释")
@@ -623,6 +627,39 @@ def load_context_step(
 
 
 def diagnose_step(state: GraphState) -> GraphState:
+    llm = get_llm()
+    if llm is not None:
+        return _diagnose_step_llm(state)
+    return _diagnose_step_heuristic(state)
+
+
+def _diagnose_step_llm(state: GraphState) -> GraphState:
+    """LLM-powered diagnosis: analyze conversation and produce structured diagnosis."""
+    try:
+        signals, learner_state, diagnosis = diagnose_with_llm(
+            messages=state.recent_messages,
+            observations=state.observations,
+            entry_mode=state.request.entry_mode,
+            learning_unit=state.learning_unit,
+            prior_state=state.prior_learner_unit_state,
+            target_unit_id=state.request.target_unit_id,
+        )
+        state.signals = signals
+        state.learner_unit_state = learner_state
+        state.diagnosis = diagnosis
+        state.learner_unit_state.recommended_action = diagnosis.recommended_action
+        state.rationale.append(
+            f"diagnose (LLM) selected {diagnosis.recommended_action} "
+            f"for {diagnosis.primary_issue}."
+        )
+    except Exception:
+        logger.exception("LLM diagnosis failed, falling back to heuristic")
+        return _diagnose_step_heuristic(state)
+    return state
+
+
+def _diagnose_step_heuristic(state: GraphState) -> GraphState:
+    """Original heuristic-based diagnosis (keyword matching + scoring)."""
     state.signals = build_signals(
         state.recent_messages,
         state.observations,
@@ -642,7 +679,8 @@ def diagnose_step(state: GraphState) -> GraphState:
     )
     state.learner_unit_state.recommended_action = state.diagnosis.recommended_action
     state.rationale.append(
-        f"diagnose selected {state.diagnosis.recommended_action} for {state.diagnosis.primary_issue}."
+        f"diagnose (heuristic) selected {state.diagnosis.recommended_action} "
+        f"for {state.diagnosis.primary_issue}."
     )
     return state
 
@@ -678,12 +716,38 @@ def compose_response_step(state: GraphState) -> GraphState:
         state.diagnosis,
         state.learner_unit_state,
     )
-    state.assistant_message = compose_assistant_message(
-        state.diagnosis, state.plan, state.tool_result
-    )
-    state.rationale.append(
-        f"compose_response built a {len(state.plan.steps)}-step plan with mode {state.plan.selected_mode}."
-    )
+
+    llm = get_llm()
+    if llm is not None:
+        try:
+            state.assistant_message = compose_with_llm(
+                state.diagnosis,
+                state.plan,
+                state.tool_result,
+                state.recent_messages,
+                state.learning_unit,
+            )
+            state.rationale.append(
+                f"compose_response (LLM) built a {len(state.plan.steps)}-step plan "
+                f"with mode {state.plan.selected_mode}."
+            )
+        except Exception:
+            logger.exception("LLM compose failed, falling back to heuristic")
+            state.assistant_message = compose_assistant_message(
+                state.diagnosis, state.plan, state.tool_result
+            )
+            state.rationale.append(
+                f"compose_response (heuristic fallback) built a {len(state.plan.steps)}-step plan "
+                f"with mode {state.plan.selected_mode}."
+            )
+    else:
+        state.assistant_message = compose_assistant_message(
+            state.diagnosis, state.plan, state.tool_result
+        )
+        state.rationale.append(
+            f"compose_response (heuristic) built a {len(state.plan.steps)}-step plan "
+            f"with mode {state.plan.selected_mode}."
+        )
     return state
 
 
