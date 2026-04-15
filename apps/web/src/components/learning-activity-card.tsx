@@ -45,7 +45,7 @@ export function LearningActivityCard({
       : draftText.trim().length >= activity.input.minLength;
 
   return (
-    <Card className="rounded-[1rem] border-[var(--xidea-selection-border)] bg-[#fcf6f2] shadow-none">
+    <Card className="rounded-[1.15rem] border-[var(--xidea-selection-border)] bg-[linear-gradient(180deg,#fffdf9_0%,#fcf4ee_100%)] shadow-[0_18px_40px_rgba(111,74,53,0.08)]">
       <CardHeader className="space-y-3 pb-2.5">
         <div className="flex flex-wrap items-center gap-2">
           <Badge
@@ -78,89 +78,44 @@ export function LearningActivityCard({
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-3">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_200px]">
-          <div className="space-y-3">
-            {activity.input.type === "choice" ? (
-              <div className="space-y-3">
-                {activity.input.choices.map((choice) => {
-                  const selected = selectedChoiceId === choice.id;
+      <CardContent className="space-y-3 pt-1">
+        {activity.input.type === "choice" ? (
+          <div className="space-y-2.5">
+            {activity.input.choices.map((choice) => {
+              const selected = selectedChoiceId === choice.id;
 
-                  return (
-                    <button
-                      className={
-                        selected
-                            ? "w-full rounded-[0.95rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-2.5 text-left transition-colors"
-                          : "w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2.5 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fff8f4]"
-                      }
-                      disabled={disabled || isResolved}
-                      key={choice.id}
-                      onClick={() => {
-                        setSelectedChoiceId(choice.id);
-                      }}
-                      type="button"
-                    >
-                      <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
-                        {choice.label}
-                      </p>
-                      <p className="mt-1 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                        {choice.detail}
-                      </p>
-                    </button>
-                  );
-                })}
-
-                <Textarea
-                  className="min-h-[5.5rem] rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] text-sm leading-6 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
+              return (
+                <button
+                  className={
+                    selected
+                      ? "w-full rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3.5 py-3 text-left transition-colors"
+                      : "w-full rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3.5 py-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fff8f4]"
+                  }
                   disabled={disabled || isResolved}
-                  onChange={(event) => {
-                    setDraftText(event.target.value);
+                  key={choice.id}
+                  onClick={() => {
+                    setSelectedChoiceId(choice.id);
                   }}
-                  placeholder="可选：补一句你为什么这样判断，系统会据此决定下一轮是追问还是改排。"
-                  value={draftText}
-                />
-              </div>
-            ) : (
-              <Textarea
-                className="min-h-[7rem] rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] text-sm leading-6 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
-                disabled={disabled || isResolved}
-                onChange={(event) => {
-                  setDraftText(event.target.value);
-                }}
-                placeholder={activity.input.placeholder}
-                value={draftText}
-              />
-            )}
+                  type="button"
+                >
+                  <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+                    {choice.label}
+                  </p>
+                </button>
+              );
+            })}
           </div>
-
-          <div className="space-y-3 rounded-[0.95rem] bg-[var(--xidea-white)] px-3 py-3">
-            <div>
-              <p className="xidea-kicker text-[var(--xidea-stone)]">目标</p>
-              <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                {activity.objective}
-              </p>
-            </div>
-
-            <div>
-              <p className="xidea-kicker text-[var(--xidea-stone)]">触发原因</p>
-              <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                {activity.support}
-              </p>
-            </div>
-
-            <div>
-              <p className="xidea-kicker text-[var(--xidea-stone)]">证据</p>
-              <div className="mt-2 space-y-2">
-                {activity.evidence.map((item, index) => (
-                  <div className="flex items-start gap-2 text-sm leading-6 text-[var(--xidea-charcoal)]" key={`${item}-${index}`}>
-                    <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-[var(--xidea-terracotta)]" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+        ) : (
+          <Textarea
+            className="min-h-[7rem] rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] text-sm leading-6 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
+            disabled={disabled || isResolved}
+            onChange={(event) => {
+              setDraftText(event.target.value);
+            }}
+            placeholder={activity.input.placeholder}
+            value={draftText}
+          />
+        )}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-[var(--xidea-stone)]">

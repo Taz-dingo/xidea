@@ -277,6 +277,7 @@ export interface RuntimeSnapshot {
   };
   readonly writeback: ReadonlyArray<WritebackPreview>;
   readonly activity: LearningActivity | null;
+  readonly activities: ReadonlyArray<LearningActivity>;
   readonly assistantMessage: string;
   readonly rationale: ReadonlyArray<string>;
 }
@@ -521,31 +522,48 @@ function normalizeAgentActivity(activity: AgentActivity): LearningActivity {
   };
 }
 
+function buildActivityList(
+  primaryActivity: LearningActivity | null,
+  additionalActivities?: ReadonlyArray<LearningActivity>,
+): ReadonlyArray<LearningActivity> {
+  if (additionalActivities !== undefined) {
+    return additionalActivities;
+  }
+
+  return primaryActivity === null ? [] : [primaryActivity];
+}
+
+function withActivities(snapshot: RuntimeSnapshot): RuntimeSnapshot {
+  if (snapshot.activities.length > 0 || snapshot.activity === null) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    activities: [snapshot.activity],
+  };
+}
+
 export function formatActivitySubmissionForAgent(input: {
   readonly activity: LearningActivity;
   readonly submission: LearningActivitySubmission;
 }): string {
-  const choiceDetail =
+  const selectedChoice =
     input.activity.input.type === "choice" && input.submission.selectedChoiceId !== null
       ? input.activity.input.choices.find((choice) => choice.id === input.submission.selectedChoiceId) ??
         null
       : null;
+  const normalizedResponse = input.submission.responseText.trim();
 
-  const choiceSummary =
-    choiceDetail === null
-      ? ""
-      : `我的选择是「${choiceDetail.label}」，因为${choiceDetail.detail}。`;
+  if (selectedChoice !== null) {
+    return `我的选择是「${selectedChoice.label}」。请根据这个判断继续安排下一步。`;
+  }
 
-  return [
-    `我刚完成了「${input.activity.title}」这个学习动作。`,
-    `训练目标是${input.activity.objective}。`,
-    `题目是：${input.activity.prompt}`,
-    choiceSummary,
-    `我的作答是：${input.submission.responseText}。`,
-    "请基于这次作答继续判断下一步是追问、澄清、安排复习，还是推进到下一轮练习。",
-  ]
-    .filter((part) => part !== "")
-    .join("");
+  if (normalizedResponse !== "") {
+    return `我的回答是：${normalizedResponse}。请根据这个回答继续安排下一步。`;
+  }
+
+  return `我完成了「${input.activity.title}」。请继续安排下一步。`;
 }
 
 function buildWritebackFromAgent(statePatch: AgentStatePatch | null): ReadonlyArray<WritebackPreview> {
@@ -686,7 +704,7 @@ export function buildMockRuntimeSnapshot(
     evidence: profile.state.weakSignals,
   });
 
-  return {
+  return withActivities({
     source: "mock",
     state: {
       mastery: profile.state.mastery,
@@ -716,9 +734,10 @@ export function buildMockRuntimeSnapshot(
     },
     writeback: plan.writeback,
     activity,
+    activities: buildActivityList(activity),
     assistantMessage: `${plan.decision.reason} 这轮我会先用「${plan.decision.title}」推进，目标是${plan.decision.objective}。`,
     rationale: [],
-  };
+  });
 }
 
 export function hydrateRuntimeSnapshotFromLearnerState(
@@ -735,7 +754,7 @@ export function hydrateRuntimeSnapshotFromLearnerState(
         }))
       : fallbackSnapshot.signalCards;
 
-  return {
+  return withActivities({
     ...fallbackSnapshot,
     source: "hydrated-state",
     state: {
@@ -754,7 +773,8 @@ export function hydrateRuntimeSnapshotFromLearnerState(
       : "来源：真实 learner state。",
     signalCards,
     activity: fallbackSnapshot.activity,
-  };
+    activities: fallbackSnapshot.activities,
+  });
 }
 
 export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot {
@@ -773,6 +793,21 @@ export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot
     PRIMARY_ISSUE_COPY[diagnosis.primary_issue],
     learnerState.based_on.length > 0 ? `判断依据：${learnerState.based_on.join(" / ")}` : null,
   ].filter((item): item is string => item !== null);
+
+  const activity =
+    result.graph_state.activity !== null
+      ? normalizeAgentActivity(result.graph_state.activity)
+      : buildLearningActivity({
+          action: diagnosis.recommended_action,
+          mode: plan.selected_mode,
+          unit: buildActivityUnitRef({
+            unitId: diagnosis.focus_unit_id,
+            fallbackTitle: plan.headline,
+          }),
+          objective: plan.expected_outcome,
+          reason: primaryReason,
+          evidence: diagnosis.explanation?.evidence ?? learnerState.weak_signals,
+        });
 
   return {
     source: "live-agent",
@@ -805,20 +840,8 @@ export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot
       primaryMode: plan.selected_mode,
     },
     writeback: buildWritebackFromAgent(result.graph_state.state_patch),
-    activity:
-      result.graph_state.activity !== null
-        ? normalizeAgentActivity(result.graph_state.activity)
-        : buildLearningActivity({
-            action: diagnosis.recommended_action,
-            mode: plan.selected_mode,
-            unit: buildActivityUnitRef({
-              unitId: diagnosis.focus_unit_id,
-              fallbackTitle: plan.headline,
-            }),
-            objective: plan.expected_outcome,
-            reason: primaryReason,
-            evidence: diagnosis.explanation?.evidence ?? learnerState.weak_signals,
-          }),
+    activity,
+    activities: buildActivityList(activity),
     assistantMessage: buildAssistantMessageFromEvents(result),
     rationale: result.graph_state.rationale,
   };
@@ -861,7 +884,22 @@ export function normalizeAgentStreamResult(input: {
     learnerState.based_on.length > 0 ? `判断依据：${learnerState.based_on.join(" / ")}` : null,
   ].filter((item): item is string => item !== null);
 
-  return {
+  const activity =
+    activityEvent !== undefined
+      ? normalizeAgentActivity(activityEvent.activity)
+      : buildLearningActivity({
+          action: diagnosis.recommended_action,
+          mode: plan.selected_mode,
+          unit: buildActivityUnitRef({
+            unitId: diagnosis.focus_unit_id,
+            fallbackTitle: plan.headline,
+          }),
+          objective: plan.expected_outcome,
+          reason: primaryReason,
+          evidence: diagnosis.explanation?.evidence ?? learnerState.weak_signals,
+        });
+
+  return withActivities({
     source: "live-agent",
     state: {
       mastery: learnerState.mastery,
@@ -894,23 +932,11 @@ export function normalizeAgentStreamResult(input: {
       primaryMode: plan.selected_mode,
     },
     writeback: buildWritebackFromAgent(statePatchEvent?.state_patch ?? null),
-    activity:
-      activityEvent !== undefined
-        ? normalizeAgentActivity(activityEvent.activity)
-        : buildLearningActivity({
-            action: diagnosis.recommended_action,
-            mode: plan.selected_mode,
-            unit: buildActivityUnitRef({
-              unitId: diagnosis.focus_unit_id,
-              fallbackTitle: plan.headline,
-            }),
-            objective: plan.expected_outcome,
-            reason: primaryReason,
-            evidence: diagnosis.explanation?.evidence ?? learnerState.weak_signals,
-          }),
+    activity,
+    activities: buildActivityList(activity),
     assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
     rationale: diagnosis.explanation?.evidence ?? [],
-  };
+  });
 }
 
 export function normalizePartialAgentStreamResult(input: {
@@ -945,7 +971,31 @@ export function normalizePartialAgentStreamResult(input: {
     };
   }
 
-  return {
+  const activity =
+    activityEvent !== undefined
+      ? normalizeAgentActivity(activityEvent.activity)
+      : diagnosis !== undefined || plan !== undefined
+        ? buildLearningActivity({
+            action:
+              diagnosis?.recommended_action ?? input.fallbackSnapshot.state.recommendedAction,
+            mode:
+              plan?.selected_mode ??
+              input.fallbackSnapshot.activity?.mode ??
+              input.fallbackSnapshot.plan.primaryMode,
+            unit: buildActivityUnitRef({
+              unitId: diagnosis?.focus_unit_id ?? null,
+              fallbackTitle: plan?.headline ?? input.fallbackSnapshot.plan.headline,
+            }),
+            objective: plan?.expected_outcome ?? input.fallbackSnapshot.decision.objective,
+            reason: diagnosis?.reason ?? input.fallbackSnapshot.decision.reason,
+            evidence:
+              diagnosis?.explanation?.evidence ??
+              statePatchEvent?.state_patch.learner_state_patch?.weak_signals ??
+              input.fallbackSnapshot.state.weakSignals,
+          })
+        : input.fallbackSnapshot.activity;
+
+  return withActivities({
     source: "live-agent",
     state: {
       mastery: learnerPatch?.mastery ?? fallbackState.mastery,
@@ -1010,30 +1060,13 @@ export function normalizePartialAgentStreamResult(input: {
       primaryMode: plan?.selected_mode ?? input.fallbackSnapshot.plan.primaryMode,
     },
     writeback: buildWritebackFromAgent(statePatchEvent?.state_patch ?? null),
-    activity:
-      activityEvent !== undefined
-        ? normalizeAgentActivity(activityEvent.activity)
-        : diagnosis !== undefined || plan !== undefined
-          ? buildLearningActivity({
-              action:
-                diagnosis?.recommended_action ?? input.fallbackSnapshot.state.recommendedAction,
-              mode:
-                plan?.selected_mode ??
-                input.fallbackSnapshot.activity?.mode ??
-                input.fallbackSnapshot.plan.primaryMode,
-              unit: buildActivityUnitRef({
-                unitId: diagnosis?.focus_unit_id ?? null,
-                fallbackTitle: plan?.headline ?? input.fallbackSnapshot.plan.headline,
-              }),
-              objective: plan?.expected_outcome ?? input.fallbackSnapshot.decision.objective,
-              reason: diagnosis?.reason ?? input.fallbackSnapshot.decision.reason,
-              evidence:
-                diagnosis?.explanation?.evidence ??
-                statePatchEvent?.state_patch.learner_state_patch?.weak_signals ??
-                input.fallbackSnapshot.state.weakSignals,
-            })
-          : input.fallbackSnapshot.activity,
+    activity,
+    activities:
+      input.fallbackSnapshot.activities.length > 1 &&
+      input.fallbackSnapshot.activity?.id === activity?.id
+        ? input.fallbackSnapshot.activities
+        : buildActivityList(activity),
     assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
     rationale: diagnosis?.explanation?.evidence ?? input.fallbackSnapshot.rationale,
-  };
+  });
 }

@@ -12,16 +12,13 @@ import {
 } from "react";
 import {
   Brain,
-  ChevronDown,
-  ChevronRight,
   FileInput,
   Folder,
   FolderOpen,
-  MessageSquareText,
   Plus,
   RefreshCcw,
 } from "lucide-react";
-import { LearningActivityCard } from "@/components/learning-activity-card";
+import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,11 +63,6 @@ import {
   getReviewInspector,
   getThreadContext,
 } from "@/lib/agent-client";
-
-const entryModes = [
-  { id: "chat-question" as const, icon: MessageSquareText, title: "问答进入" },
-  { id: "material-import" as const, icon: FileInput, title: "材料进入" },
-];
 
 const sessionMetaByUnitId: Record<string, { updatedAt: string; status: string }> = {
   "unit-1": { updatedAt: "1h", status: "诊断中" },
@@ -270,8 +262,22 @@ function buildDevTutorFixtureState(
   };
 }
 
-function getDefaultSourceAssetIds(entryMode: AgentEntryMode): ReadonlyArray<string> {
-  return getRequestSourceAssetIds(entryMode, sourceAssets);
+function getDefaultSourceAssetIds(): ReadonlyArray<string> {
+  return [];
+}
+
+function getNextFixtureSnapshot(
+  snapshot: RuntimeSnapshot,
+  assistantMessage: string,
+): RuntimeSnapshot {
+  const remainingActivities = snapshot.activities.slice(1);
+
+  return {
+    ...snapshot,
+    activity: remainingActivities[0] ?? null,
+    activities: remainingActivities,
+    assistantMessage,
+  };
 }
 
 function buildGeneratedProfileSummary(
@@ -655,16 +661,18 @@ export function App(): ReactElement {
   ]);
   const [selectedProjectId, setSelectedProjectId] = useState(initialSessions[0]?.projectId ?? initialProject.id);
   const [selectedSessionId, setSelectedSessionId] = useState(initialSessions[0]?.id ?? "");
-  const [sessionEntryModes, setSessionEntryModes] = useState<Record<string, AgentEntryMode>>(
+  const [, setSessionEntryModes] = useState<Record<string, AgentEntryMode>>(
     () => Object.fromEntries(initialSessions.map((session) => [session.id, "chat-question"])),
   );
   const [sessionSourceAssetIds, setSessionSourceAssetIds] = useState<Record<string, ReadonlyArray<string>>>(
     () =>
       Object.fromEntries(
-        initialSessions.map((session) => [session.id, getDefaultSourceAssetIds("chat-question")]),
+        initialSessions.map((session) => [session.id, getDefaultSourceAssetIds()]),
       ),
   );
-  const [isEvidenceExpanded, setIsEvidenceExpanded] = useState(false);
+  const [sessionMaterialTrayOpen, setSessionMaterialTrayOpen] = useState<Record<string, boolean>>(
+    {},
+  );
   const [draftPrompt, setDraftPrompt] = useState(() =>
     buildDefaultAgentPrompt(initialUnit, projectContext),
   );
@@ -708,12 +716,9 @@ export function App(): ReactElement {
   const seedProfile = initialProfile;
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? initialProject;
-  const selectedEntryMode = selectedSession
-    ? sessionEntryModes[selectedSession.id] ?? "chat-question"
-    : "chat-question";
   const selectedSourceAssetIds = selectedSession
-    ? sessionSourceAssetIds[selectedSession.id] ?? getDefaultSourceAssetIds(selectedEntryMode)
-    : getDefaultSourceAssetIds(selectedEntryMode);
+    ? sessionSourceAssetIds[selectedSession.id] ?? getDefaultSourceAssetIds()
+    : getDefaultSourceAssetIds();
   const agentBaseUrl = getAgentBaseUrl();
   const seedRuntime = useMemo(
     () => buildMockRuntimeSnapshot(seedProfile, runtimeUnit),
@@ -737,7 +742,13 @@ export function App(): ReactElement {
       : isUsingDevTutorFixture
         ? devTutorFixtureState?.snapshot ?? mockRuntime
         : sessionSnapshots[selectedSession.id] ?? mockRuntime;
-  const currentActivity = activeRuntime.activity;
+  const currentActivities =
+    activeRuntime.activities.length > 0
+      ? activeRuntime.activities
+      : activeRuntime.activity === null
+        ? []
+        : [activeRuntime.activity];
+  const currentActivity = currentActivities[0] ?? null;
   const currentActivityKey =
     currentActivity === null
       ? null
@@ -762,11 +773,17 @@ export function App(): ReactElement {
     () => sourceAssets.filter((asset) => selectedSourceAssetIds.includes(asset.id)),
     [selectedSourceAssetIds],
   );
+  const effectiveEntryMode: AgentEntryMode =
+    selectedSourceAssetIds.length > 0 ? "material-import" : "chat-question";
+  const isMaterialsTrayOpen =
+    selectedSessionKey === null
+      ? false
+      : selectedSourceAssetIds.length > 0 || sessionMaterialTrayOpen[selectedSessionKey] === true;
   const activeSourceAssetsRef = useRef<ReadonlyArray<SourceAsset>>(activeSourceAssets);
   activeSourceAssetsRef.current = activeSourceAssets;
   const requestSourceAssetIds = useMemo(
-    () => getRequestSourceAssetIds(selectedEntryMode, activeSourceAssets),
-    [activeSourceAssets, selectedEntryMode],
+    () => getRequestSourceAssetIds(effectiveEntryMode, activeSourceAssets),
+    [activeSourceAssets, effectiveEntryMode],
   );
   const assetSummaryKey = requestSourceAssetIds.join("|");
   const activeAssetSummary = assetSummaryKey === "" ? null : assetSummaryByKey[assetSummaryKey] ?? null;
@@ -829,7 +846,7 @@ export function App(): ReactElement {
       createAgentChatTransport({
         projectId: selectedProject.id,
         sessionId: transportSessionId,
-        entryMode: selectedEntryMode,
+        entryMode: effectiveEntryMode,
         project: projectContext,
         getSourceAssets: () => activeSourceAssetsRef.current,
         unit: runtimeUnit,
@@ -845,7 +862,7 @@ export function App(): ReactElement {
     [
       handleTransportRunStateChange,
       handleTransportSnapshot,
-      selectedEntryMode,
+      effectiveEntryMode,
       fallbackSnapshotForTransport,
       selectedProject.id,
       transportSessionId,
@@ -917,10 +934,6 @@ export function App(): ReactElement {
         : buildDefaultAgentPrompt(runtimeUnit, projectContext),
     );
   }, [runtimeUnit, selectedSession?.id, selectedSession?.unitId]);
-
-  useEffect(() => {
-    setIsEvidenceExpanded(false);
-  }, [selectedSession?.id]);
 
   useEffect(() => {
     if (selectedSession === undefined) {
@@ -1192,7 +1205,7 @@ export function App(): ReactElement {
     setSessionMessagesById((current) => ({ ...current, [createdSession.id]: [] }));
     setDraftPrompt("");
     setSessionEntryModes((current) => ({ ...current, [createdSession.id]: "chat-question" }));
-    setSessionSourceAssetIds((current) => ({ ...current, [createdSession.id]: [] }));
+    setSessionSourceAssetIds((current) => ({ ...current, [createdSession.id]: getDefaultSourceAssetIds() }));
     setSelectedProjectId(targetProject.id);
     setSelectedSessionId(createdSession.id);
     setExpandedProjectIds((current) =>
@@ -1230,6 +1243,7 @@ export function App(): ReactElement {
           snapshot: {
             ...current.snapshot,
             activity: null,
+            activities: [],
             assistantMessage: assistantReply,
           },
         };
@@ -1327,11 +1341,7 @@ export function App(): ReactElement {
                 createFixtureUiMessage("user", submissionText, "submit-user"),
                 createFixtureUiMessage("assistant", activeTutorFixture.submitReply, "submit-assistant"),
               ],
-              snapshot: {
-                ...current.snapshot,
-                activity: null,
-                assistantMessage: activeTutorFixture.submitReply,
-              },
+              snapshot: getNextFixtureSnapshot(current.snapshot, activeTutorFixture.submitReply),
             },
       );
       return;
@@ -1379,11 +1389,7 @@ export function App(): ReactElement {
                 ),
                 createFixtureUiMessage("assistant", activeTutorFixture.skipReply, "skip-assistant"),
               ],
-              snapshot: {
-                ...current.snapshot,
-                activity: null,
-                assistantMessage: activeTutorFixture.skipReply,
-              },
+              snapshot: getNextFixtureSnapshot(current.snapshot, activeTutorFixture.skipReply),
             },
       );
       return;
@@ -1512,43 +1518,66 @@ export function App(): ReactElement {
 
             <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
               <div className="px-5 pt-5 lg:px-6">
-                <div className="flex flex-wrap gap-2">
-                  {entryModes.map((entry) => {
-                    const Icon = entry.icon;
-                    const active = entry.id === selectedEntryMode;
-
-                    return (
-                      <Button
-                        className={
-                          active
-                            ? "rounded-full border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] hover:bg-[#f2e6df]"
-                            : "rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <Button
+                      className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
+                      disabled={selectedSession === undefined}
+                      onClick={() => {
+                        if (selectedSessionKey === null) {
+                          return;
                         }
-                        key={entry.id}
-                        onClick={() => {
-                          if (selectedSession === undefined) {
-                            return;
-                          }
 
-                          setSessionEntryModes((current) => ({
-                            ...current,
-                            [selectedSession.id]: entry.id,
-                          }));
-                          if (entry.id === "material-import" && selectedSourceAssetIds.length === 0) {
-                            setSessionSourceAssetIds((current) => ({
-                              ...current,
-                              [selectedSession.id]: getDefaultSourceAssetIds("material-import"),
-                            }));
-                          }
-                        }}
-                        type="button"
+                        setSessionMaterialTrayOpen((current) => ({
+                          ...current,
+                          [selectedSessionKey]: !isMaterialsTrayOpen,
+                        }));
+                      }}
+                      type="button"
+                      variant="outline"
+                    >
+                      <FileInput className="h-4 w-4" />
+                      {isMaterialsTrayOpen ? "收起材料" : "添加材料"}
+                    </Button>
+                    {selectedSourceAssetIds.length > 0 ? (
+                      <Badge
+                        className="border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] shadow-none"
                         variant="outline"
                       >
-                        <Icon className="h-4 w-4" />
-                        {entry.title}
-                      </Button>
-                    );
-                  })}
+                        已附 {selectedSourceAssetIds.length} 份材料
+                      </Badge>
+                    ) : (
+                      <span className="text-sm text-[var(--xidea-stone)]">
+                        当前先按纯对话推进，需要时再把材料挂进这一轮。
+                      </span>
+                    )}
+                  </div>
+
+                  {selectedSourceAssetIds.length > 0 ? (
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {activeSourceAssets.slice(0, 3).map((asset) => (
+                        <button
+                          className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-1.5 text-[12px] text-[var(--xidea-selection-text)] transition-colors hover:bg-[#f2e6df]"
+                          key={asset.id}
+                          onClick={() => {
+                            if (selectedSession === undefined) {
+                              return;
+                            }
+
+                            setSessionSourceAssetIds((current) => ({
+                              ...current,
+                              [selectedSession.id]: (current[selectedSession.id] ?? []).filter(
+                                (id) => id !== asset.id,
+                              ),
+                            }));
+                          }}
+                          type="button"
+                        >
+                          {asset.title}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -1557,13 +1586,18 @@ export function App(): ReactElement {
               <div className="min-h-0 flex-1 px-5 lg:px-6">
                 <ScrollArea className="h-full pr-3">
                   <div className="space-y-4 pb-4">
-                    {selectedEntryMode === "material-import" ? (
+                    {isMaterialsTrayOpen ? (
                       <section className="space-y-3">
                         <div className="flex items-center gap-3">
                           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
                             <FileInput className="h-4 w-4" />
                           </div>
-                          <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
+                          <div>
+                            <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
+                            <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                              这些材料会作为本轮附加上下文一起送给 agent，不需要先切模式。
+                            </p>
+                          </div>
                         </div>
                         <div className="grid gap-3 lg:grid-cols-2">
                           {sourceAssets.map((asset) => {
@@ -1647,8 +1681,8 @@ export function App(): ReactElement {
                             hasStructuredRuntime &&
                             currentActivity !== null ? (
                               <div className="w-full max-w-[82%] pl-1">
-                                <LearningActivityCard
-                                  activity={currentActivity}
+                                <LearningActivityStack
+                                  activities={currentActivities}
                                   disabled={
                                     selectedSession === undefined ||
                                     isAgentRunning ||
@@ -1666,94 +1700,6 @@ export function App(): ReactElement {
                       })
                     )}
 
-                    {hasStructuredRuntime ? (
-                    <section className="space-y-4 py-2">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="xidea-kicker text-[var(--xidea-stone)]">编排证据</p>
-                        <div className="flex items-center gap-2">
-                          {activeRuntime.decision.confidence !== null ? (
-                            <span className="text-[12px] font-medium text-[var(--xidea-selection-text)]">
-                              {(activeRuntime.decision.confidence * 100).toFixed(0)}%
-                            </span>
-                          ) : null}
-                          <div className="flex items-center gap-2">
-                            <Button
-                              className="h-8 w-8 rounded-[0.85rem] text-[var(--xidea-stone)] hover:bg-[var(--xidea-parchment)] hover:text-[var(--xidea-near-black)]"
-                              onClick={() => {
-                                setIsEvidenceExpanded((current) => !current);
-                              }}
-                              size="icon"
-                              type="button"
-                              variant="ghost"
-                            >
-                              {isEvidenceExpanded ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                        {activeRuntime.decision.reason}
-                      </div>
-
-                      {isEvidenceExpanded ? (
-                        <>
-                          <div className="grid gap-3 lg:grid-cols-3">
-                            {activeRuntime.signalCards.map((signal) => (
-                              <div className="space-y-2 rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4" key={signal.id}>
-                                <p className="xidea-kicker text-[var(--xidea-selection-text)]">
-                                  {signal.label}
-                                </p>
-                                <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
-                                  {signal.observation}
-                                </p>
-                                <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                                  {signal.implication}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="space-y-2">
-                            <p className="xidea-kicker text-[var(--xidea-stone)]">Rationale</p>
-                            {activeRuntime.rationale.length > 0 ? (
-                              activeRuntime.rationale.map((item, index) => (
-                                <div
-                                  className="flex items-start gap-3 text-sm leading-7 text-[var(--xidea-charcoal)]"
-                                  key={`${item}-${index}`}
-                                >
-                                  <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-[var(--xidea-terracotta)]" />
-                                  <span>{item}</span>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                                {activeRuntime.decision.reason}
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="space-y-3">
-                            <p className="xidea-kicker text-[var(--xidea-stone)]">Writeback</p>
-                            {activeRuntime.writeback.map((item) => (
-                              <div className="space-y-1 rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4" key={item.id}>
-                                <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                                  {item.target}
-                                </p>
-                                <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                                  {item.change}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      ) : null}
-                    </section>
-                    ) : null}
                   </div>
                 </ScrollArea>
               </div>
@@ -1784,7 +1730,7 @@ export function App(): ReactElement {
                         placeholder={
                           hasPendingActivity
                             ? "先完成当前学习动作或跳过，再继续对话。"
-                            : selectedEntryMode === "material-import"
+                            : selectedSourceAssetIds.length > 0
                             ? "补一句你希望系统围绕这些材料先判断什么、澄清什么，或生成什么训练动作。"
                             : "输入这一轮你想推进的问题或材料。"
                         }
@@ -1796,8 +1742,6 @@ export function App(): ReactElement {
                         disabled={
                           selectedSession === undefined ||
                           hasPendingActivity ||
-                          (selectedEntryMode === "material-import" &&
-                            activeSourceAssets.length === 0) ||
                           isAgentRunning ||
                           agentBaseUrl === null
                         }
@@ -2038,9 +1982,9 @@ export function App(): ReactElement {
                     value={
                       isBlankSession
                         ? "0 assets"
-                        : selectedEntryMode === "material-import"
-                        ? `${requestSourceAssetIds.length} assets`
-                        : `${requestSourceAssetIds.length} linked`
+                        : selectedSourceAssetIds.length > 0
+                          ? `${requestSourceAssetIds.length} attached`
+                          : `${requestSourceAssetIds.length} linked`
                     }
                   />
                   <CompactNote label="Unit" value={selectedUnit?.title ?? "未指定"} />

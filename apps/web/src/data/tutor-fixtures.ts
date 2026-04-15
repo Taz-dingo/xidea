@@ -105,15 +105,8 @@ export const tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario> = [
     id: "recall-text",
     label: "主动回忆",
     description: "测试文本回忆卡、长输入和提交后的恢复。",
-    snapshot: {
-      ...recallBase,
-      decision: {
-        ...recallBase.decision,
-        title: "主动回忆",
-        reason: "当前更需要先把关键判断标准从记忆里拉回可用状态。",
-        objective: "确认用户能不看材料回忆出判断标准。",
-      },
-      activity: buildCustomActivity({
+    snapshot: (() => {
+      const activity = buildCustomActivity({
         id: "fixture-recall",
         kind: "recall",
         title: "先做一次主动回忆",
@@ -129,10 +122,22 @@ export const tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario> = [
           placeholder: "先写下你回忆出的判断标准，再看系统怎么追问。",
           minLength: 24,
         },
-      }),
-      assistantMessage:
-        "这轮先别看资料。你更需要先证明这些判断标准还在脑子里，而不是继续堆解释。",
-    },
+      });
+
+      return {
+        ...recallBase,
+        decision: {
+          ...recallBase.decision,
+          title: "主动回忆",
+          reason: "当前更需要先把关键判断标准从记忆里拉回可用状态。",
+          objective: "确认用户能不看材料回忆出判断标准。",
+        },
+        activity,
+        activities: [activity],
+        assistantMessage:
+          "这轮先别看资料。你更需要先证明这些判断标准还在脑子里，而不是继续堆解释。",
+      };
+    })(),
     messages: [
       {
         role: "assistant",
@@ -150,9 +155,8 @@ export const tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario> = [
     id: "coach-followup",
     label: "导师追问",
     description: "测试追问卡、跳过动作和卡片完成后的解锁。",
-    snapshot: {
-      ...coachBase,
-      activity: buildCustomActivity({
+    snapshot: (() => {
+      const activity = buildCustomActivity({
         id: "fixture-followup",
         kind: "coach-followup",
         title: "先接住导师追问",
@@ -168,10 +172,16 @@ export const tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario> = [
           placeholder: "把你会在评审里先说的那一句写出来。",
           minLength: 18,
         },
-      }),
-      assistantMessage:
-        "这轮先别继续讲模块定义。你更需要先接住一个真实评审追问，看表达能不能立住。",
-    },
+      });
+
+      return {
+        ...coachBase,
+        activity,
+        activities: [activity],
+        assistantMessage:
+          "这轮先别继续讲模块定义。你更需要先接住一个真实评审追问，看表达能不能立住。",
+      };
+    })(),
     messages: [
       {
         role: "assistant",
@@ -203,12 +213,93 @@ export const tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario> = [
     submitErrorMessage: "Mock fixture：本轮提交被故意标记为失败，用来检查交互回滚。",
   },
   {
+    id: "stacked-drills",
+    label: "多张卡组",
+    description: "测试多张学习卡叠放、翻卡顺序和锁输入状态。",
+    snapshot: (() => {
+      const first = buildCustomActivity({
+        id: "fixture-stack-1",
+        kind: "quiz",
+        title: "先辨一下问题卡在哪一层",
+        objective: "先确认你是不是把召回和上下文构造混在一起了。",
+        prompt: "如果检索结果本身是准的，但回答还是漂，第一怀疑点更应该落在哪？",
+        support: "先把最上层判断点说清，再往下拆具体误差来源。",
+        mode: "guided-qa",
+        evidence: ["最近几轮你总是把“召回”和“提示词拼接”一起归因。"],
+        submitLabel: "提交选择",
+        input: {
+          type: "choice",
+          choices: [
+            { id: "stack-1-a", label: "先看上下文构造是不是把检索结果组织坏了", detail: "" },
+            { id: "stack-1-b", label: "先假设 embedding 一定失效了", detail: "" },
+            { id: "stack-1-c", label: "先去改 temperature", detail: "" },
+          ],
+        },
+      });
+      const second = buildCustomActivity({
+        id: "fixture-stack-2",
+        kind: "recall",
+        title: "再回忆一下判断标准",
+        objective: "确认你能脱离材料复述这条判断顺序。",
+        prompt: "不用看材料，写一句你会怎么区分“检索错了”和“组织错了”。",
+        support: "这一张用来检查你是否只是选对了，而不是真的记住了判断顺序。",
+        mode: "guided-qa",
+        evidence: ["你最近能做对选择题，但转成口述时容易卡住。"],
+        submitLabel: "提交回忆",
+        input: {
+          type: "text",
+          placeholder: "先用自己的话写一句判断顺序。",
+          minLength: 18,
+        },
+      });
+      const third = buildCustomActivity({
+        id: "fixture-stack-3",
+        kind: "coach-followup",
+        title: "最后接一个答辩追问",
+        objective: "把理解迁移成能对评审说出口的话。",
+        prompt: "如果评审继续问“为什么你先怀疑组织层”，你会怎么补一句？",
+        support: "最后一张不再测概念，而是测你能不能把判断讲清楚。",
+        mode: "scenario-sim",
+        evidence: ["你能复述概念，但答辩时第一句话还不够稳。"],
+        submitLabel: "提交作答",
+        input: {
+          type: "text",
+          placeholder: "写下你会接给评审的下一句。",
+          minLength: 16,
+        },
+      });
+
+      return {
+        ...clarifyBase,
+        decision: {
+          ...clarifyBase.decision,
+          title: "连续三步小卡组",
+          reason: "这轮不需要一口气解释完，更适合先辨析、再回忆、再迁移表达。",
+          objective: "用三张轻卡连续确认边界、记忆和表达。",
+        },
+        activity: first,
+        activities: [first, second, third],
+        assistantMessage: "这轮我不只给一张卡。我们先从最上面这一张开始，做完再往下翻。",
+      };
+    })(),
+    messages: [
+      {
+        role: "assistant",
+        content: "你这轮更像需要一组连续小动作，而不是一次讲完。我先给你三张轻卡，按顺序推进。",
+      },
+    ],
+    submitReply: "这一张已经够了，我们继续翻下一张，不急着一次性讲透全部。",
+    skipReply: "我先记下你跳过了这一张，后面的卡组仍会保留，但会把这一层标成未验证。",
+    submitErrorMessage: null,
+  },
+  {
     id: "no-activity",
     label: "只有回复",
     description: "测试没有学习动作卡时，普通对话和 markdown 展示是否正常。",
     snapshot: {
       ...coachBase,
       activity: null,
+      activities: [],
       assistantMessage:
         "这轮先不给学习动作。\n\n- 你已经有基本框架\n- 当前更需要先看系统怎么展示纯 markdown 回复\n- 然后再决定要不要补卡片",
     },
