@@ -166,6 +166,7 @@
 ### 影响
 
 - repo 下的通用工程 skill 改为 vendored 外部 skill
+- 前端相关默认优先使用 `vercel-react-best-practices`
 - AGENTS.md 默认指向这些外部 skill 名称，而不是旧的项目私有通用 skill
 - 项目内 skill 后续重点只放在 Xidea 特有规则与协作流程
 
