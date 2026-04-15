@@ -33,9 +33,15 @@
   - owner: 学习引擎 owner
 - [ ] 将 `StudyPlan` 从展示型输出改成可执行 learning activity contract，支持 agent 在对话里直接触发出题 / 复习
   - owner: 学习引擎 owner / 前端 owner
+- [ ] 将 web-agent contract 从固定 `plan` 展示收敛为结构化 activity / tool result 事件，由前端按事件插入 card，而不是默认渲染固定面板
+  - owner: 学习引擎 owner / 前端 owner
+- [ ] 收敛 activity 的交互 gating：当前有未完成学习动作时，主输入区默认锁住自由聊天，只保留完成当前动作或显式跳过
+  - owner: 前端 owner / 学习引擎 owner
 - [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环
   - owner: 学习引擎 owner / 前端 owner
 - [ ] 细化 agent 决策路径与 evaluation 维度
+  - owner: 学习引擎 owner
+- [ ] 为 tutor agent 补专门的 system prompt：明确何时必须触发 activity、何时只给短引导、不再把“完整解释”当默认目标
   - owner: 学习引擎 owner
 - [ ] 在主案例稳定后，再补 1 到 2 个能支撑主叙事的次级 demo surface
   - owner: 前端 owner / 产品 owner
@@ -103,10 +109,13 @@
    - 基于启发式规则更新 `memoryStrength / nextReviewAt`
    - 不实现完整 SRS / FSRS 算法
 5. `apps/agent` 暴露 FastAPI streaming endpoint
-   - 返回 `text-delta / diagnosis / plan / state-patch / done`
+   - 当前返回 `diagnosis / text-delta / plan / state-patch / done`
+   - 下一步补结构化 activity / tool result 事件，逐步替代固定 `plan` 展示
 6. `apps/web` 接入真实 agent API
    - 使用 Vercel AI SDK 管理 message stream
-   - 渲染 diagnosis、plan、state-patch 三类结构化结果
+   - 当前已能消费 diagnosis、plan、state-patch，并把它们归一化成 activity card；学习动作卡会插到最后一条 agent 回复后
+   - 当前有未完成 activity 时，主输入区已切到“完成当前动作 / 跳过当前动作”的受约束交互
+   - 下一步把 activity 来源从 `diagnosis / plan` 归一化过渡逻辑收敛到稳定的后端 event contract
    - 首页前端叙事壳已完成，当前重点从“接通真实 `/runs/v0` 数据”转到“减少 fallback / fixture 依赖”
 7. `apps/web` 保持比赛主案例聚焦
    - 默认围绕 RAG 项目学习

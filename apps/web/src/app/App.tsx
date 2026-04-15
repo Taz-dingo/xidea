@@ -20,9 +20,9 @@ import {
   MessageSquareText,
   Plus,
   RefreshCcw,
-  Route,
-  Target,
 } from "lucide-react";
+import { LearningActivityCard } from "@/components/learning-activity-card";
+import { MarkdownContent } from "@/components/markdown-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,6 +38,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { learnerProfiles, learningUnits, projectContext, sourceAssets } from "@/data/demo";
 import {
   buildDefaultAgentPrompt,
+  formatActivitySubmissionForAgent,
   buildMockRuntimeSnapshot,
   getRequestSourceAssetIds,
   hydrateRuntimeSnapshotFromLearnerState,
@@ -45,10 +46,11 @@ import {
   type AgentEntryMode,
   type AgentReviewEvent,
   type AgentReviewInspector,
+  type AgentAction,
   type RuntimeSnapshot,
 } from "@/domain/agent-runtime";
 import { MODE_LABELS } from "@/domain/planner";
-import type { LearningMode, SourceAsset } from "@/domain/types";
+import type { LearningActivitySubmission, LearningMode, SourceAsset } from "@/domain/types";
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
 import {
   getAgentBaseUrl,
@@ -94,6 +96,8 @@ interface SessionItem {
   readonly status: string;
 }
 
+type ActivityResolution = "submitted" | "skipped";
+
 const initialSessions: ReadonlyArray<SessionItem> = learningUnits.map((unit) => {
   const meta = sessionMetaByUnitId[unit.id] ?? { updatedAt: "刚刚", status: "进行中" };
 
@@ -117,6 +121,21 @@ const metricCopy = [
 
 function getModeBadgeClass(_mode: LearningMode): string {
   return "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)]";
+}
+
+function getActionLabel(action: AgentAction): string {
+  switch (action) {
+    case "apply":
+      return "迁移验证";
+    case "clarify":
+      return "边界澄清";
+    case "practice":
+      return "练习强化";
+    case "review":
+      return "复习回拉";
+    case "teach":
+      return "导师建模";
+  }
 }
 
 function getMetricDotClass(tone: "emerald" | "amber" | "rose" | "sky"): string {
@@ -181,20 +200,6 @@ function getMessageText(message: UIMessage): string {
   }
 
   return visibleText === "" ? "当前消息没有文本内容。" : visibleText;
-}
-
-function getCollapsedAssistantText(text: string): string {
-  const normalized = text.trim();
-  if (normalized.length <= 96) {
-    return normalized;
-  }
-
-  const sentenceMatch = normalized.match(/^(.{1,96}?[。！？!?])/u);
-  if (sentenceMatch?.[1]) {
-    return sentenceMatch[1];
-  }
-
-  return `${normalized.slice(0, 96).trim()}...`;
 }
 
 function getLatestUserDraft(messages: ReadonlyArray<UIMessage>, draftPrompt: string): string {
@@ -606,9 +611,6 @@ export function App(): ReactElement {
       ),
   );
   const [isEvidenceExpanded, setIsEvidenceExpanded] = useState(false);
-  const [expandedAssistantMessageIds, setExpandedAssistantMessageIds] = useState<
-    Record<string, boolean>
-  >({});
   const [draftPrompt, setDraftPrompt] = useState(() =>
     buildDefaultAgentPrompt(initialUnit, projectContext),
   );
@@ -623,6 +625,9 @@ export function App(): ReactElement {
   const [sessionMessagesById, setSessionMessagesById] = useState<Record<string, UIMessage[]>>(
     () => Object.fromEntries(initialSessions.map((session) => [session.id, []])),
   );
+  const [activityResolutionsBySession, setActivityResolutionsBySession] = useState<
+    Record<string, Record<string, ActivityResolution>>
+  >({});
   const [runningSessionIds, setRunningSessionIds] = useState<Record<string, boolean>>({});
   const bootstrapLoadedKeysRef = useRef<Record<string, boolean>>({});
   const sessionSnapshotsRef = useRef<Record<string, RuntimeSnapshot>>(sessionSnapshots);
@@ -656,6 +661,15 @@ export function App(): ReactElement {
   const mockRuntime = seedRuntime;
   const activeRuntime =
     selectedSession === undefined ? mockRuntime : sessionSnapshots[selectedSession.id] ?? mockRuntime;
+  const currentActivity = activeRuntime.activity;
+  const currentActivityKey =
+    currentActivity === null
+      ? null
+      : `${currentActivity.id}:${activeRuntime.assistantMessage || activeRuntime.decision.reason}`;
+  const currentActivityResolution =
+    selectedSessionKey === null || currentActivityKey === null
+      ? null
+      : activityResolutionsBySession[selectedSessionKey]?.[currentActivityKey] ?? null;
   const hasPersistedState = activeRuntime.source === "hydrated-state" || activeRuntime.source === "live-agent";
   const hasStructuredRuntime = activeRuntime.source === "live-agent";
   const generatedProfile = buildGeneratedProfileSummary(activeRuntime, latestUserInput);
@@ -697,6 +711,8 @@ export function App(): ReactElement {
   const transportSessionId = selectedSession?.id ?? selectedProject.id;
   const fallbackSnapshotForTransport = activeRuntime;
   const isAgentRunning = selectedSessionKey === null ? false : runningSessionIds[selectedSessionKey] === true;
+  const hasPendingActivity =
+    hasStructuredRuntime && currentActivity !== null && currentActivityResolution === null;
 
   const handleTransportSnapshot = useCallback((sessionId: string, snapshot: RuntimeSnapshot) => {
     setSessionSnapshots((current) => ({
@@ -761,10 +777,9 @@ export function App(): ReactElement {
     messages: selectedSession ? sessionMessagesById[selectedSession.id] ?? [] : [],
     transport,
   });
-  const streamingAssistantMessageId =
-    isAgentRunning
-      ? [...messages].reverse().find((message) => message.role === "assistant")?.id ?? null
-      : null;
+  const latestAssistantMessageId = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant")?.id ?? null;
 
   const errorMessage = getErrorMessage(error);
 
@@ -807,10 +822,6 @@ export function App(): ReactElement {
   }, [selectedSession?.id]);
 
   useEffect(() => {
-    setExpandedAssistantMessageIds({});
-  }, [selectedSession?.id]);
-
-  useEffect(() => {
     if (selectedSession === undefined) {
       return;
     }
@@ -828,6 +839,23 @@ export function App(): ReactElement {
   useEffect(() => {
     if (selectedSession === undefined || error === undefined) {
       return;
+    }
+
+    if (currentActivityKey !== null) {
+      setActivityResolutionsBySession((current) => {
+        const sessionResolutions = current[selectedSession.id];
+        if (sessionResolutions === undefined || sessionResolutions[currentActivityKey] === undefined) {
+          return current;
+        }
+
+        const nextSessionResolutions = { ...sessionResolutions };
+        delete nextSessionResolutions[currentActivityKey];
+
+        return {
+          ...current,
+          [selectedSession.id]: nextSessionResolutions,
+        };
+      });
     }
 
     setRunningSessionIds((current) =>
@@ -851,7 +879,7 @@ export function App(): ReactElement {
           : session,
       ),
       );
-  }, [error, selectedSession?.id]);
+  }, [currentActivityKey, error, selectedSession?.id]);
 
   useEffect(() => {
     if (
@@ -1081,12 +1109,27 @@ export function App(): ReactElement {
       return;
     }
 
+    handleSendToAgent({
+      text,
+      sessionSummary: text,
+    });
+    setDraftPrompt("");
+  }
+
+  function handleSendToAgent(input: {
+    readonly text: string;
+    readonly sessionSummary: string;
+  }): void {
+    if (selectedSession === undefined) {
+      return;
+    }
+
     setSessions((current) =>
       current.map((session) =>
         session.id === selectedSession.id
           ? {
               ...session,
-              summary: text,
+              summary: input.sessionSummary,
               updatedAt: "刚刚",
               status: "运行中",
             }
@@ -1098,8 +1141,54 @@ export function App(): ReactElement {
       [selectedSession.id]: true,
     }));
 
-    setDraftPrompt("");
-    void sendMessage({ text });
+    void sendMessage({ text: input.text });
+  }
+
+  function handleSubmitActivity(submission: LearningActivitySubmission): void {
+    if (selectedSession === undefined || currentActivity === null || currentActivityKey === null) {
+      return;
+    }
+
+    if (error !== undefined) {
+      clearError();
+    }
+
+    setActivityResolutionsBySession((current) => ({
+      ...current,
+      [selectedSession.id]: {
+        ...(current[selectedSession.id] ?? {}),
+        [currentActivityKey]: "submitted",
+      },
+    }));
+    handleSendToAgent({
+      text: formatActivitySubmissionForAgent({
+        activity: currentActivity,
+        submission,
+      }),
+      sessionSummary: `${currentActivity.title} / ${getActionLabel(activeRuntime.state.recommendedAction)}`,
+    });
+  }
+
+  function handleSkipActivity(): void {
+    if (selectedSession === undefined || currentActivity === null || currentActivityKey === null) {
+      return;
+    }
+
+    if (error !== undefined) {
+      clearError();
+    }
+
+    setActivityResolutionsBySession((current) => ({
+      ...current,
+      [selectedSession.id]: {
+        ...(current[selectedSession.id] ?? {}),
+        [currentActivityKey]: "skipped",
+      },
+    }));
+    handleSendToAgent({
+      text: `我先跳过「${currentActivity.title}」这轮学习动作。请基于当前状态重新安排下一步，并告诉我为什么要这样推进。`,
+      sessionSummary: `${currentActivity.title} / 跳过后重新编排`,
+    });
   }
 
   return (
@@ -1327,109 +1416,51 @@ export function App(): ReactElement {
                         if (isAssistant && rawText === "") {
                           return null;
                         }
-                        const isStreamingAssistant = message.id === streamingAssistantMessageId;
-                        const shouldCollapseAssistant =
-                          isAssistant && !isStreamingAssistant && rawText.length > 96;
-                        const isExpanded =
-                          expandedAssistantMessageIds[message.id] ?? false;
-                        const visibleText =
-                          shouldCollapseAssistant && !isExpanded
-                            ? getCollapsedAssistantText(rawText)
-                            : rawText;
 
                         return (
-                          <div
-                            className={isAssistant ? "flex justify-start" : "flex justify-end"}
-                            key={message.id}
-                          >
-                            {isAssistant ? (
-                              <div className="w-full max-w-[82%] py-1">
-                                <div className="mb-2 flex items-center gap-2">
-                                  <span className="xidea-kicker text-[var(--xidea-selection-text)]">
-                                    Agent
-                                  </span>
-                                  {shouldCollapseAssistant ? (
-                                    <Button
-                                      className="h-6 rounded-full px-2 text-[11px] text-[var(--xidea-stone)] hover:bg-[var(--xidea-parchment)] hover:text-[var(--xidea-near-black)]"
-                                      onClick={() => {
-                                        setExpandedAssistantMessageIds((current) => ({
-                                          ...current,
-                                          [message.id]: !isExpanded,
-                                        }));
-                                      }}
-                                      size="sm"
-                                      type="button"
-                                      variant="ghost"
-                                    >
-                                      {isExpanded ? "收起" : "展开"}
-                                    </Button>
-                                  ) : null}
-                                </div>
-                                {shouldCollapseAssistant && !isExpanded ? (
-                                  <span className="mb-2 block text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
-                                    摘要
-                                  </span>
-                                ) : null}
-                                <div className="text-[14px] leading-6 whitespace-pre-wrap text-[var(--xidea-charcoal)]">
-                                  {visibleText}
-                                </div>
-                              </div>
-                            ) : (
-                              <Card className="w-full max-w-[72%] rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                                <CardHeader className="pb-3">
-                                  <div className="flex items-center gap-2">
-                                    <Badge
-                                      className="border-[var(--xidea-border)] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)] shadow-none"
-                                      variant="outline"
-                                    >
-                                      用户
-                                    </Badge>
+                          <div className="space-y-3" key={message.id}>
+                            <div className={isAssistant ? "flex justify-start" : "flex justify-end"}>
+                              {isAssistant ? (
+                                <div className="w-full max-w-[82%] py-0.5">
+                                  <div className="mb-1.5 flex items-center gap-2">
+                                    <span className="xidea-kicker text-[var(--xidea-selection-text)]">
+                                      Agent
+                                    </span>
                                   </div>
-                                </CardHeader>
-                                <CardContent className="text-sm leading-7 text-[var(--xidea-charcoal)]">
-                                  <div>{visibleText}</div>
-                                </CardContent>
-                              </Card>
-                            )}
+                                  <MarkdownContent content={rawText} />
+                                </div>
+                              ) : (
+                                <Card className="w-full max-w-[72%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                                  <CardContent className="px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
+                                    <div>{rawText}</div>
+                                  </CardContent>
+                                </Card>
+                              )}
+                            </div>
+
+                            {isAssistant &&
+                            message.id === latestAssistantMessageId &&
+                            hasStructuredRuntime &&
+                            currentActivity !== null ? (
+                              <div className="w-full max-w-[82%] pl-1">
+                                <LearningActivityCard
+                                  activity={currentActivity}
+                                  disabled={
+                                    selectedSession === undefined ||
+                                    isAgentRunning ||
+                                    agentBaseUrl === null
+                                  }
+                                  key={`${selectedSession?.id ?? "seed"}-${currentActivityKey ?? currentActivity.id}`}
+                                  onSkip={handleSkipActivity}
+                                  onSubmit={handleSubmitActivity}
+                                  resolution={currentActivityResolution}
+                                />
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })
                     )}
-
-                    {hasStructuredRuntime ? (
-                    <section className="space-y-3 py-2">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
-                          <Route className="h-4 w-4" />
-                        </div>
-                        <p className="xidea-kicker text-[var(--xidea-stone)]">路径</p>
-                      </div>
-                      <div className="space-y-3">
-                        {activeRuntime.plan.steps.slice(0, 3).map((step, index) => (
-                          <div
-                            className="flex items-start gap-4 rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4"
-                            key={step.id}
-                          >
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eadfd7] text-sm font-medium text-[var(--xidea-selection-text)]">
-                              {index + 1}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-medium text-[var(--xidea-near-black)]">{step.title}</p>
-                                <Badge
-                                  className={`border shadow-none ${getModeBadgeClass(step.mode)}`}
-                                  variant="outline"
-                                >
-                                  {MODE_LABELS[step.mode]}
-                                </Badge>
-                              </div>
-                              <p className="mt-2 text-sm leading-7 text-[var(--xidea-charcoal)]">{step.reason}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                    ) : null}
 
                     {hasStructuredRuntime ? (
                     <section className="space-y-4 py-2">
@@ -1529,6 +1560,7 @@ export function App(): ReactElement {
                     <div className="relative">
                       <Textarea
                         className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] pr-28 pb-12 text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
+                        disabled={hasPendingActivity || isAgentRunning || agentBaseUrl === null}
                         onChange={(event) => {
                           if (error !== undefined) {
                             clearError();
@@ -1536,7 +1568,9 @@ export function App(): ReactElement {
                           setDraftPrompt(event.target.value);
                         }}
                         placeholder={
-                          selectedEntryMode === "material-import"
+                          hasPendingActivity
+                            ? "先完成当前学习动作或跳过，再继续对话。"
+                            : selectedEntryMode === "material-import"
                             ? "补一句你希望系统围绕这些材料先判断什么、澄清什么，或生成什么训练动作。"
                             : "输入这一轮你想推进的问题或材料。"
                         }
@@ -1547,6 +1581,7 @@ export function App(): ReactElement {
                         className="absolute right-3 bottom-3 rounded-full bg-[var(--xidea-terracotta)] px-4 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
                         disabled={
                           selectedSession === undefined ||
+                          hasPendingActivity ||
                           (selectedEntryMode === "material-import" &&
                             activeSourceAssets.length === 0) ||
                           isAgentRunning ||
@@ -1565,6 +1600,10 @@ export function App(): ReactElement {
                           {errorMessage}
                         </CardContent>
                       </Card>
+                    ) : hasPendingActivity ? (
+                      <p className="mt-3 text-sm leading-6 text-[var(--xidea-stone)]">
+                        这轮先完成上面的学习动作，或者选择跳过，再继续自由对话。
+                      </p>
                     ) : null}
                   </CardContent>
                 </Card>

@@ -41,6 +41,11 @@
 - runtime 优先收敛为 `load_context / prepare_evidence -> agent_turn -> tool_or_activity -> agent_turn(loop) -> writeback`
 - 学习资料、thread memory、learner state、review context 需要在主决策前预取，并作为同一证据包进入主决策 prompt
 - agent 需要能在对话内直接触发练习 / 复习 activity；`exercise-result / review-result` 成为后续状态更新输入
+- 对话内 learning activity 应以结构化 event 或 tool / activity result 的形式进入消息流，由前端按事件插入一张或多张 card；不再把“学习动作 / 路径 / 证据”固化成固定面板
+- 当一张 activity card 代表当前必须完成的学习动作时，主输入区默认不继续开放自由聊天；前端应切到“完成当前动作 / 跳过当前动作”的受约束交互，而不是允许用户直接开始下一轮普通对话
+- `plan` 如果保留，默认只是 activity 的解释字段或摘要；不能要求前端总是单独渲染一整段 `plan` 区域
+- 当前前端把 `diagnosis / plan` 归一化成 activity card 的做法只用于过渡联调，不代表长期 contract
+- agent 需要专门的 tutor-oriented system prompt：核心任务是决定并主持学习回合，而不是像普通聊天助手那样优先给完整答案；高混淆、记忆走弱、迁移验证等场景下，应优先触发 activity 或 tool，而不是继续长篇解释
 - 当前 2026-04-14 的“3 次模型调用”和“reply 优先、plan 后置”记录只代表过渡实现，不是下一阶段目标形态
 
 ## 2026-04-14 — 决策日志改为活跃薄层

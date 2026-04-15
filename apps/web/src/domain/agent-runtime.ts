@@ -1,5 +1,7 @@
 import { MODE_LABELS, buildStudyPlan } from "./planner";
 import type {
+  LearningActivity,
+  LearningActivitySubmission,
   LearnerProfile,
   LearningMode,
   LearningUnit,
@@ -82,6 +84,36 @@ export interface AgentPlan {
   readonly steps: ReadonlyArray<AgentPlanStep>;
 }
 
+interface AgentActivityChoice {
+  readonly id: string;
+  readonly label: string;
+  readonly detail: string;
+}
+
+type AgentActivityInput =
+  | {
+      readonly type: "choice";
+      readonly choices: ReadonlyArray<AgentActivityChoice>;
+    }
+  | {
+      readonly type: "text";
+      readonly placeholder: string;
+      readonly min_length: number;
+    };
+
+export interface AgentActivity {
+  readonly id: string;
+  readonly kind: LearningActivity["kind"];
+  readonly title: string;
+  readonly objective: string;
+  readonly prompt: string;
+  readonly support: string;
+  readonly mode: LearningMode | null;
+  readonly evidence: ReadonlyArray<string>;
+  readonly submit_label: string;
+  readonly input: AgentActivityInput;
+}
+
 export interface AgentLearnerUnitState {
   readonly unit_id: string;
   readonly mastery: number;
@@ -128,6 +160,7 @@ export interface AgentStatePatch {
 export type AgentStreamEvent =
   | { readonly event: "text-delta"; readonly delta: string }
   | { readonly event: "diagnosis"; readonly diagnosis: AgentDiagnosis }
+  | { readonly event: "activity"; readonly activity: AgentActivity }
   | { readonly event: "plan"; readonly plan: AgentPlan }
   | { readonly event: "state-patch"; readonly state_patch: AgentStatePatch }
   | { readonly event: "done"; readonly final_message: string | null };
@@ -138,6 +171,7 @@ export interface AgentRunResult {
     readonly learner_unit_state: AgentLearnerUnitState | null;
     readonly diagnosis: AgentDiagnosis | null;
     readonly plan: AgentPlan | null;
+    readonly activity: AgentActivity | null;
     readonly assistant_message: string | null;
     readonly state_patch: AgentStatePatch | null;
     readonly rationale: ReadonlyArray<string>;
@@ -242,6 +276,7 @@ export interface RuntimeSnapshot {
     readonly primaryMode: LearningMode | null;
   };
   readonly writeback: ReadonlyArray<WritebackPreview>;
+  readonly activity: LearningActivity | null;
   readonly assistantMessage: string;
   readonly rationale: ReadonlyArray<string>;
 }
@@ -337,6 +372,180 @@ function buildSignalCardsFromStream(
   }
 
   return cards;
+}
+
+function buildActivityChoiceSet(mode: LearningMode): LearningActivity["input"] {
+  if (mode === "contrast-drill") {
+    return {
+      type: "choice",
+      choices: [
+        {
+          id: "trace-boundary",
+          label: "先区分是召回、重排还是上下文构造出了问题。",
+          detail: "先定位失真环节，再决定该改检索、重排还是上下文拼装。",
+        },
+        {
+          id: "increase-chunks",
+          label: "先把 chunk 数量继续加大，尽量把更多信息塞给模型。",
+          detail: "这是常见直觉，但会跳过问题定位，容易继续放大噪音。",
+        },
+        {
+          id: "skip-diagnosis",
+          label: "暂时不定位，直接让模型自由生成一版回答再说。",
+          detail: "会把检索链路问题掩盖成生成问题，不利于后续设计取舍。",
+        },
+      ],
+    };
+  }
+
+  return {
+    type: "text",
+    placeholder: "先用你自己的话作答，系统会基于这次作答继续追问或改排下一步。",
+    minLength: 24,
+  };
+}
+
+function buildActivityTitle(mode: LearningMode, action: AgentAction): string {
+  if (mode === "contrast-drill") {
+    return "先做一个边界辨析";
+  }
+
+  if (mode === "scenario-sim" || action === "apply") {
+    return "先做一轮项目情境作答";
+  }
+
+  if (action === "review" || mode === "image-recall" || mode === "audio-recall") {
+    return "先做一次主动回忆";
+  }
+
+  return "先接住导师追问";
+}
+
+function buildActivityPrompt(input: {
+  readonly action: AgentAction;
+  readonly mode: LearningMode;
+  readonly unitTitle: string;
+}): string {
+  if (input.mode === "contrast-drill") {
+    return `围绕「${input.unitTitle}」，如果线上 bad case 出现“召回看起来命中了，但回答仍然不准”，你会先把问题定位到哪一层？`;
+  }
+
+  if (input.mode === "scenario-sim" || input.action === "apply") {
+    return `假设你正在向评审解释「${input.unitTitle}」，请用 3 到 5 句说明为什么不能只做“检索后直接拼接给模型”。`;
+  }
+
+  if (input.action === "review" || input.mode === "image-recall" || input.mode === "audio-recall") {
+    return `不要看材料，回忆一下「${input.unitTitle}」里最关键的判断标准：什么情况下应该先怀疑记忆走弱，什么情况下应该先怀疑概念混淆？`;
+  }
+
+  return `先用你自己的话解释「${input.unitTitle}」：为什么这轮系统没有直接让你进入自由练习，而是先安排一个更受约束的学习动作？`;
+}
+
+function buildLearningActivity(input: {
+  readonly action: AgentAction;
+  readonly mode: LearningMode | null;
+  readonly unit: {
+    readonly id: string;
+    readonly title: string;
+  };
+  readonly objective: string;
+  readonly reason: string;
+  readonly evidence: ReadonlyArray<string>;
+}): LearningActivity | null {
+  const mode = input.mode;
+  if (mode === null) {
+    return null;
+  }
+
+  const kind =
+    mode === "contrast-drill"
+      ? "quiz"
+      : input.action === "review" || mode === "image-recall" || mode === "audio-recall"
+        ? "recall"
+        : "coach-followup";
+
+  return {
+    id: `activity-${input.unit.id}-${mode}`,
+    kind,
+    title: buildActivityTitle(mode, input.action),
+    objective: input.objective,
+    prompt: buildActivityPrompt({
+      action: input.action,
+      mode,
+      unitTitle: input.unit.title,
+    }),
+    support: input.reason,
+    mode,
+    evidence: input.evidence.slice(0, 3),
+    submitLabel:
+      kind === "quiz" ? "提交判断" : kind === "recall" ? "提交回忆" : "提交作答",
+    input: buildActivityChoiceSet(mode),
+  };
+}
+
+function buildActivityUnitRef(input: {
+  readonly unitId: string | null;
+  readonly fallbackTitle: string;
+}): { readonly id: string; readonly title: string } {
+  const normalizedTitle =
+    input.fallbackTitle.match(/^围绕「(.+)」生成的动态学习路径$/)?.[1] ?? input.fallbackTitle;
+
+  return {
+    id: input.unitId ?? "current-unit",
+    title: normalizedTitle,
+  };
+}
+
+function normalizeAgentActivity(activity: AgentActivity): LearningActivity {
+  return {
+    id: activity.id,
+    kind: activity.kind,
+    title: activity.title,
+    objective: activity.objective,
+    prompt: activity.prompt,
+    support: activity.support,
+    mode: activity.mode,
+    evidence: activity.evidence,
+    submitLabel: activity.submit_label,
+    input:
+      activity.input.type === "choice"
+        ? {
+            type: "choice",
+            choices: activity.input.choices,
+          }
+        : {
+            type: "text",
+            placeholder: activity.input.placeholder,
+            minLength: activity.input.min_length,
+          },
+  };
+}
+
+export function formatActivitySubmissionForAgent(input: {
+  readonly activity: LearningActivity;
+  readonly submission: LearningActivitySubmission;
+}): string {
+  const choiceDetail =
+    input.activity.input.type === "choice" && input.submission.selectedChoiceId !== null
+      ? input.activity.input.choices.find((choice) => choice.id === input.submission.selectedChoiceId) ??
+        null
+      : null;
+
+  const choiceSummary =
+    choiceDetail === null
+      ? ""
+      : `我的选择是「${choiceDetail.label}」，因为${choiceDetail.detail}。`;
+
+  return [
+    `我刚完成了「${input.activity.title}」这个学习动作。`,
+    `训练目标是${input.activity.objective}。`,
+    `题目是：${input.activity.prompt}`,
+    choiceSummary,
+    `我的作答是：${input.submission.responseText}。`,
+    "请基于这次作答继续判断下一步是追问、澄清、安排复习，还是推进到下一轮练习。",
+  ]
+    .filter((part) => part !== "")
+    .join("");
 }
 
 function buildWritebackFromAgent(statePatch: AgentStatePatch | null): ReadonlyArray<WritebackPreview> {
@@ -468,6 +677,14 @@ export function buildMockRuntimeSnapshot(
   unit: LearningUnit,
 ): RuntimeSnapshot {
   const plan = buildStudyPlan(unit, profile.state);
+  const activity = buildLearningActivity({
+    action: profile.state.recommendedAction,
+    mode: plan.steps[0]?.mode ?? null,
+    unit,
+    objective: plan.decision.objective,
+    reason: plan.decision.reason,
+    evidence: profile.state.weakSignals,
+  });
 
   return {
     source: "mock",
@@ -498,6 +715,7 @@ export function buildMockRuntimeSnapshot(
       primaryMode: plan.steps[0]?.mode ?? null,
     },
     writeback: plan.writeback,
+    activity,
     assistantMessage: `${plan.decision.reason} 这轮我会先用「${plan.decision.title}」推进，目标是${plan.decision.objective}。`,
     rationale: [],
   };
@@ -535,6 +753,7 @@ export function hydrateRuntimeSnapshotFromLearnerState(
       ? `来源：真实 learner state。${learnerState.based_on.join(" / ")}`
       : "来源：真实 learner state。",
     signalCards,
+    activity: fallbackSnapshot.activity,
   };
 }
 
@@ -586,6 +805,20 @@ export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot
       primaryMode: plan.selected_mode,
     },
     writeback: buildWritebackFromAgent(result.graph_state.state_patch),
+    activity:
+      result.graph_state.activity !== null
+        ? normalizeAgentActivity(result.graph_state.activity)
+        : buildLearningActivity({
+            action: diagnosis.recommended_action,
+            mode: plan.selected_mode,
+            unit: buildActivityUnitRef({
+              unitId: diagnosis.focus_unit_id,
+              fallbackTitle: plan.headline,
+            }),
+            objective: plan.expected_outcome,
+            reason: primaryReason,
+            evidence: diagnosis.explanation?.evidence ?? learnerState.weak_signals,
+          }),
     assistantMessage: buildAssistantMessageFromEvents(result),
     rationale: result.graph_state.rationale,
   };
@@ -602,6 +835,10 @@ export function normalizeAgentStreamResult(input: {
   );
   const planEvent = input.events.find(
     (event): event is Extract<AgentStreamEvent, { event: "plan" }> => event.event === "plan",
+  );
+  const activityEvent = input.events.find(
+    (event): event is Extract<AgentStreamEvent, { event: "activity" }> =>
+      event.event === "activity",
   );
   const statePatchEvent = input.events.find(
     (event): event is Extract<AgentStreamEvent, { event: "state-patch" }> =>
@@ -657,6 +894,20 @@ export function normalizeAgentStreamResult(input: {
       primaryMode: plan.selected_mode,
     },
     writeback: buildWritebackFromAgent(statePatchEvent?.state_patch ?? null),
+    activity:
+      activityEvent !== undefined
+        ? normalizeAgentActivity(activityEvent.activity)
+        : buildLearningActivity({
+            action: diagnosis.recommended_action,
+            mode: plan.selected_mode,
+            unit: buildActivityUnitRef({
+              unitId: diagnosis.focus_unit_id,
+              fallbackTitle: plan.headline,
+            }),
+            objective: plan.expected_outcome,
+            reason: primaryReason,
+            evidence: diagnosis.explanation?.evidence ?? learnerState.weak_signals,
+          }),
     assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
     rationale: diagnosis.explanation?.evidence ?? [],
   };
@@ -672,6 +923,10 @@ export function normalizePartialAgentStreamResult(input: {
   );
   const planEvent = input.events.find(
     (event): event is Extract<AgentStreamEvent, { event: "plan" }> => event.event === "plan",
+  );
+  const activityEvent = input.events.find(
+    (event): event is Extract<AgentStreamEvent, { event: "activity" }> =>
+      event.event === "activity",
   );
   const statePatchEvent = input.events.find(
     (event): event is Extract<AgentStreamEvent, { event: "state-patch" }> =>
@@ -755,6 +1010,29 @@ export function normalizePartialAgentStreamResult(input: {
       primaryMode: plan?.selected_mode ?? input.fallbackSnapshot.plan.primaryMode,
     },
     writeback: buildWritebackFromAgent(statePatchEvent?.state_patch ?? null),
+    activity:
+      activityEvent !== undefined
+        ? normalizeAgentActivity(activityEvent.activity)
+        : diagnosis !== undefined || plan !== undefined
+          ? buildLearningActivity({
+              action:
+                diagnosis?.recommended_action ?? input.fallbackSnapshot.state.recommendedAction,
+              mode:
+                plan?.selected_mode ??
+                input.fallbackSnapshot.activity?.mode ??
+                input.fallbackSnapshot.plan.primaryMode,
+              unit: buildActivityUnitRef({
+                unitId: diagnosis?.focus_unit_id ?? null,
+                fallbackTitle: plan?.headline ?? input.fallbackSnapshot.plan.headline,
+              }),
+              objective: plan?.expected_outcome ?? input.fallbackSnapshot.decision.objective,
+              reason: diagnosis?.reason ?? input.fallbackSnapshot.decision.reason,
+              evidence:
+                diagnosis?.explanation?.evidence ??
+                statePatchEvent?.state_patch.learner_state_patch?.weak_signals ??
+                input.fallbackSnapshot.state.weakSignals,
+            })
+          : input.fallbackSnapshot.activity,
     assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
     rationale: diagnosis?.explanation?.evidence ?? input.fallbackSnapshot.rationale,
   };

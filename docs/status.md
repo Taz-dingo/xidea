@@ -90,14 +90,20 @@
 - 新增 26 个 LLM + guardrail / provider 兼容测试，当前 agent 全量 97 个全部通过
 - `build_llm_client()` 切到 OpenAI-compatible 兼容层，默认接智谱 `glm-5`，同时保留 OpenAI 旧环境变量兼容
 - 智谱运行时默认关闭 `thinking`，结构化阶段启用更严格的 JSON 输出约束；LLM HTTP client 默认不继承代理环境变量，减少本地代理/证书链导致的空正文和 TLS 问题
-- `/runs/v0/stream` 已切到真实流式执行：API 直接消费 runtime 事件生成器，连接建立后会立即打开 SSE；当前事件顺序为 `diagnosis -> text-delta -> plan -> state-patch -> done`
+- `/runs/v0/stream` 已切到真实流式执行：API 直接消费 runtime 事件生成器，连接建立后会立即打开 SSE；当前事件顺序仍为 `diagnosis -> text-delta -> plan -> state-patch -> done`
 - agent 主路径已将 `signal extraction + diagnosis` 合并为一次 bundled LLM 调用；正常链路从 4 次模型请求降到 3 次，且 reply 已从 plan 依赖里拆开，首屏等待主要收敛在 `bundled diagnosis -> reply`
 - 已确认当前 `3` 次串行 LLM 调用 + 展示型 `StudyPlan` 属于过渡实现；下一阶段将对齐成熟 agent 方案，收敛为“预取上下文 -> 单次主决策调用 -> tool / activity loop -> 状态回写”
+- `apps/web` 中栏已新增 activity-first 学习动作卡：当前会优先把 agent `diagnosis / plan` 归一化成可执行动作，并支持在对话里直接完成辨析 / 回忆 / 导师追问后，把结果回传给现有 agent 对话流；学习动作卡已从固定底部区块收成跟随最后一条 agent 回复出现的 inline card
+- 已补充共享约束：当前前端的 activity-first 卡片仍是过渡适配；长期形态应由 agent 在消息流中发出结构化 activity / tool result 事件，前端按事件插 card，而不是固定保留整段学习动作 / 路径 / 证据面板
+- 已补充共享约束：当 activity 是当前必须完成的学习动作时，主输入区不应继续开放自由聊天；当前 web 已补上“完成当前动作 / 跳过当前动作”的 gating。tutor agent 的专门 system prompt 仍记录在后续实现项中
 
 ### In Progress
 
 - 收敛学习引擎下一步运行形态：让学习资料、thread memory、learner state、review context 在主决策前完成预取，并进入同一证据上下文
 - 将展示型 `StudyPlan` 收敛为可执行 learning activity contract，支持 agent 在对话里直接触发出题 / 复习 / 导师追问
+- 收敛 web-agent contract：从当前 `diagnosis / plan` 过渡适配切到结构化 activity / tool result 事件
+- 收敛前端 activity gating：当前学习动作未完成前，主输入区改成受约束交互
+- 收敛 tutor system prompt：明确何时发起 activity、何时只给短引导、何时禁止继续自由讲解
 - 收敛当前 `Consolidation` 的演示路径，决定是手动触发还是模拟定时入口
 
 ### Next

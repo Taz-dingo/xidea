@@ -450,6 +450,9 @@ reply = generate_assistant_reply(llm, diagnosis, plan, learner_state, user_messa
 - tool 或 learning activity 的结果回写成 `Observation` 或 `exercise-result / review-result`
 - agent 基于新 observation 继续下一轮 turn，直到给出最终回复并完成 writeback
 - `StudyPlan` 如果保留，应来自已执行或将执行的 activity 摘要，而不是单独的展示型规划调用
+- 前端展示默认跟随结构化事件：activity 或 tool result 进入消息流后，再按事件插入 card；不能把固定“学习动作 / 路径 / 证据”面板写死成长期假设
+- 如果当前 activity 属于必须完成的学习动作，主输入区应被视为受约束交互；普通自由问答要等这轮 activity 完成或被显式跳过
+- tutor system prompt 需要明确：当前首要目标是决定并主持学习回合，而不是先给完整解释；高混淆、记忆走弱、迁移验证场景优先触发 activity
 
 这意味着下一阶段更关注：
 

@@ -215,12 +215,18 @@ load_context / prepare_evidence
 - 先决定动作，再决定展示：模型主回合直接决定是给最终回复，还是触发 lookup / learning activity
 - `StudyPlan` 变成执行摘要：如果保留 plan，它应来自已决定的 activity，而不是单独再做一次展示型规划调用
 - 一轮 run 内允许多次观察：tool 或 activity 的结果要重新回到 agent，而不是只作为前端说明文本
+- 前端按事件插卡：learning activity 或 tool result 默认作为消息流中的结构化事件出现，前端按事件插入一张或多张 card，而不是固定预留“学习动作 / 路径 / 证据”面板
+- 可以没有 card，也可以同一轮有多张 card：是否展示、展示几张，取决于 agent 本轮触发了哪些结构化结果，而不是页面写死的布局槽位
+- 当前动作优先于自由聊天：如果 agent 已发出必须完成的 learning activity，前端主输入区默认切到受约束交互；除非用户显式跳过，否则不应直接进入下一轮普通问答
+- tutor prompt 要和 contract 一起收敛：system prompt 需要明确“决定并主持学习回合”是第一目标，activity 触发优先级高于长篇解释
 
 ### 对 Xidea 的直接含义
 
 - “材料进入”不只是读取摘要，而是让材料证据真正影响 diagnosis 和 activity 选择
 - “导师对练 / 复习 / 练习”需要变成 agent 可触发的对话内 activity，而不是右栏解释或静态步骤
 - `exercise-result / review-result` 需要成为下一轮 learner state 和 review state 的真实输入
+- 对话主轴应保持“agent 文本回复 + 结构化 card 事件”；固定 `plan` 展示只允许作为过渡兼容，不应成为长期 contract
+- 当 activity 未完成时，用户看到的主交互应该是“完成这张卡”而不是“继续自由聊”；这样系统才能真正表现为在安排学习，而不是附带给一张卡
 
 ## 当前实现的过渡链路
 
