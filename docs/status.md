@@ -100,6 +100,7 @@
 - `apps/web` 用户侧已收掉中间学习线程里的编排证据区，但保留右侧 inspector 作为状态与监控面板；学习动作卡当前默认只保留题干、选项或输入框与提交 / 跳过
 - `apps/web` 的选择题 activity card 已进一步收成“题干 + 选项 + 提交 / 跳过”，不再把 objective / support / evidence 这类内部编排字段直接展示给用户
 - 已整理一版可借鉴的学习模式 feature 清单，当前优先参考 `ChatGPT Study Mode / Claude 教育场景 / Gemini 学习工具` 的轻交互能力：quiz、flashcards、study guide、hint、more questions、作答后短反馈
+- 已澄清：`flashcards`、quiz、study guide、guided QA 都只是候选学习形式，不是产品目标本身；长期主线仍是“多模态输入 + 多类型学习 + 类 Anki 的 SRS 复习系统”
 - `apps/web` 已将“问答 / 材料”互斥入口收敛为单线程里的随时加材料 tray；当前材料以附加上下文方式挂进这一轮，不再要求用户先切模式
 - `apps/web` 已补多张 learning activity 的 deck 视觉和 dev fixture；当前可以本地预览一组连续小卡叠放在最后一条 agent 回复后，并按顺序一张张翻下去
 - 已确认下一步学习体验增强优先项之一是 Duolingo 风格的答对 / 答错 / 跳过 / 翻卡音效与动效，先记入 backlog，后续再实现

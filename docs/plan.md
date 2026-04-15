@@ -54,6 +54,7 @@
   - 参考实现要求已写入 `docs/reference/architecture.md` 和 `docs/reference/agent-state-design.md`
 - [ ] 将学习模式优先借鉴项整理成可实现 backlog，并按轻交互优先级推进
   - owner: 前端 owner / 学习引擎 owner
+  - 说明：`flashcards`、quiz、study guide、guided QA 都只是候选学习形式，不是默认必出能力；是否出现由 agent 判断
   - 当前优先项：
     - `hint`
     - `more questions`
@@ -97,6 +98,7 @@
 - 优先考虑 `FSRS` 或同等级现代 SRS 方案，而不是只停留在启发式规则
 - 增强 `Agent Memory / Consolidation`
 - 增加更多输入模态与更多学科模板
+- 逐步把比赛版叙事推进到“多模态输入 + 多类型学习 + SRS”完整主线
 
 ## Implementation Checklist
 
