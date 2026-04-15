@@ -16,7 +16,7 @@
   - owner: 学习引擎 owner
 - [x] 保持 web demo 简洁可演示
   - owner: 前端 owner
-- [x] 把编排证据链做成默认可见输出
+- [x] 完成编排证据展示探索，并收敛为“中间线程不直出、右侧 inspector 承载”
   - owner: 前端 owner / 学习引擎 owner
 - [x] 只保留 2 到 3 个最能证明主案例的训练动作
   - owner: 产品 owner / 学习引擎 owner
@@ -35,7 +35,11 @@
   - owner: 学习引擎 owner / 前端 owner
 - [ ] 将 web-agent contract 从固定 `plan` 展示收敛为结构化 activity / tool result 事件，由前端按事件插入 card，而不是默认渲染固定面板
   - owner: 学习引擎 owner / 前端 owner
+- [ ] 将“材料输入”从互斥入口模式改成线程中的随时附加上下文，明确 thread-level material library 与 turn-level attachments 的数据形态
+  - owner: 前端 owner / 学习引擎 owner
 - [ ] 收敛 activity 的交互 gating：当前有未完成学习动作时，主输入区默认锁住自由聊天，只保留完成当前动作或显式跳过
+  - owner: 前端 owner / 学习引擎 owner
+- [ ] 将单 activity 进一步扩到轻量 card deck：允许一轮下发多张顺序卡，但始终只激活最上面一张
   - owner: 前端 owner / 学习引擎 owner
 - [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环
   - owner: 学习引擎 owner / 前端 owner
@@ -43,6 +47,14 @@
   - owner: 学习引擎 owner
 - [ ] 为 tutor agent 补专门的 system prompt：明确何时必须触发 activity、何时只给短引导、不再把“完整解释”当默认目标
   - owner: 学习引擎 owner
+- [ ] 将学习模式优先借鉴项整理成可实现 backlog，并按轻交互优先级推进
+  - owner: 前端 owner / 学习引擎 owner
+  - 当前优先项：
+    - `hint`
+    - `more questions`
+    - 作答后短诊断 / performance feedback
+    - 基于材料直接生成 quiz / flashcards / study guide
+    - 一轮生成轻量 card deck，而不是长篇 plan
 - [ ] 在主案例稳定后，再补 1 到 2 个能支撑主叙事的次级 demo surface
   - owner: 前端 owner / 产品 owner
 - [x] 将学习画像进一步从前端推断迁到真实 agent / learner state 信号
@@ -115,11 +127,13 @@
    - 使用 Vercel AI SDK 管理 message stream
    - 当前已能消费 diagnosis、plan、state-patch，并把它们归一化成 activity card；学习动作卡会插到最后一条 agent 回复后
    - 当前有未完成 activity 时，主输入区已切到“完成当前动作 / 跳过当前动作”的受约束交互
+   - 当前前端已支持“随时加材料”的附加上下文 tray，不再要求先切到单独材料模式
+   - 当前前端已支持多张学习卡的 deck 视觉，但真实后端仍需补稳定的多 activity contract
    - 下一步把 activity 来源从 `diagnosis / plan` 归一化过渡逻辑收敛到稳定的后端 event contract
    - 首页前端叙事壳已完成，当前重点从“接通真实 `/runs/v0` 数据”转到“减少 fallback / fixture 依赖”
 7. `apps/web` 保持比赛主案例聚焦
    - 默认围绕 RAG 项目学习
-   - 确保证据链默认可见
+   - 中间线程优先展示学习动作与反馈，证据与状态信息放在右侧 inspector
 8. `apps/web` 右栏接真实状态
    - 学习画像改为基于真实 learner state / diagnosis 动态生成
    - 复习热力图改为读取 review inspector / review events

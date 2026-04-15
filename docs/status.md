@@ -57,8 +57,8 @@
 - 新增 19 个测试（15 决策路径 + 4 SSE），总计 54 个全部通过
 - `apps/web` 请求已按当前 `project / session` 真实绑定到 agent `project_id / thread_id`，不同 session 不再共用后端线程状态
 - `apps/web` 已切到真实 SSE 消费 `/runs/v0/stream`，thread 区改为跟随后端流式事件逐步渲染
-- `apps/web` 已把编排证据链默认展开，当前可直接查看诊断信号、动作依据与完整状态回写预览
-- `apps/web` 的 `material-import` 已升级为真实材料入口面板，支持选择本轮带入材料并约束发送条件
+- `apps/web` 已将中间学习线程里的编排证据收回，只保留右侧 inspector 作为状态与监控面板
+- `apps/web` 的材料入口已收成单线程里的随时加材料 tray，用户不再需要在“问答 / 材料”之间切模式
 - `apps/web` 中栏输入区已收成单一输入框 + 内嵌发送按钮，thread 与 inspector 滚动区默认显示可见滚动条
 - `apps/web` 左栏已收敛为更紧凑的 codex-style workspace 导航：project 用图标行呈现，session 只保留标题级信息
 - `apps/web` 的学习画像已改为根据当前对话与运行态自动生成，不再由用户手动切换
@@ -97,6 +97,11 @@
 - 已补充共享约束：当前前端的 activity-first 卡片仍是过渡适配；长期形态应由 agent 在消息流中发出结构化 activity / tool result 事件，前端按事件插 card，而不是固定保留整段学习动作 / 路径 / 证据面板
 - 已补充共享约束：当 activity 是当前必须完成的学习动作时，主输入区不应继续开放自由聊天；当前 web 已补上“完成当前动作 / 跳过当前动作”的 gating。tutor agent 的专门 system prompt 仍记录在后续实现项中
 - `apps/web` 现已补充 dev-only tutor fixture 面板：可以本地切换“边界辨析 / 主动回忆 / 导师追问 / 提交报错 / 无卡片回复”等场景，用于打磨 activity 插卡、gating 和失败回滚，不依赖后端联调
+- `apps/web` 用户侧已收掉中间学习线程里的编排证据区，但保留右侧 inspector 作为状态与监控面板；学习动作卡当前默认只保留题干、选项或输入框与提交 / 跳过
+- `apps/web` 的选择题 activity card 已进一步收成“题干 + 选项 + 提交 / 跳过”，不再把 objective / support / evidence 这类内部编排字段直接展示给用户
+- 已整理一版可借鉴的学习模式 feature 清单，当前优先参考 `ChatGPT Study Mode / Claude 教育场景 / Gemini 学习工具` 的轻交互能力：quiz、flashcards、study guide、hint、more questions、作答后短反馈
+- `apps/web` 已将“问答 / 材料”互斥入口收敛为单线程里的随时加材料 tray；当前材料以附加上下文方式挂进这一轮，不再要求用户先切模式
+- `apps/web` 已补多张 learning activity 的 deck 视觉和 dev fixture；当前可以本地预览一组连续小卡叠放在最后一条 agent 回复后，并按顺序一张张翻下去
 
 ### In Progress
 
@@ -104,6 +109,10 @@
 - 将展示型 `StudyPlan` 收敛为可执行 learning activity contract，支持 agent 在对话里直接触发出题 / 复习 / 导师追问
 - 收敛 web-agent contract：从当前 `diagnosis / plan` 过渡适配切到结构化 activity / tool result 事件
 - 收敛前端 activity gating：当前学习动作未完成前，主输入区改成受约束交互
+- 收敛用户侧 activity 节奏：让“作答完成 -> 下一轮简短诊断 / 动作反馈”更自然，避免重新把内部证据摊回中间学习线程
+- 规划并后续实现学习模式借鉴项：`hint / more questions / performance feedback / 材料直出 quiz 或 study guide`
+- 将“thread-level material library + turn-level attachments”收成稳定 contract，替换当前前端先行适配的数据壳
+- 将多 activity / card deck 从前端 fixture 和过渡归一化推进到真实后端事件
 - 收敛 tutor system prompt：明确何时发起 activity、何时只给短引导、何时禁止继续自由讲解
 - 收敛当前 `Consolidation` 的演示路径，决定是手动触发还是模拟定时入口
 
