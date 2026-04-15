@@ -4,7 +4,14 @@ import json
 import sqlite3
 from pathlib import Path
 
-from xidea_agent.state import AgentRequest, AgentRunResult, LearnerUnitState, Message, ReviewPatch
+from xidea_agent.state import (
+    AgentRequest,
+    AgentRunResult,
+    LearnerUnitState,
+    Message,
+    ReviewPatch,
+    StatePatch,
+)
 
 
 SCHEMA_SQL = """
@@ -31,6 +38,14 @@ CREATE TABLE IF NOT EXISTS thread_messages (
   role TEXT NOT NULL,
   content TEXT NOT NULL,
   created_at TEXT NOT NULL,
+  FOREIGN KEY(thread_id) REFERENCES threads(thread_id)
+);
+
+CREATE TABLE IF NOT EXISTS thread_context (
+  thread_id TEXT PRIMARY KEY,
+  entry_mode TEXT NOT NULL,
+  source_asset_ids TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
   FOREIGN KEY(thread_id) REFERENCES threads(thread_id)
 );
 
@@ -61,6 +76,17 @@ CREATE TABLE IF NOT EXISTS review_state (
   lapse_count INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL,
   PRIMARY KEY(thread_id, unit_id),
+  FOREIGN KEY(thread_id) REFERENCES threads(thread_id)
+);
+
+CREATE TABLE IF NOT EXISTS review_events (
+  event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id TEXT NOT NULL,
+  unit_id TEXT NOT NULL,
+  event_kind TEXT NOT NULL,
+  event_at TEXT NOT NULL,
+  review_reason TEXT,
+  created_at TEXT NOT NULL,
   FOREIGN KEY(thread_id) REFERENCES threads(thread_id)
 );
 """
@@ -112,6 +138,13 @@ class SQLiteRepository:
             )
 
             self._append_messages(connection, request.thread_id, request.messages, now_value)
+            self._upsert_thread_context(
+                connection,
+                request.thread_id,
+                request.entry_mode,
+                request.source_asset_ids,
+                now_value,
+            )
             if state.assistant_message:
                 self._append_messages(
                     connection,
@@ -129,6 +162,13 @@ class SQLiteRepository:
                     request.thread_id,
                     state.learner_unit_state.unit_id if state.learner_unit_state else request.target_unit_id,
                     state.state_patch.review_patch,
+                    now_value,
+                )
+                self._append_review_events(
+                    connection,
+                    request.thread_id,
+                    state.learner_unit_state.unit_id if state.learner_unit_state else request.target_unit_id,
+                    state.state_patch,
                     now_value,
                 )
 
@@ -197,6 +237,61 @@ class SQLiteRepository:
             lapse_count=row["lapse_count"],
         )
 
+    def get_thread_context(self, thread_id: str) -> dict[str, object] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM thread_context
+                WHERE thread_id = ?
+                """,
+                (thread_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return {
+            "thread_id": row["thread_id"],
+            "entry_mode": row["entry_mode"],
+            "source_asset_ids": json.loads(row["source_asset_ids"]),
+            "updated_at": row["updated_at"],
+        }
+
+    def list_review_events(
+        self,
+        thread_id: str,
+        unit_id: str,
+        *,
+        limit: int = 32,
+        since: str | None = None,
+    ) -> list[dict[str, object]]:
+        query = """
+            SELECT event_kind, event_at, review_reason
+            FROM review_events
+            WHERE thread_id = ? AND unit_id = ?
+        """
+        params: list[object] = [thread_id, unit_id]
+
+        if since is not None:
+            query += " AND event_at >= ?"
+            params.append(since)
+
+        query += " ORDER BY event_at DESC LIMIT ?"
+        params.append(limit)
+
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+
+        return [
+            {
+                "event_kind": row["event_kind"],
+                "event_at": row["event_at"],
+                "review_reason": row["review_reason"],
+            }
+            for row in reversed(rows)
+        ]
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
@@ -215,6 +310,31 @@ class SQLiteRepository:
             VALUES (?, ?, ?, ?)
             """,
             [(thread_id, message.role, message.content, created_at) for message in messages],
+        )
+
+    def _upsert_thread_context(
+        self,
+        connection: sqlite3.Connection,
+        thread_id: str,
+        entry_mode: str,
+        source_asset_ids: list[str],
+        updated_at: str,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO thread_context(thread_id, entry_mode, source_asset_ids, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(thread_id) DO UPDATE SET
+              entry_mode = excluded.entry_mode,
+              source_asset_ids = excluded.source_asset_ids,
+              updated_at = excluded.updated_at
+            """,
+            (
+                thread_id,
+                entry_mode,
+                json.dumps(source_asset_ids, ensure_ascii=False),
+                updated_at,
+            ),
         )
 
     def _upsert_learner_unit_state(
@@ -306,6 +426,58 @@ class SQLiteRepository:
                 review_patch.lapse_count or 0,
                 updated_at,
             ),
+        )
+
+    def _append_review_events(
+        self,
+        connection: sqlite3.Connection,
+        thread_id: str,
+        unit_id: str | None,
+        state_patch: StatePatch,
+        created_at: str,
+    ) -> None:
+        if unit_id is None:
+            return
+
+        learner_patch = state_patch.learner_state_patch
+        review_patch = state_patch.review_patch
+        rows: list[tuple[str, str, str, str, str | None, str]] = []
+
+        if learner_patch is not None and learner_patch.last_reviewed_at is not None:
+            rows.append(
+                (
+                    thread_id,
+                    unit_id,
+                    "reviewed",
+                    learner_patch.last_reviewed_at.isoformat(),
+                    review_patch.review_reason if review_patch is not None else None,
+                    created_at,
+                )
+            )
+
+        if review_patch is not None and review_patch.scheduled_at is not None:
+            rows.append(
+                (
+                    thread_id,
+                    unit_id,
+                    "scheduled",
+                    review_patch.scheduled_at.isoformat(),
+                    review_patch.review_reason,
+                    created_at,
+                )
+            )
+
+        if not rows:
+            return
+
+        connection.executemany(
+            """
+            INSERT INTO review_events(
+              thread_id, unit_id, event_kind, event_at, review_reason, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            rows,
         )
 
 

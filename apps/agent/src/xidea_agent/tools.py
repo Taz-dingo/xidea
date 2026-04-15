@@ -275,6 +275,8 @@ def describe_tool_registry() -> dict[str, dict[str, Any]]:
                 "focusUnitId",
                 "dueUnitIds",
                 "scheduledAt",
+                "reviewCount",
+                "lapseCount",
                 "performanceTrend",
                 "decayRisk",
                 "lastReviewOutcome",
@@ -320,6 +322,10 @@ def _build_asset_summary_payload(asset_ids: list[str]) -> dict[str, Any]:
             "建议围绕这些概念验证学习者的理解深度和迁移能力。"
         ),
     }
+
+
+def build_asset_summary_payload(asset_ids: list[str]) -> dict[str, Any]:
+    return _build_asset_summary_payload(asset_ids)
 
 
 def _build_unit_detail_payload(unit: LearningUnit) -> dict[str, Any]:
@@ -395,6 +401,14 @@ def _build_thread_memory_payload(
     }
 
 
+def build_thread_memory_payload(
+    thread_id: str,
+    target_unit_id: str | None,
+    repository: SQLiteRepository | None,
+) -> dict[str, Any]:
+    return _build_thread_memory_payload(thread_id, target_unit_id, repository)
+
+
 def _build_review_context_payload(
     thread_id: str,
     unit_id: str,
@@ -440,6 +454,8 @@ def _build_review_context_payload(
             "scheduledAt": review_state.scheduled_at.isoformat() if review_state.scheduled_at else None,
             "reviewReason": review_state.review_reason,
             "dueUnitIds": review_state.due_unit_ids,
+            "reviewCount": review_state.review_count,
+            "lapseCount": review_state.lapse_count,
         }
 
     summary_parts = [f"记忆衰减风险：{decay_risk}"]
@@ -458,11 +474,21 @@ def _build_review_context_payload(
             if review_state and review_state.scheduled_at
             else None
         ),
+        "reviewCount": review_state.review_count if review_state else 0,
+        "lapseCount": review_state.lapse_count if review_state else 0,
         "performanceTrend": performance_trend,
         "decayRisk": decay_risk,
         "lastReviewOutcome": last_review_outcome,
         "summary": "；".join(summary_parts) + "。",
     }
+
+
+def build_review_context_payload(
+    thread_id: str,
+    unit_id: str,
+    repository: SQLiteRepository | None,
+) -> dict[str, Any]:
+    return _build_review_context_payload(thread_id, unit_id, repository)
 
 
 def _infer_trend_hint(memory_strength: int, confusion_level: int) -> str:

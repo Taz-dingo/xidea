@@ -1,6 +1,15 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
-import { startTransition, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import {
   Brain,
   ChevronDown,
@@ -30,14 +39,25 @@ import { learnerProfiles, learningUnits, projectContext, sourceAssets } from "@/
 import {
   buildDefaultAgentPrompt,
   buildMockRuntimeSnapshot,
+  getRequestSourceAssetIds,
   hydrateRuntimeSnapshotFromLearnerState,
+  type AgentAssetSummary,
   type AgentEntryMode,
+  type AgentReviewEvent,
+  type AgentReviewInspector,
   type RuntimeSnapshot,
 } from "@/domain/agent-runtime";
 import { MODE_LABELS } from "@/domain/planner";
-import type { LearnerProfile, LearningMode } from "@/domain/types";
+import type { LearningMode, SourceAsset } from "@/domain/types";
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
-import { getAgentBaseUrl, getAgentHealth, getLearnerUnitState } from "@/lib/agent-client";
+import {
+  getAgentBaseUrl,
+  getAgentHealth,
+  getAssetSummary,
+  getInspectorBootstrap,
+  getReviewInspector,
+  getThreadContext,
+} from "@/lib/agent-client";
 
 const entryModes = [
   { id: "chat-question" as const, icon: MessageSquareText, title: "问答进入" },
@@ -129,13 +149,38 @@ function getAssetKindLabel(kind: (typeof sourceAssets)[number]["kind"]): string 
   }
 }
 
+function sanitizeVisibleAssistantText(text: string): string {
+  const withoutThinkBlocks = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
+  const withoutDanglingThink = withoutThinkBlocks.replace(/<think\b[^>]*>[\s\S]*$/i, "");
+  const withoutWrappers = withoutDanglingThink
+    .replace(/^\s*<(answer|output|response|result|json)\b[^>]*>\s*/i, "")
+    .replace(/\s*<\/(answer|output|response|result|json)>\s*$/i, "");
+  return withoutWrappers.trim();
+}
+
 function getMessageText(message: UIMessage): string {
-  const text = message.parts
-    .map((part) => (part.type === "text" ? part.text : ""))
+  const textFromParts = message.parts
+    .map((part) => {
+      if (part.type === "text") {
+        return part.text;
+      }
+
+      return "";
+    })
     .join("")
     .trim();
+  const fallbackText =
+    typeof (message as { content?: unknown }).content === "string"
+      ? (message as { content?: string }).content ?? ""
+      : "";
+  const text = (textFromParts || fallbackText).trim();
+  const visibleText = message.role === "assistant" ? sanitizeVisibleAssistantText(text) : text;
 
-  return text === "" ? "当前消息没有文本内容。" : text;
+  if (visibleText === "" && message.role === "assistant") {
+    return "";
+  }
+
+  return visibleText === "" ? "当前消息没有文本内容。" : visibleText;
 }
 
 function getCollapsedAssistantText(text: string): string {
@@ -167,38 +212,11 @@ function getLatestUserDraft(messages: ReadonlyArray<UIMessage>, draftPrompt: str
   return draftPrompt.trim();
 }
 
-function inferLearnerProfile(
-  draftOrLatestUserInput: string,
-  runtime: RuntimeSnapshot,
-  fallbackProfile: LearnerProfile,
-): LearnerProfile {
-  const normalized = draftOrLatestUserInput.toLowerCase();
-
-  if (
-    normalized.includes("答辩") ||
-    normalized.includes("评审") ||
-    normalized.includes("汇报") ||
-    runtime.state.transferReadiness !== null && runtime.state.transferReadiness >= 68 ||
-    runtime.state.recommendedAction === "apply"
-  ) {
-    return learnerProfiles[2] ?? fallbackProfile;
-  }
-
-  if (
-    normalized.includes("分不清") ||
-    normalized.includes("混淆") ||
-    normalized.includes("重排") ||
-    runtime.state.confusion >= 60 ||
-    runtime.state.recommendedAction === "clarify"
-  ) {
-    return learnerProfiles[1] ?? fallbackProfile;
-  }
-
-  return learnerProfiles[0] ?? fallbackProfile;
+function getDefaultSourceAssetIds(entryMode: AgentEntryMode): ReadonlyArray<string> {
+  return getRequestSourceAssetIds(entryMode, sourceAssets);
 }
 
 function buildGeneratedProfileSummary(
-  profile: LearnerProfile,
   runtime: RuntimeSnapshot,
   latestUserInput: string,
 ): {
@@ -206,15 +224,26 @@ function buildGeneratedProfileSummary(
   readonly summary: string;
   readonly evidence: ReadonlyArray<string>;
 } {
+  const stage =
+    runtime.state.recommendedAction === "clarify" || runtime.state.confusion >= 65
+      ? "概念边界待拉清"
+      : runtime.state.recommendedAction === "review" || runtime.state.memoryStrength <= 50
+        ? "记忆可用性待回拉"
+        : runtime.state.recommendedAction === "apply" ||
+            (runtime.state.transferReadiness !== null && runtime.state.transferReadiness >= 65)
+          ? "已进入项目迁移验证"
+          : "理解框架待稳定";
   const evidence = [
-    runtime.state.weakSignals[0] ?? "当前 thread 仍在积累稳定证据",
-    runtime.decision.reason,
+    runtime.state.weakSignals[0] ?? runtime.stateSource,
+    runtime.source === "live-agent"
+      ? runtime.decision.reason
+      : "当前只恢复了 learner state，下一轮会基于真实状态重新生成诊断和路径。",
     latestUserInput === "" ? "还没有新的用户输入，先沿用当前 session 状态。" : `最近输入：${latestUserInput}`,
   ];
 
   return {
-    title: `系统当前将学习者归为「${profile.name}」`,
-    summary: `${profile.role} 系统会在后续对话里继续根据输入、诊断和状态回写动态调整这张画像。`,
+    title: `系统当前把这个 session 视为「${stage}」`,
+    summary: "画像来自当前 learner state、诊断动作和已落库证据，不再依赖前端预设角色猜测。",
     evidence,
   };
 }
@@ -225,48 +254,96 @@ interface ReviewHeatmapCell {
   readonly intensity: 0 | 1 | 2 | 3 | 4;
 }
 
+function getLatestReviewEvent(
+  events: ReadonlyArray<AgentReviewEvent>,
+  kind: AgentReviewEvent["event_kind"],
+): AgentReviewEvent | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.event_kind === kind) {
+      return event;
+    }
+  }
+
+  return null;
+}
+
+function formatDateLabel(value: string | null): string | null {
+  if (value === null || value.trim() === "") {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
 function toDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
 function buildReviewHeatmap(
-  runtime: RuntimeSnapshot,
-  messageCount: number,
+  reviewEvents: ReadonlyArray<AgentReviewEvent>,
+  lastReviewedAt: string | null,
+  nextReviewAt: string | null,
 ): ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>> {
   const totalDays = 35;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const lastReviewedAt = runtime.state.lastReviewedAt;
-  const nextReviewAt = runtime.state.nextReviewAt;
+  const eventMap = new Map<string, { intensity: ReviewHeatmapCell["intensity"]; notes: string[] }>();
+
+  for (const event of reviewEvents) {
+    const date = formatDateLabel(event.event_at);
+    if (date === null) {
+      continue;
+    }
+
+    const existing = eventMap.get(date);
+    const nextIntensity = event.event_kind === "reviewed" ? 4 : 2;
+    const nextNotes = existing?.notes ?? [];
+    nextNotes.push(
+      event.event_kind === "reviewed"
+        ? "已发生一次真实复盘"
+        : `已安排复盘：${event.review_reason ?? "等待本轮回拉"}`,
+    );
+    eventMap.set(date, {
+      intensity: existing ? Math.max(existing.intensity, nextIntensity) as ReviewHeatmapCell["intensity"] : nextIntensity,
+      notes: nextNotes,
+    });
+  }
+
   const cells: ReviewHeatmapCell[] = [];
 
   for (let index = totalDays - 1; index >= 0; index -= 1) {
     const date = new Date(today);
     date.setDate(today.getDate() - index);
 
-    let intensity: 0 | 1 | 2 | 3 | 4 = 0;
+    const dateKey = toDateKey(date);
+    const event = eventMap.get(dateKey);
+    let intensity: 0 | 1 | 2 | 3 | 4 = event?.intensity ?? 0;
+    const notes = event?.notes ?? [];
 
-    if (lastReviewedAt !== null && toDateKey(date) === lastReviewedAt) {
-      intensity = 4;
-    } else if (nextReviewAt !== null && toDateKey(date) === nextReviewAt) {
-      intensity = 1;
-    } else if (index < Math.min(6, Math.max(2, messageCount))) {
-      intensity = runtime.state.confusion >= 60 ? 2 : 1;
-    } else if (
-      runtime.state.memoryStrength < 60 &&
-      index % Math.max(4, Math.round((100 - runtime.state.memoryStrength) / 10)) === 0
-    ) {
-      intensity = 1;
+    if (lastReviewedAt !== null && dateKey === lastReviewedAt) {
+      intensity = Math.max(intensity, 4) as ReviewHeatmapCell["intensity"];
+      notes.push("当前 learner state 记录：最近一次复盘");
+    }
+
+    if (nextReviewAt !== null && dateKey === nextReviewAt) {
+      intensity = Math.max(intensity, 1) as ReviewHeatmapCell["intensity"];
+      notes.push("当前 Review Engine 计划：下一次复盘");
     }
 
     const tooltip =
-      intensity === 0
-        ? `${toDateKey(date)} 暂无复习动作`
-        : `${toDateKey(date)} 复习活跃度 ${intensity}`;
+      notes.length === 0
+        ? `${dateKey} 暂无复习动作`
+        : `${dateKey} ${notes.join(" / ")}`;
 
     cells.push({
-      dateKey: toDateKey(date),
+      dateKey,
       tooltip,
       intensity,
     });
@@ -519,26 +596,41 @@ export function App(): ReactElement {
   ]);
   const [selectedProjectId, setSelectedProjectId] = useState(initialSessions[0]?.projectId ?? initialProject.id);
   const [selectedSessionId, setSelectedSessionId] = useState(initialSessions[0]?.id ?? "");
-  const [selectedEntryMode, setSelectedEntryMode] = useState<AgentEntryMode>("chat-question");
-  const [selectedSourceAssetIds, setSelectedSourceAssetIds] = useState<ReadonlyArray<string>>(
-    () => sourceAssets.map((asset) => asset.id),
+  const [sessionEntryModes, setSessionEntryModes] = useState<Record<string, AgentEntryMode>>(
+    () => Object.fromEntries(initialSessions.map((session) => [session.id, "chat-question"])),
+  );
+  const [sessionSourceAssetIds, setSessionSourceAssetIds] = useState<Record<string, ReadonlyArray<string>>>(
+    () =>
+      Object.fromEntries(
+        initialSessions.map((session) => [session.id, getDefaultSourceAssetIds("chat-question")]),
+      ),
   );
   const [isEvidenceExpanded, setIsEvidenceExpanded] = useState(false);
   const [expandedAssistantMessageIds, setExpandedAssistantMessageIds] = useState<
     Record<string, boolean>
   >({});
   const [draftPrompt, setDraftPrompt] = useState(() =>
-    buildDefaultAgentPrompt(initialProfile, initialUnit, projectContext),
+    buildDefaultAgentPrompt(initialUnit, projectContext),
   );
   const [sessionSnapshots, setSessionSnapshots] = useState<Record<string, RuntimeSnapshot>>({});
+  const [sessionReviewInspectors, setSessionReviewInspectors] = useState<
+    Record<string, AgentReviewInspector | null>
+  >({});
+  const [assetSummaryByKey, setAssetSummaryByKey] = useState<Record<string, AgentAssetSummary>>({});
   const [agentConnectionState, setAgentConnectionState] = useState<"checking" | "ready" | "offline">(
     "checking",
   );
   const [sessionMessagesById, setSessionMessagesById] = useState<Record<string, UIMessage[]>>(
     () => Object.fromEntries(initialSessions.map((session) => [session.id, []])),
   );
+  const [runningSessionIds, setRunningSessionIds] = useState<Record<string, boolean>>({});
+  const bootstrapLoadedKeysRef = useRef<Record<string, boolean>>({});
+  const sessionSnapshotsRef = useRef<Record<string, RuntimeSnapshot>>(sessionSnapshots);
+  sessionSnapshotsRef.current = sessionSnapshots;
 
   const selectedSession = sessions.find((session) => session.id === selectedSessionId);
+  const selectedSessionKey = selectedSession?.id ?? null;
+  const selectedUnitId = selectedSession?.unitId ?? null;
   const selectedUnit = selectedSession?.unitId
     ? learningUnits.find((unit) => unit.id === selectedSession.unitId)
     : undefined;
@@ -546,22 +638,27 @@ export function App(): ReactElement {
   const seedProfile = initialProfile;
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? initialProject;
+  const selectedEntryMode = selectedSession
+    ? sessionEntryModes[selectedSession.id] ?? "chat-question"
+    : "chat-question";
+  const selectedSourceAssetIds = selectedSession
+    ? sessionSourceAssetIds[selectedSession.id] ?? getDefaultSourceAssetIds(selectedEntryMode)
+    : getDefaultSourceAssetIds(selectedEntryMode);
   const agentBaseUrl = getAgentBaseUrl();
-  const seedRuntime = buildMockRuntimeSnapshot(seedProfile, runtimeUnit);
+  const seedRuntime = useMemo(
+    () => buildMockRuntimeSnapshot(seedProfile, runtimeUnit),
+    [seedProfile, runtimeUnit],
+  );
   const latestUserInput = getLatestUserDraft(
     selectedSession ? sessionMessagesById[selectedSession.id] ?? [] : [],
     draftPrompt,
   );
-  const inferredProfile = inferLearnerProfile(latestUserInput, seedRuntime, initialProfile);
-  const mockRuntime = buildMockRuntimeSnapshot(inferredProfile, runtimeUnit);
+  const mockRuntime = seedRuntime;
   const activeRuntime =
     selectedSession === undefined ? mockRuntime : sessionSnapshots[selectedSession.id] ?? mockRuntime;
-  const selectedProfile = inferLearnerProfile(latestUserInput, activeRuntime, initialProfile);
-  const generatedProfile = buildGeneratedProfileSummary(
-    selectedProfile,
-    activeRuntime,
-    latestUserInput,
-  );
+  const hasPersistedState = activeRuntime.source === "hydrated-state" || activeRuntime.source === "live-agent";
+  const hasStructuredRuntime = activeRuntime.source === "live-agent";
+  const generatedProfile = buildGeneratedProfileSummary(activeRuntime, latestUserInput);
   const sessionMessageCount = selectedSession
     ? sessionMessagesById[selectedSession.id]?.length ?? 0
     : 0;
@@ -571,63 +668,103 @@ export function App(): ReactElement {
     sessionMessageCount === 0 &&
     sessionSnapshots[selectedSession.id] === undefined &&
     draftPrompt.trim() === "";
-  const reviewHeatmap = isBlankSession
-    ? buildEmptyReviewHeatmap()
-    : buildReviewHeatmap(activeRuntime, sessionMessageCount);
   const activeSourceAssets = useMemo(
     () => sourceAssets.filter((asset) => selectedSourceAssetIds.includes(asset.id)),
     [selectedSourceAssetIds],
   );
+  const activeSourceAssetsRef = useRef<ReadonlyArray<SourceAsset>>(activeSourceAssets);
+  activeSourceAssetsRef.current = activeSourceAssets;
+  const requestSourceAssetIds = useMemo(
+    () => getRequestSourceAssetIds(selectedEntryMode, activeSourceAssets),
+    [activeSourceAssets, selectedEntryMode],
+  );
+  const assetSummaryKey = requestSourceAssetIds.join("|");
+  const activeAssetSummary = assetSummaryKey === "" ? null : assetSummaryByKey[assetSummaryKey] ?? null;
+  const activeReviewInspector = selectedSession ? sessionReviewInspectors[selectedSession.id] ?? null : null;
+  const latestReviewedEvent = activeReviewInspector ? getLatestReviewEvent(activeReviewInspector.events, "reviewed") : null;
+  const reviewHeatmap =
+    isBlankSession || !hasPersistedState
+      ? buildEmptyReviewHeatmap()
+      : buildReviewHeatmap(
+          activeReviewInspector?.events ?? [],
+          latestReviewedEvent?.event_at
+            ? formatDateLabel(latestReviewedEvent.event_at)
+            : activeRuntime.state.lastReviewedAt,
+          activeReviewInspector?.scheduledAt
+            ? formatDateLabel(activeReviewInspector.scheduledAt)
+            : activeRuntime.state.nextReviewAt,
+        );
+  const transportSessionId = selectedSession?.id ?? selectedProject.id;
+  const fallbackSnapshotForTransport = activeRuntime;
+  const isAgentRunning = selectedSessionKey === null ? false : runningSessionIds[selectedSessionKey] === true;
+
+  const handleTransportSnapshot = useCallback((sessionId: string, snapshot: RuntimeSnapshot) => {
+    setSessionSnapshots((current) => ({
+      ...current,
+      [sessionId]: snapshot,
+    }));
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              status: "已更新",
+              updatedAt: "刚刚",
+            }
+          : session,
+      ),
+    );
+  }, []);
+
+  const handleTransportRunStateChange = useCallback((sessionId: string, isRunning: boolean) => {
+    setRunningSessionIds((current) =>
+      current[sessionId] === isRunning
+        ? current
+        : {
+            ...current,
+            [sessionId]: isRunning,
+          },
+    );
+  }, []);
 
   const transport = useMemo(
     () =>
       createAgentChatTransport({
         projectId: selectedProject.id,
-        sessionId: selectedSession?.id ?? selectedProject.id,
+        sessionId: transportSessionId,
         entryMode: selectedEntryMode,
-        profile: selectedProfile,
         project: projectContext,
-        sourceAssets: activeSourceAssets,
+        getSourceAssets: () => activeSourceAssetsRef.current,
         unit: runtimeUnit,
-        fallbackSnapshot: activeRuntime,
+        getFallbackSnapshot: () =>
+          sessionSnapshotsRef.current[transportSessionId] ?? fallbackSnapshotForTransport,
         onSnapshot: (snapshot) => {
-          if (selectedSession === undefined) {
-            return;
-          }
-
-          setSessionSnapshots((current) => ({
-            ...current,
-            [selectedSession.id]: snapshot,
-          }));
-          setSessions((current) =>
-            current.map((session) =>
-              session.id === selectedSession.id
-                ? {
-                    ...session,
-                    status: "已更新",
-                    updatedAt: "刚刚",
-                  }
-                : session,
-            ),
-          );
+          handleTransportSnapshot(transportSessionId, snapshot);
+        },
+        onRunStateChange: (nextIsRunning) => {
+          handleTransportRunStateChange(transportSessionId, nextIsRunning);
         },
       }),
     [
-      activeRuntime,
-      activeSourceAssets,
+      handleTransportRunStateChange,
+      handleTransportSnapshot,
       selectedEntryMode,
-      selectedProfile,
+      fallbackSnapshotForTransport,
       selectedProject.id,
-      selectedSession,
+      transportSessionId,
       runtimeUnit,
     ],
   );
 
-  const { clearError, messages, sendMessage, status, error } = useChat({
+  const { clearError, messages, sendMessage, error } = useChat({
     id: selectedSession?.id ?? selectedProject?.id ?? "project",
     messages: selectedSession ? sessionMessagesById[selectedSession.id] ?? [] : [],
     transport,
   });
+  const streamingAssistantMessageId =
+    isAgentRunning
+      ? [...messages].reverse().find((message) => message.role === "assistant")?.id ?? null
+      : null;
 
   const errorMessage = getErrorMessage(error);
 
@@ -661,9 +798,9 @@ export function App(): ReactElement {
     setDraftPrompt(
       selectedSession?.unitId === null
         ? ""
-        : buildDefaultAgentPrompt(selectedProfile, runtimeUnit, projectContext),
+        : buildDefaultAgentPrompt(runtimeUnit, projectContext),
     );
-  }, [runtimeUnit, selectedProfile, selectedSession?.id, selectedSession?.unitId]);
+  }, [runtimeUnit, selectedSession?.id, selectedSession?.unitId]);
 
   useEffect(() => {
     setIsEvidenceExpanded(false);
@@ -686,13 +823,21 @@ export function App(): ReactElement {
             [selectedSession.id]: messages,
           },
     );
-  }, [messages, selectedSession]);
+  }, [messages, selectedSessionKey]);
 
   useEffect(() => {
     if (selectedSession === undefined || error === undefined) {
       return;
     }
 
+    setRunningSessionIds((current) =>
+      current[selectedSession.id] !== true
+        ? current
+        : {
+            ...current,
+            [selectedSession.id]: false,
+          },
+    );
     setSessions((current) =>
       current.map((session) =>
         session.id === selectedSession.id
@@ -711,30 +856,61 @@ export function App(): ReactElement {
   useEffect(() => {
     if (
       agentConnectionState !== "ready" ||
-      selectedSession === undefined ||
-      selectedUnit === undefined ||
-      sessionSnapshots[selectedSession.id] !== undefined
+      selectedSessionKey === null ||
+      selectedUnitId === null
     ) {
       return;
     }
 
+    const bootstrapKey = `${selectedSessionKey}:${selectedUnitId}`;
+    if (bootstrapLoadedKeysRef.current[bootstrapKey]) {
+      return;
+    }
+
+    bootstrapLoadedKeysRef.current[bootstrapKey] = true;
     const abortController = new AbortController();
 
-    void getLearnerUnitState(selectedSession.id, selectedUnit.id, {
+    void getInspectorBootstrap(selectedSessionKey, selectedUnitId, {
       signal: abortController.signal,
     })
-      .then((learnerState) => {
-        if (abortController.signal.aborted || learnerState === null) {
-          return;
-        }
+      .then(({ learner_state: learnerState, review_inspector: reviewInspector, thread_context: threadContext }) => {
+      if (abortController.signal.aborted) {
+        return;
+      }
 
-        setSessionSnapshots((current) => ({
+      if (learnerState !== null) {
+        setSessionSnapshots((current) => {
+          const existingSnapshot = current[selectedSessionKey];
+          if (existingSnapshot?.source === "live-agent") {
+            return current;
+          }
+
+          return {
+            ...current,
+            [selectedSessionKey]: hydrateRuntimeSnapshotFromLearnerState(learnerState, mockRuntime),
+          };
+        });
+      }
+
+      setSessionReviewInspectors((current) => ({
+        ...current,
+        [selectedSessionKey]: reviewInspector,
+      }));
+
+      if (threadContext !== null) {
+        setSessionEntryModes((current) => ({
           ...current,
-          [selectedSession.id]: hydrateRuntimeSnapshotFromLearnerState(learnerState, mockRuntime),
+          [selectedSessionKey]: threadContext.entry_mode,
         }));
-      })
+        setSessionSourceAssetIds((current) => ({
+          ...current,
+          [selectedSessionKey]: threadContext.source_asset_ids,
+        }));
+      }
+    })
       .catch(() => {
-        // Keep the local fallback snapshot when no persisted state exists yet.
+        delete bootstrapLoadedKeysRef.current[bootstrapKey];
+        // Keep the local fallback snapshot when bootstrap data is temporarily unavailable.
       });
 
     return () => {
@@ -742,11 +918,98 @@ export function App(): ReactElement {
     };
   }, [
     agentConnectionState,
-    mockRuntime,
-    selectedSession,
-    selectedUnit,
-    sessionSnapshots,
+    selectedSessionKey,
+    selectedUnitId,
   ]);
+
+  useEffect(() => {
+    if (agentConnectionState !== "ready" || assetSummaryKey === "") {
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    void getAssetSummary(requestSourceAssetIds, {
+      signal: abortController.signal,
+    })
+      .then((summary) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        setAssetSummaryByKey((current) =>
+          current[assetSummaryKey] !== undefined
+            ? current
+            : {
+                ...current,
+                [assetSummaryKey]: summary,
+              },
+        );
+      })
+      .catch(() => {
+        // Keep the materials panel quiet when asset summary is temporarily unavailable.
+      });
+
+    return () => {
+      abortController.abort();
+    };
+  }, [agentConnectionState, assetSummaryKey]);
+
+  useEffect(() => {
+    if (
+      agentConnectionState !== "ready" ||
+      selectedSessionKey === null ||
+      selectedUnitId === null ||
+      isAgentRunning ||
+      messages.length === 0
+    ) {
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    void getReviewInspector(selectedSessionKey, selectedUnitId, {
+      signal: abortController.signal,
+    })
+      .then((reviewInspector) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        setSessionReviewInspectors((current) => ({
+          ...current,
+          [selectedSessionKey]: reviewInspector,
+        }));
+      })
+      .catch(() => {
+        // Keep the previous inspector data when refresh fails.
+      });
+
+    void getThreadContext(selectedSessionKey, {
+      signal: abortController.signal,
+    })
+      .then((threadContext) => {
+        if (abortController.signal.aborted || threadContext === null) {
+          return;
+        }
+
+        setSessionEntryModes((current) => ({
+          ...current,
+          [selectedSessionKey]: threadContext.entry_mode,
+        }));
+        setSessionSourceAssetIds((current) => ({
+          ...current,
+          [selectedSessionKey]: threadContext.source_asset_ids,
+        }));
+      })
+      .catch(() => {
+        // Session-scoped local selections stay as fallback when persisted context is unavailable.
+      });
+
+    return () => {
+      abortController.abort();
+    };
+  }, [agentConnectionState, isAgentRunning, messages.length, selectedSessionKey, selectedUnitId]);
 
   function handleSelectProject(projectId: string): void {
     setSelectedProjectId(projectId);
@@ -799,8 +1062,8 @@ export function App(): ReactElement {
     setSessions((current) => [createdSession, ...current]);
     setSessionMessagesById((current) => ({ ...current, [createdSession.id]: [] }));
     setDraftPrompt("");
-    setSelectedEntryMode("chat-question");
-    setSelectedSourceAssetIds([]);
+    setSessionEntryModes((current) => ({ ...current, [createdSession.id]: "chat-question" }));
+    setSessionSourceAssetIds((current) => ({ ...current, [createdSession.id]: [] }));
     setSelectedProjectId(targetProject.id);
     setSelectedSessionId(createdSession.id);
     setExpandedProjectIds((current) =>
@@ -830,6 +1093,10 @@ export function App(): ReactElement {
           : session,
       ),
     );
+    setRunningSessionIds((current) => ({
+      ...current,
+      [selectedSession.id]: true,
+    }));
 
     setDraftPrompt("");
     void sendMessage({ text });
@@ -935,15 +1202,17 @@ export function App(): ReactElement {
                   className="border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-stone)] shadow-none"
                   variant="outline"
                 >
-                  {status === "streaming" || status === "submitted"
+                  {isAgentRunning
                     ? "Streaming"
                     : agentConnectionState === "offline"
                       ? "Offline"
                       : activeRuntime.source === "live-agent"
-                      ? "Live Agent"
-                      : agentConnectionState === "ready"
-                        ? "Agent Ready"
-                        : "Checking"}
+                        ? "Live Agent"
+                        : activeRuntime.source === "hydrated-state"
+                          ? "Hydrated"
+                          : agentConnectionState === "ready"
+                            ? "Agent Ready"
+                            : "Checking"}
                 </Badge>
               </div>
             </CardHeader>
@@ -964,12 +1233,19 @@ export function App(): ReactElement {
                         }
                         key={entry.id}
                         onClick={() => {
-                          setSelectedEntryMode(entry.id);
-                          if (
-                            entry.id === "material-import" &&
-                            selectedSourceAssetIds.length === 0
-                          ) {
-                            setSelectedSourceAssetIds(sourceAssets.map((asset) => asset.id));
+                          if (selectedSession === undefined) {
+                            return;
+                          }
+
+                          setSessionEntryModes((current) => ({
+                            ...current,
+                            [selectedSession.id]: entry.id,
+                          }));
+                          if (entry.id === "material-import" && selectedSourceAssetIds.length === 0) {
+                            setSessionSourceAssetIds((current) => ({
+                              ...current,
+                              [selectedSession.id]: getDefaultSourceAssetIds("material-import"),
+                            }));
                           }
                         }}
                         type="button"
@@ -1009,11 +1285,20 @@ export function App(): ReactElement {
                                 }
                                 key={asset.id}
                                 onClick={() => {
-                                  setSelectedSourceAssetIds((current) =>
-                                    current.includes(asset.id)
-                                      ? current.filter((id) => id !== asset.id)
-                                      : [...current, asset.id],
-                                  );
+                                  if (selectedSession === undefined) {
+                                    return;
+                                  }
+
+                                  setSessionSourceAssetIds((current) => {
+                                    const currentSelection = current[selectedSession.id] ?? [];
+
+                                    return {
+                                      ...current,
+                                      [selectedSession.id]: currentSelection.includes(asset.id)
+                                        ? currentSelection.filter((id) => id !== asset.id)
+                                        : [...currentSelection, asset.id],
+                                    };
+                                  });
                                 }}
                                 type="button"
                               >
@@ -1039,8 +1324,12 @@ export function App(): ReactElement {
                       messages.map((message) => {
                         const isAssistant = message.role === "assistant";
                         const rawText = getMessageText(message);
+                        if (isAssistant && rawText === "") {
+                          return null;
+                        }
+                        const isStreamingAssistant = message.id === streamingAssistantMessageId;
                         const shouldCollapseAssistant =
-                          isAssistant && rawText.length > 96;
+                          isAssistant && !isStreamingAssistant && rawText.length > 96;
                         const isExpanded =
                           expandedAssistantMessageIds[message.id] ?? false;
                         const visibleText =
@@ -1107,7 +1396,7 @@ export function App(): ReactElement {
                       })
                     )}
 
-                    {!isBlankSession ? (
+                    {hasStructuredRuntime ? (
                     <section className="space-y-3 py-2">
                       <div className="flex items-center gap-3">
                         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
@@ -1142,7 +1431,7 @@ export function App(): ReactElement {
                     </section>
                     ) : null}
 
-                    {!isBlankSession ? (
+                    {hasStructuredRuntime ? (
                     <section className="space-y-4 py-2">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <p className="xidea-kicker text-[var(--xidea-stone)]">编排证据</p>
@@ -1260,14 +1549,13 @@ export function App(): ReactElement {
                           selectedSession === undefined ||
                           (selectedEntryMode === "material-import" &&
                             activeSourceAssets.length === 0) ||
-                          status === "submitted" ||
-                          status === "streaming" ||
+                          isAgentRunning ||
                           agentBaseUrl === null
                         }
                         onClick={handleSubmitPrompt}
                         type="button"
                       >
-                        {status === "submitted" || status === "streaming" ? "运行中..." : "发送"}
+                        {isAgentRunning ? "运行中..." : "发送"}
                       </Button>
                     </div>
 
@@ -1287,18 +1575,35 @@ export function App(): ReactElement {
           <div className="min-h-0 min-w-0 lg:h-full">
             <ScrollArea className="h-full pr-1">
               <div className="grid gap-3 pb-1">
-                <MonitorSection accent={activeRuntime.source === "live-agent" ? "Live" : "Mock"} title="Session">
+                <MonitorSection
+                  accent={
+                    activeRuntime.source === "live-agent"
+                      ? "Live"
+                      : activeRuntime.source === "hydrated-state"
+                        ? "Hydrated"
+                        : "Mock"
+                  }
+                  title="Session"
+                >
                   <CompactNote label="Project" value={selectedProject.name} />
                   <CompactNote label="Thread" value={selectedSession?.status ?? "等待创建"} />
-                  <CompactNote label="Mode" value={isBlankSession ? "未生成" : activeRuntime.decision.title} />
+                  <CompactNote label="Mode" value={hasStructuredRuntime ? activeRuntime.decision.title : "待生成"} />
                   <CompactNote
                     label="Agent"
                     value={
-                      isBlankSession
+                      !hasStructuredRuntime
                         ? "--"
                         : activeRuntime.decision.confidence !== null
                         ? `${(activeRuntime.decision.confidence * 100).toFixed(0)}% confidence`
-                        : "heuristic"
+                        : "live"
+                    }
+                  />
+                  <CompactNote
+                    label="State"
+                    value={
+                      hasPersistedState
+                        ? activeRuntime.stateSource
+                        : "当前 session 还没有真实 learner state。"
                     }
                   />
                 </MonitorSection>
@@ -1311,7 +1616,7 @@ export function App(): ReactElement {
                         label={metric.label}
                         tone={metric.tone}
                         value={
-                          isBlankSession || activeRuntime.state[metric.key] === null
+                          !hasPersistedState || activeRuntime.state[metric.key] === null
                             ? "--"
                             : `${activeRuntime.state[metric.key]}%`
                         }
@@ -1323,12 +1628,17 @@ export function App(): ReactElement {
                       Profile
                     </p>
                     <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">
-                      {isBlankSession ? "--" : generatedProfile.title}
+                      {hasPersistedState ? generatedProfile.title : "--"}
                     </p>
-                    {!isBlankSession ? (
-                      <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                        {generatedProfile.evidence[0]}
-                      </p>
+                    {hasPersistedState ? (
+                      <>
+                        <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                          {generatedProfile.summary}
+                        </p>
+                        <p className="mt-2 text-[12px] leading-6 text-[var(--xidea-charcoal)]/80">
+                          {generatedProfile.evidence[0]}
+                        </p>
+                      </>
                     ) : null}
                   </div>
                 </MonitorSection>
@@ -1338,16 +1648,31 @@ export function App(): ReactElement {
                     <MetricTile
                       label="Last"
                       tone="amber"
-                      value={isBlankSession ? "--" : activeRuntime.state.lastReviewedAt ?? "未记录"}
+                      value={
+                        !hasPersistedState
+                          ? "--"
+                          : latestReviewedEvent?.event_at
+                            ? formatDateLabel(latestReviewedEvent.event_at) ?? "未记录"
+                            : activeRuntime.state.lastReviewedAt ?? "未记录"
+                      }
                     />
                     <MetricTile
                       label="Next"
                       tone="sky"
-                      value={isBlankSession ? "--" : activeRuntime.state.nextReviewAt ?? "待决定"}
+                      value={
+                        !hasPersistedState
+                          ? "--"
+                          : activeReviewInspector?.scheduledAt
+                            ? formatDateLabel(activeReviewInspector.scheduledAt) ?? "待决定"
+                            : activeRuntime.state.nextReviewAt ?? "待决定"
+                      }
                     />
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {(isBlankSession ? [] : activeRuntime.state.weakSignals.slice(0, 3)).map((signal) => (
+                    {(!hasPersistedState
+                      ? []
+                      : activeReviewInspector?.performanceTrend?.weakSignals ?? activeRuntime.state.weakSignals.slice(0, 3)
+                    ).slice(0, 3).map((signal) => (
                       <Badge
                         className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
                         key={signal}
@@ -1357,6 +1682,15 @@ export function App(): ReactElement {
                       </Badge>
                     ))}
                   </div>
+                  <CompactNote
+                    label="Risk"
+                    value={!hasPersistedState ? "--" : activeReviewInspector?.decayRisk ?? "unknown"}
+                  />
+                  {activeReviewInspector?.summary ? (
+                    <div className="rounded-[0.95rem] bg-[var(--xidea-selection)] px-3 py-3 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                      {activeReviewInspector.summary}
+                    </div>
+                  ) : null}
                   <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3">
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
@@ -1387,28 +1721,61 @@ export function App(): ReactElement {
                       isBlankSession
                         ? "0 assets"
                         : selectedEntryMode === "material-import"
-                        ? `${activeSourceAssets.length} assets`
-                        : `${sourceAssets.length} linked`
+                        ? `${requestSourceAssetIds.length} assets`
+                        : `${requestSourceAssetIds.length} linked`
                     }
                   />
                   <CompactNote label="Unit" value={selectedUnit?.title ?? "未指定"} />
                   <CompactNote
-                    label="Writeback"
-                    value={isBlankSession ? "未生成" : activeRuntime.writeback[0]?.target ?? "Project Thread"}
+                    label="Context"
+                    value={activeAssetSummary?.summary ?? "等待读取真实材料上下文"}
                   />
                   <div className="rounded-[0.95rem] bg-[var(--xidea-parchment)] px-3 py-3">
                     <div className="flex items-center gap-2">
                       <Brain className="h-4 w-4 text-[var(--xidea-terracotta)]" />
                       <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                        {isBlankSession ? "--" : activeRuntime.decision.title}
+                        {hasStructuredRuntime ? activeRuntime.decision.title : "材料上下文"}
                       </p>
                     </div>
-                    {!isBlankSession ? (
+                    {hasStructuredRuntime ? (
                       <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
                         {activeRuntime.decision.objective}
                       </p>
+                    ) : activeAssetSummary ? (
+                      <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                        {activeAssetSummary.summary}
+                      </p>
                     ) : null}
                   </div>
+                  {activeAssetSummary?.keyConcepts.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {activeAssetSummary.keyConcepts.slice(0, 4).map((concept) => (
+                        <Badge
+                          className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
+                          key={concept}
+                          variant="outline"
+                        >
+                          {concept}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                  {activeAssetSummary?.assets.slice(0, 2).map((asset) => (
+                    <div
+                      className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-3"
+                      key={asset.id}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-[var(--xidea-near-black)]">{asset.title}</p>
+                        <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+                          {getAssetKindLabel(asset.kind)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                        {asset.contentExcerpt}
+                      </p>
+                    </div>
+                  ))}
                   <div className="flex flex-wrap gap-2">
                     {(selectedUnit?.candidateModes ?? []).slice(0, 3).map((mode) => (
                       <Badge

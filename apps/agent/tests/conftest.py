@@ -18,19 +18,19 @@ def _mock_openai_response(content: str):
 
 
 def _default_side_effect():
-    """Return a side_effect list that satisfies the full LLM-first pipeline:
-    1. signal extraction  2. diagnosis  3. plan generation  4. assistant reply
-    """
-    signals = json.dumps([
-        {"kind": "concept-confusion", "score": 0.85, "confidence": 0.88,
-         "summary": "用户对 retrieval 和 reranking 概念边界混淆"},
-    ])
-    diagnosis = json.dumps({
-        "recommended_action": "clarify",
-        "reason": "用户明确表达概念边界混淆",
-        "confidence": 0.88,
-        "primary_issue": "concept-confusion",
-        "needs_tool": False,
+    """Return a side_effect list that satisfies the full LLM-first pipeline."""
+    bundled = json.dumps({
+        "signals": [
+            {"kind": "concept-confusion", "score": 0.85, "confidence": 0.88,
+             "summary": "用户对 retrieval 和 reranking 概念边界混淆"},
+        ],
+        "diagnosis": {
+            "recommended_action": "clarify",
+            "reason": "用户明确表达概念边界混淆",
+            "confidence": 0.88,
+            "primary_issue": "concept-confusion",
+            "needs_tool": False,
+        },
     })
     plan = json.dumps({
         "headline": "围绕概念辨析的学习路径",
@@ -49,10 +49,9 @@ def _default_side_effect():
     reply = "这两个概念的关键区别在于：retrieval 负责从大量文档中召回候选集，reranking 则在候选集上做精排。"
 
     return [
-        _mock_openai_response(signals),
-        _mock_openai_response(diagnosis),
-        _mock_openai_response(plan),
+        _mock_openai_response(bundled),
         _mock_openai_response(reply),
+        _mock_openai_response(plan),
     ]
 
 
@@ -65,16 +64,18 @@ def build_mock_llm(side_effect=None) -> LLMClient:
 
 def build_mock_llm_for_review() -> LLMClient:
     """Build a mock LLMClient that recommends 'review' action."""
-    signals = json.dumps([
-        {"kind": "memory-weakness", "score": 0.85, "confidence": 0.88,
-         "summary": "用户记忆强度偏低，需要复习巩固"},
-    ])
-    diagnosis = json.dumps({
-        "recommended_action": "review",
-        "reason": "记忆强度不足，需要复习",
-        "confidence": 0.85,
-        "primary_issue": "weak-recall",
-        "needs_tool": False,
+    bundled = json.dumps({
+        "signals": [
+            {"kind": "memory-weakness", "score": 0.85, "confidence": 0.88,
+             "summary": "用户记忆强度偏低，需要复习巩固"},
+        ],
+        "diagnosis": {
+            "recommended_action": "review",
+            "reason": "记忆强度不足，需要复习",
+            "confidence": 0.85,
+            "primary_issue": "weak-recall",
+            "needs_tool": False,
+        },
     })
     plan = json.dumps({
         "headline": "围绕复习巩固的学习路径",
@@ -91,26 +92,27 @@ def build_mock_llm_for_review() -> LLMClient:
 
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
-        _mock_openai_response(signals),
-        _mock_openai_response(diagnosis),
-        _mock_openai_response(plan),
+        _mock_openai_response(bundled),
         _mock_openai_response(reply),
+        _mock_openai_response(plan),
     ]
     return LLMClient(client=mock_client, model="gpt-4o-mini")
 
 
 def build_mock_llm_for_teach() -> LLMClient:
     """Build a mock LLMClient that recommends 'teach' action."""
-    signals = json.dumps([
-        {"kind": "concept-gap", "score": 0.82, "confidence": 0.85,
-         "summary": "用户理解框架不稳"},
-    ])
-    diagnosis = json.dumps({
-        "recommended_action": "teach",
-        "reason": "用户理解框架不稳，先补建模",
-        "confidence": 0.85,
-        "primary_issue": "insufficient-understanding",
-        "needs_tool": False,
+    bundled = json.dumps({
+        "signals": [
+            {"kind": "concept-gap", "score": 0.82, "confidence": 0.85,
+             "summary": "用户理解框架不稳"},
+        ],
+        "diagnosis": {
+            "recommended_action": "teach",
+            "reason": "用户理解框架不稳，先补建模",
+            "confidence": 0.85,
+            "primary_issue": "insufficient-understanding",
+            "needs_tool": False,
+        },
     })
     plan = json.dumps({
         "headline": "围绕理解框架的教学路径",
@@ -127,26 +129,27 @@ def build_mock_llm_for_teach() -> LLMClient:
 
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
-        _mock_openai_response(signals),
-        _mock_openai_response(diagnosis),
-        _mock_openai_response(plan),
+        _mock_openai_response(bundled),
         _mock_openai_response(reply),
+        _mock_openai_response(plan),
     ]
     return LLMClient(client=mock_client, model="gpt-4o-mini")
 
 
 def build_mock_llm_for_material_import() -> LLMClient:
     """Build a mock LLMClient for material-import entry mode."""
-    signals = json.dumps([
-        {"kind": "project-relevance", "score": 0.9, "confidence": 0.9,
-         "summary": "材料导入场景"},
-    ])
-    diagnosis = json.dumps({
-        "recommended_action": "teach",
-        "reason": "材料导入，先补上下文",
-        "confidence": 0.85,
-        "primary_issue": "missing-context",
-        "needs_tool": True,
+    bundled = json.dumps({
+        "signals": [
+            {"kind": "project-relevance", "score": 0.9, "confidence": 0.9,
+             "summary": "材料导入场景"},
+        ],
+        "diagnosis": {
+            "recommended_action": "teach",
+            "reason": "材料导入，先补上下文",
+            "confidence": 0.85,
+            "primary_issue": "missing-context",
+            "needs_tool": True,
+        },
     })
     plan = json.dumps({
         "headline": "材料导入学习路径",
@@ -163,10 +166,9 @@ def build_mock_llm_for_material_import() -> LLMClient:
 
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
-        _mock_openai_response(signals),
-        _mock_openai_response(diagnosis),
-        _mock_openai_response(plan),
+        _mock_openai_response(bundled),
         _mock_openai_response(reply),
+        _mock_openai_response(plan),
     ]
     return LLMClient(client=mock_client, model="gpt-4o-mini")
 

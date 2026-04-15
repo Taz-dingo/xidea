@@ -1,14 +1,24 @@
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
 import {
   buildAgentRequest,
+  normalizePartialAgentStreamResult,
   normalizeAgentStreamResult,
   normalizeAgentRunResult,
   type AgentEntryMode,
   type AgentStreamEvent,
   type RuntimeSnapshot,
 } from "@/domain/agent-runtime";
-import type { LearnerProfile, LearningUnit, ProjectContext, SourceAsset } from "@/domain/types";
+import type { LearningUnit, ProjectContext, SourceAsset } from "@/domain/types";
 import { getLearnerUnitState, runAgentV0, runAgentV0Stream } from "@/lib/agent-client";
+
+function sanitizeVisibleAssistantText(text: string): string {
+  const withoutThinkBlocks = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
+  const withoutDanglingThink = withoutThinkBlocks.replace(/<think\b[^>]*>[\s\S]*$/i, "");
+  const withoutWrappers = withoutDanglingThink
+    .replace(/^\s*<(answer|output|response|result|json)\b[^>]*>\s*/i, "")
+    .replace(/\s*<\/(answer|output|response|result|json)>\s*$/i, "");
+  return withoutWrappers.trim();
+}
 
 function getLatestUserText(messages: UIMessage[]): string {
   const latestUserMessage = [...messages].reverse().find((message) => message.role === "user");
@@ -30,12 +40,12 @@ export function createAgentChatTransport(input: {
   readonly projectId: string;
   readonly sessionId: string;
   readonly entryMode: AgentEntryMode;
-  readonly profile: LearnerProfile;
   readonly project: ProjectContext;
-  readonly sourceAssets: ReadonlyArray<SourceAsset>;
+  readonly getSourceAssets: () => ReadonlyArray<SourceAsset>;
   readonly unit: LearningUnit;
-  readonly fallbackSnapshot: RuntimeSnapshot;
+  readonly getFallbackSnapshot: () => RuntimeSnapshot;
   readonly onSnapshot: (snapshot: RuntimeSnapshot) => void;
+  readonly onRunStateChange?: (isRunning: boolean) => void;
 }): ChatTransport<UIMessage> {
   return {
     async sendMessages({ messages, abortSignal }) {
@@ -44,10 +54,9 @@ export function createAgentChatTransport(input: {
         projectId: input.projectId,
         sessionId: input.sessionId,
         entryMode: input.entryMode,
-        profile: input.profile,
         project: input.project,
         prompt,
-        sourceAssets: input.sourceAssets,
+        sourceAssets: input.getSourceAssets(),
         unit: input.unit,
       });
       const messageId = `assistant-${Date.now()}`;
@@ -56,6 +65,7 @@ export function createAgentChatTransport(input: {
         async start(controller) {
           const streamedEvents: AgentStreamEvent[] = [];
           let started = false;
+          input.onRunStateChange?.(true);
 
           const ensureStarted = () => {
             if (started) {
@@ -71,7 +81,19 @@ export function createAgentChatTransport(input: {
               onEvent: (event) => {
                 streamedEvents.push(event);
 
-                if (event.event !== "text-delta" || event.delta.trim().length === 0) {
+                input.onSnapshot(
+                  normalizePartialAgentStreamResult({
+                    events: streamedEvents,
+                    fallbackSnapshot: input.getFallbackSnapshot(),
+                  }),
+                );
+
+                if (event.event !== "text-delta") {
+                  return;
+                }
+
+                const visibleDelta = sanitizeVisibleAssistantText(event.delta);
+                if (visibleDelta.length === 0) {
                   return;
                 }
 
@@ -79,19 +101,14 @@ export function createAgentChatTransport(input: {
                 controller.enqueue({
                   type: "text-delta",
                   id: messageId,
-                  delta: event.delta,
+                  delta: visibleDelta,
                 });
               },
             });
 
-            const learnerState = await getLearnerUnitState(input.sessionId, input.unit.id, {
-              signal: abortSignal,
-            }).catch(() => null);
-
-            const snapshot = normalizeAgentStreamResult({
+            const snapshot = normalizePartialAgentStreamResult({
               events: streamedEvents,
-              learnerState,
-              fallbackSnapshot: input.fallbackSnapshot,
+              fallbackSnapshot: input.getFallbackSnapshot(),
             });
 
             input.onSnapshot(snapshot);
@@ -108,6 +125,22 @@ export function createAgentChatTransport(input: {
             ensureStarted();
             controller.enqueue({ type: "text-end", id: messageId });
             controller.close();
+
+            void getLearnerUnitState(input.sessionId, input.unit.id, {
+              signal: abortSignal,
+            })
+              .then((learnerState) => {
+                input.onSnapshot(
+                  normalizeAgentStreamResult({
+                    events: streamedEvents,
+                    learnerState,
+                    fallbackSnapshot: input.getFallbackSnapshot(),
+                  }),
+                );
+              })
+              .catch(() => {
+                // Keep the stream-completed snapshot when learner-state hydration is unavailable.
+              });
           } catch (error) {
             if (isAbortError(error)) {
               controller.error(error);
@@ -131,17 +164,26 @@ export function createAgentChatTransport(input: {
 
               ensureStarted();
               for (const delta of deltas.length > 0 ? deltas : [fallbackText || "Agent 已完成本轮判断。"]) {
+                const visibleDelta = sanitizeVisibleAssistantText(delta);
+                if (visibleDelta.length === 0) {
+                  continue;
+                }
                 controller.enqueue({
                   type: "text-delta",
                   id: messageId,
-                  delta,
+                  delta: visibleDelta,
                 });
               }
               controller.enqueue({ type: "text-end", id: messageId });
               controller.close();
             } catch (fallbackError) {
               controller.error(fallbackError);
+            } finally {
+              input.onRunStateChange?.(false);
             }
+            return;
+          } finally {
+            input.onRunStateChange?.(false);
           }
         },
       });
