@@ -3,6 +3,77 @@
 只保留“当前仍生效、后续会反复影响协作或实现”的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-16 — MVP 收敛为 project-centric learning workspace
+
+### 决策
+
+当前 MVP 不再以单条 thread 为主对象，而是收敛为以 `Project` 为中心的学习工作区。
+第一版稳定的主对象为：
+
+- `Project`
+- `Knowledge Point`
+- `Session`
+- `Project Learning Profile`
+
+其中：
+
+- 创建 Project 时必须先确认学习主题，并允许补充初始材料
+- 每个 Project 拥有项目级 memory、项目级 learning profile 和一组扁平 knowledge points
+- 学习与复习都围绕 knowledge points 组织
+- session 类型显式分为 `project / study / review`
+
+### 原因
+
+- 之前的 thread-centric 叙事更像“带编排能力的 tutor”，还不够像项目型学习系统
+- 这轮讨论已经明确知识点才是项目内最小学习单元，session 更像围绕知识点发生的过程
+- 用 Project 承接主题、材料、知识点、画像和 session，能更自然地解释“系统在持续组织学习”
+
+### 影响
+
+- `spec / status / plan` 的 source of truth 需要统一切到 project-centric 叙事
+- 后续 schema 设计优先围绕 Project、Knowledge Point、Session、Learning Profile，而不是先扩 thread 细节
+- session 与学习动作只是承载方式，不再是产品入口本身
+
+## 2026-04-16 — Project Workspace 默认先展示知识点，session 按需展开
+
+### 决策
+
+Project 页默认优先展示 knowledge point 工作台，不默认展开 session workspace。
+只有当用户明确进入某个 `project / study / review session` 时，才展开 session workspace。
+knowledge point 详情采用独立跳转页，而不是长期维持四块并列布局。
+
+### 原因
+
+- 默认先看到知识点池，更符合“知识点是对象、session 是过程”的产品心智
+- 固定三栏同时展示 session list、active session、knowledge points 和 detail 容易让信息密度过高
+- 详情独立跳转能承载更多材料、热力图、相关 session 和编辑入口，而不挤压主工作台
+
+### 影响
+
+- Project Workspace 的默认主区是 knowledge points，而不是 chat
+- session workspace 改为按需展开的工作态
+- knowledge point 详情页后续承担更完整的信息承载与编辑入口
+
+## 2026-04-16 — 第一版学习/复习先只做选择题，画像只做 project 级轻聚合
+
+### 决策
+
+第一版学习与复习 session 先只做选择题，不先做简答题和开放式对练。
+同时，学习画像先只做 project 级聚合画像，主要服务编排，不做重的人格化全局画像。
+用户侧只看轻量摘要，并通过轻量反馈修正系统判断。
+
+### 原因
+
+- 选择题是当前心智负担最低、最容易稳定验证编排效果的学习形式
+- 简答题和开放对练会显著增加用户负担，也会拉高 prompt、评分和状态更新复杂度
+- project 级聚合画像已经足够给 LLM 提供薄弱点和当前阶段上下文，没有必要先做重画像
+
+### 影响
+
+- 学习/复习 session 的主 contract 先围绕选择题设计
+- project learning profile 的最小字段优先收敛为“阶段 / 薄弱点 / 轻偏好 / 新鲜度”
+- 用户对画像的控制方式先收敛为轻量反馈，而不是完整编辑
+
 ## 2026-04-15 — 用户侧不直接暴露中间编排证据，学习动作优先保持轻交互
 
 ### 决策
@@ -67,6 +138,8 @@ Xidea 的长期目标仍然是三件事同时成立：
 - 作答后给简短诊断或 performance feedback，再决定下一轮动作
 - 基于上传材料、线程上下文和最近表现自适应地调整题目难度与追问方式
 
+这条决策描述的是后续扩展方向，不改变当前 MVP 第一版学习 / 复习先只做选择题的范围约束。
+
 ### 原因
 
 - `ChatGPT Study Mode` 已验证“互动提问 + 检查理解 + 分步推进”比直接长解释更适合学习场景
@@ -75,20 +148,20 @@ Xidea 的长期目标仍然是三件事同时成立：
 
 ### 影响
 
-- 后续 tutor prompt、activity schema 和前端学习卡都优先围绕这些轻交互能力扩展
-- 计划优先实现 `hint`、`more questions`、作答后短诊断，再考虑更重的解释层
+- 后续 tutor prompt、activity schema 和前端学习卡扩展时优先参考这些轻交互能力
+- 第一版仍先以选择题 session 为主；`hint`、`more questions`、作答后短诊断放在后续扩展项里
 - “把材料变成训练动作”会比“把材料变成长篇摘要”有更高优先级
 
-## 2026-04-15 — 材料不是单独入口模式，而是线程里的随时附加上下文
+## 2026-04-15 — 材料不是单独入口模式，而是 project 中可随时附加的结构化上下文
 
 ### 决策
 
 比赛版不再把“问答 / 材料”作为互斥入口模式来设计。
-用户默认始终在同一个学习线程里推进，需要时随时把材料挂进当前线程或当前轮次。
+用户默认始终在同一个 Project 里推进，需要时随时把材料挂进当前 project、当前 session 或当前轮次。
 材料数据默认不做纯扁平字符串拼接，而是至少保持两层：
 
-- thread-level material library：这个线程已挂过哪些材料
-- turn-level attachments：这一轮实际带给 agent 的材料子集
+- project-level material library：这个 project 已挂过哪些材料
+- session / turn attachments：这一轮实际带给 agent 的材料子集
 
 在需要总结时，再从结构化材料集合里派生出 summary / key concepts / evidence，而不是把原始材料先整体压平成一段大文本。
 
@@ -100,8 +173,8 @@ Xidea 的长期目标仍然是三件事同时成立：
 
 ### 影响
 
-- 前端主线程默认只保留一个 composer，材料改成可随时展开、选择、挂载的附加上下文 tray
-- contract 后续需要明确区分 thread-level 挂载材料与 turn-level 附件
+- Project 内默认只保留一个主入口 composer，材料改成可随时展开、选择、挂载的附加上下文 tray
+- contract 后续需要明确区分 project-level 挂载材料与 session / turn 附件
 - source asset summary、evidence bundle、activity 生成都基于结构化材料集合派生，不直接依赖单段扁平文本
 
 ## 2026-04-15 — 学习动作允许一轮形成轻量卡组，但交互仍按顺序推进
@@ -111,6 +184,8 @@ Xidea 的长期目标仍然是三件事同时成立：
 学习动作不限制为“每轮只能有一张卡”。
 系统可以针对同一轮目标下发一个轻量 card deck，例如“先辨析 -> 再回忆 -> 再导师追问”。
 但交互仍按顺序推进：用户一次只需要完成最上面这一张，完成或跳过后再翻到下一张。
+
+这条决策保留为后续可扩能力，不作为当前 MVP 第一版的必做前提。
 
 ### 原因
 

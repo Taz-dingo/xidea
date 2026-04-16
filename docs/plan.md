@@ -24,55 +24,55 @@
   - owner: 全员
 - [x] 定义 web 与 agent 之间的最小 API contract
   - owner: 学习引擎 owner / 前端 owner
+- [x] 收敛新的 project-centric MVP：Project、Knowledge Point、Session、Learning Profile 四个主对象
+  - owner: 产品 owner / 前端 owner / 学习引擎 owner
+- [x] 收敛 Project Workspace 的页面主结构：默认知识点工作台、按需展开 session workspace、知识点详情独立跳转
+  - owner: 产品 owner / 前端 owner
 
 ### P1
 
-- [ ] 将 agent 主路径收敛为“预取上下文 -> 单次主决策调用 -> tool / activity loop”，减少串行 LLM 调用
+- [ ] 将 agent 主路径收敛为“预取 project 证据上下文 -> 单次主决策调用 -> tool / session loop -> 状态回写”，优先解决当前回复过慢的问题
   - owner: 学习引擎 owner
-- [ ] 让学习资料、thread memory 和 review context 在主决策前完成预取，并进入同一证据上下文
+  - 原因：
+    - 当前实现仍存在串行 LLM 调用，首轮回复等待偏长
+    - 这不仅是架构收敛问题，也是当前 demo 交互时延问题
+- [ ] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
+  - owner: 学习引擎 owner / 产品 owner
+- [ ] 定义 Project 最小持久化对象：project memory、learning profile、knowledge points、sessions
   - owner: 学习引擎 owner
-- [ ] 将 `StudyPlan` 从展示型输出改成可执行 learning activity contract，支持 agent 在对话里直接触发出题 / 复习
+- [ ] 定义 Knowledge Point 最小 schema 与生命周期
   - owner: 学习引擎 owner / 前端 owner
-- [ ] 将 web-agent contract 从固定 `plan` 展示收敛为结构化 activity / tool result 事件，由前端按事件插入 card，而不是默认渲染固定面板
-  - owner: 学习引擎 owner / 前端 owner
-- [ ] 将“材料输入”从互斥入口模式改成线程中的随时附加上下文，明确 thread-level material library 与 turn-level attachments 的数据形态
-  - owner: 前端 owner / 学习引擎 owner
-- [ ] 收敛 activity 的交互 gating：当前有未完成学习动作时，主输入区默认锁住自由聊天，只保留完成当前动作或显式跳过
-  - owner: 前端 owner / 学习引擎 owner
-- [ ] 将单 activity 进一步扩到轻量 card deck：允许一轮下发多张顺序卡，但始终只激活最上面一张
-  - owner: 前端 owner / 学习引擎 owner
-- [ ] 为学习动作补高反馈密度的正确 / 错误 / 跳过 / 翻卡音效与动画，优先参考 Duolingo 的轻反馈节奏
+  - 范围：
+    - 标题、描述、来源材料、origin session
+    - 掌握度、学习/复习状态、下次复习信号
+    - archive 建议与确认
+- [ ] 定义 project-level learning profile 最小 schema，并接入后续编排上下文
+  - owner: 学习引擎 owner
+  - 范围：
+    - 当前阶段
+    - 主要薄弱点
+    - 轻量学习偏好
+    - 新鲜度 / 最近更新时间
+- [ ] 让学习资料、project memory、learning profile、review context 在主决策前完成预取，并进入同一证据上下文
+  - owner: 学习引擎 owner
+- [ ] 定义 `project / study / review` 三类 session 的职责与状态转换
+  - owner: 产品 owner / 学习引擎 owner / 前端 owner
+- [ ] 将 Project Workspace 改成默认知识点工作台，只有进入 session 时才展开 session workspace
   - owner: 前端 owner
-- [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环
-  - owner: 学习引擎 owner / 前端 owner
-- [ ] 细化 agent 决策路径与 evaluation 维度
-  - owner: 学习引擎 owner
-- [ ] 为 tutor agent 补专门的 system prompt：明确何时必须触发 activity、何时只给短引导、不再把“完整解释”当默认目标
-  - owner: 学习引擎 owner
-- [ ] 为前端已存在的学习交互补对应的 tutor prompt / contract 支撑，至少覆盖“随时加材料、多 card deck、hint、作答后短反馈”
-  - owner: 学习引擎 owner / 前端 owner
-  - 参考实现要求已写入 `docs/reference/architecture.md` 和 `docs/reference/agent-state-design.md`
-- [ ] 将学习模式优先借鉴项整理成可实现 backlog，并按轻交互优先级推进
+- [ ] 将 knowledge point 详情做成独立页面，并承载来源材料、相关 sessions、热力图和编辑入口
+  - owner: 前端 owner
+- [ ] 收敛 project chat 行为：默认继续当前会话，支持手动新建 `project session`，不自动切分
   - owner: 前端 owner / 学习引擎 owner
-  - 说明：`flashcards`、quiz、study guide、guided QA 都只是候选学习形式，不是默认必出能力；是否出现由 agent 判断
-  - 当前优先项：
-    - `hint`
-    - `more questions`
-    - 作答后短诊断 / performance feedback
-    - 基于材料直接生成 quiz / flashcards / study guide
-    - 一轮生成轻量 card deck，而不是长篇 plan
-- [ ] 在主案例稳定后，再补 1 到 2 个能支撑主叙事的次级 demo surface
-  - owner: 前端 owner / 产品 owner
-- [x] 将学习画像进一步从前端推断迁到真实 agent / learner state 信号
+- [ ] 支持 project chat 中的新增材料、知识点建议新增、知识点轻量编辑、topic/rules 修改入口
+  - owner: 前端 owner / 学习引擎 owner
+- [ ] 将学习 / 复习 session 第一版限制为选择题，不先接入简答题与开放式对练
+  - owner: 产品 owner / 前端 owner / 学习引擎 owner
+- [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环，让学习/复习结果真正影响知识点状态与 project learning profile
   - owner: 学习引擎 owner / 前端 owner
-- [x] 将复习热力图接到真实 `Review Engine` timeline，而不是只基于当前 session 状态渲染
-  - owner: 学习引擎 owner / 前端 owner
-- [x] 将材料面板接到真实 source asset / tool context，而不是长期依赖 fixture 数据
-  - owner: 学习引擎 owner / 前端 owner
-- [x] 增加 planner explanation 的结构化字段
+- [ ] 明确 project 不相关内容的 guardrail：主动提醒，但不更新 memory、不新增知识点、不触发学习/复习编排
   - owner: 学习引擎 owner
-- [x] 将 `/runs/v0/stream` 从伪流式改成真实按步骤推送
-  - owner: 学习引擎 owner
+- [ ] 定义 knowledge point archive 建议规则：多次复习稳定后由系统建议，用户确认执行
+  - owner: 学习引擎 owner / 产品 owner
 - [ ] 决定当前 `Consolidation` 是手动触发演示还是模拟定时入口
   - owner: 学习引擎 owner / 产品 owner
 - [ ] 准备答辩素材和对比竞品摘要
@@ -87,7 +87,8 @@
 - [x] 接真实模型 API（已默认接到智谱 OpenAI-compatible / `glm-5`，保留 OpenAI 兼容）
 - 增加上传材料入口
 - 增加更可信的内容摘要或结构化提炼结果
-- 将展示型 plan 收敛为可执行 activity，并支持对话内练习 / 复习
+- 将 project memory、learning profile、knowledge point pool 做成稳定持久化对象
+- 将展示型 plan 收敛为 session 内可执行 activity，并支持学习 / 复习结果回写
 - 增加 1 到 2 个次级 demo surface
 - 增加 evaluation 和答辩支撑材料
 
@@ -99,64 +100,70 @@
 - 增强 `Agent Memory / Consolidation`
 - 增加更多输入模态与更多学科模板
 - 逐步把比赛版叙事推进到“多模态输入 + 多类型学习 + SRS”完整主线
+- 在主案例稳定后，再决定是否补更强的 web search 辅助找资料能力
 
 ## Implementation Checklist
 
 当前已经可以进入实现阶段。建议按以下顺序落地：
 
 1. `apps/agent` 定义 typed schema
-   - `AgentRequest`
-   - `StreamEvent`
-   - `GraphState`
-   - `Diagnosis`
-   - `StudyPlan`
+   - `Project`
+   - `Session`
+   - `KnowledgePoint`
+   - `ProjectLearningProfile`
+   - `Activity`
    - `StatePatch`
 2. `apps/agent` 搭 SQLite 与 repository 骨架
    - `projects`
-   - `threads`
-   - `thread_messages`
-   - `learner_unit_state`
+   - `sessions`
+   - `session_messages`
+   - `knowledge_points`
+   - `project_learning_profiles`
+   - `project_memories`
    - `review_state`
 3. `apps/agent` 搭 LangGraph 最小主链路
-   - `load_context`
-   - `diagnose`
-   - `decide_action`
+   - `load_project_context`
+   - `resolve_session_intent`
    - `maybe_tool`
-   - `compose_response`
+   - `compose_session_output`
    - `writeback`
 4. `apps/agent` 实现 `Review Engine`
    - 基于启发式规则更新 `memoryStrength / nextReviewAt`
    - 不实现完整 SRS / FSRS 算法
 5. `apps/agent` 暴露 FastAPI streaming endpoint
-   - 当前返回 `diagnosis / text-delta / plan / state-patch / done`
-   - 下一步补结构化 activity / tool result 事件，逐步替代固定 `plan` 展示
+   - 过渡态可继续兼容 `diagnosis / text-delta / plan / state-patch / done`
+   - 下一步补结构化 `activity / tool-result / state-patch / done` 事件，逐步替代固定 `plan` 展示
 6. `apps/web` 接入真实 agent API
    - 使用 Vercel AI SDK 管理 message stream
-   - 当前已能消费 diagnosis、plan、state-patch，并把它们归一化成 activity card；学习动作卡会插到最后一条 agent 回复后
+   - 当前已能消费 diagnosis、plan、state-patch，并把它们归一化成 activity card；后续逐步切到 session-aware event contract
    - 当前有未完成 activity 时，主输入区已切到“完成当前动作 / 跳过当前动作”的受约束交互
    - 当前前端已支持“随时加材料”的附加上下文 tray，不再要求先切到单独材料模式
    - 当前前端已支持多张学习卡的 deck 视觉，但真实后端仍需补稳定的多 activity contract
    - 下一步把 activity 来源从 `diagnosis / plan` 归一化过渡逻辑收敛到稳定的后端 event contract
-   - 首页前端叙事壳已完成，当前重点从“接通真实 `/runs/v0` 数据”转到“减少 fallback / fixture 依赖”
-7. `apps/web` 保持比赛主案例聚焦
-   - 默认围绕 RAG 项目学习
-   - 中间线程优先展示学习动作与反馈，证据与状态信息放在右侧 inspector
-8. `apps/web` 右栏接真实状态
-   - 学习画像改为基于真实 learner state / diagnosis 动态生成
-   - 复习热力图改为读取 review inspector / review events
-   - 材料状态改为读取真实 asset summary / thread context
+   - Project 首页前端叙事壳已完成，当前重点从“接通真实 `/runs/v0` 数据”转到“减少 fallback / fixture 依赖”
+7. `apps/web` 重构信息架构
+   - 首页先收成 `App Home -> Project Workspace -> Knowledge Point Detail`
+   - Project Workspace 默认优先展示 knowledge points
+   - 只有进入某个 session 时才展开 session workspace
+8. `apps/web` 接 project-level state
+   - 学习画像改为 project-level 聚合画像摘要
+   - 复习信号改为围绕 knowledge points 与 project review 状态展示
+   - 材料状态改为 project-level materials + session-level attachments 的组合视图
 
 ## Ready To Build
 
 以下内容已在本轮架构讨论中定稿，可直接进入实现：
 
 - 技术栈分层
-- web-agent 事件流协议
-- LangGraph 最小主链路
-- `GraphState / diagnosis / plan / state-patch` 结构
+- `Project / Knowledge Point / Session / Learning Profile` 四个主对象
+- `project / study / review` 三类 session 边界
+- `App Home -> Project Workspace -> Knowledge Point Detail` 页面主结构
+- Project Workspace 默认知识点工作台、session 按需展开的产品心智
+- 学习 / 复习第一版只做选择题
+- web-agent 事件流协议的迁移方向
 - `maybe_tool` 边界
-- `Data State`
 - `Review Engine`
+- project 级 off-topic guardrail
 
 当前不需要继续等待新的方向级决策，除非实现过程中发现明显冲突。
 
