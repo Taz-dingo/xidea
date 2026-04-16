@@ -82,7 +82,7 @@
 - `apps/web` 请求已按当前 `project / session` 真实绑定到 agent `project_id / thread_id`，不同 session 不再共用后端线程状态
 - `apps/web` 已切到真实 SSE 消费 `/runs/v0/stream`，thread 区改为跟随后端流式事件逐步渲染
 - `apps/web` 已将中间学习线程里的编排证据收回，只保留右侧 inspector 作为状态与监控面板
-- `apps/web` 的材料入口已收成单线程里的随时加材料 tray，用户不再需要在“问答 / 材料”之间切模式
+- `apps/web` 的材料入口已收成单线程里的随时加材料 tray，用户不再需要在"问答 / 材料"之间切模式
 - `apps/web` 中栏输入区已收成单一输入框 + 内嵌发送按钮，thread 与 inspector 滚动区默认显示可见滚动条
 - `apps/web` 左栏已收敛为更紧凑的 codex-style workspace 导航：project 用图标行呈现，session 只保留标题级信息
 - `apps/web` 的学习画像已改为根据当前对话与运行态自动生成，不再由用户手动切换
@@ -116,16 +116,20 @@
 - 智谱运行时默认关闭 `thinking`，结构化阶段启用更严格的 JSON 输出约束；LLM HTTP client 默认不继承代理环境变量，减少本地代理/证书链导致的空正文和 TLS 问题
 - `/runs/v0/stream` 已切到真实流式执行：API 直接消费 runtime 事件生成器，连接建立后会立即打开 SSE；当前事件顺序仍为 `diagnosis -> text-delta -> plan -> state-patch -> done`
 - agent 主路径已将 `signal extraction + diagnosis` 合并为一次 bundled LLM 调用；正常链路从 4 次模型请求降到 3 次，且 reply 已从 plan 依赖里拆开，首屏等待主要收敛在 `bundled diagnosis -> reply`
-- 已确认当前 `3` 次串行 LLM 调用 + 展示型 `StudyPlan` 属于过渡实现；下一阶段将对齐成熟 agent 方案，收敛为“预取上下文 -> 单次主决策调用 -> tool / activity loop -> 状态回写”
+- 完成真实 LLM API 端到端验证：使用 OpenAI-compatible 中转站 (gpt-5.4) 跑通 4 个端到端测试（基础问答、混淆场景、材料导入、SSE 流式），全部通过
+- 新增 `XIDEA_LLM_FORCE_STREAM` 环境变量，适配要求所有请求 `stream=true` 的 API 代理
+- 为所有 LLM 调用添加按步骤标记的计时日志（`bundled_diagnose / generate_reply / stream_reply / build_plan`），每条日志包含 model、provider、耗时(s)和输出字符数
+- 当前 agent 全量 118 个测试全部通过（114 mock + 4 real LLM）
+- 已确认当前 `3` 次串行 LLM 调用 + 展示型 `StudyPlan` 属于过渡实现；下一阶段将对齐成熟 agent 方案，收敛为"预取上下文 -> 单次主决策调用 -> tool / activity loop -> 状态回写"
 - `apps/web` 中栏已新增 activity-first 学习动作卡：当前会优先把 agent `diagnosis / plan` 归一化成可执行动作，并支持在对话里直接完成辨析 / 回忆 / 导师追问后，把结果回传给现有 agent 对话流；学习动作卡已从固定底部区块收成跟随最后一条 agent 回复出现的 inline card
 - 已补充共享约束：当前前端的 activity-first 卡片仍是过渡适配；长期形态应由 agent 在消息流中发出结构化 activity / tool result 事件，前端按事件插 card，而不是固定保留整段学习动作 / 路径 / 证据面板
-- 已补充共享约束：当 activity 是当前必须完成的学习动作时，主输入区不应继续开放自由聊天；当前 web 已补上“完成当前动作 / 跳过当前动作”的 gating。tutor agent 的专门 system prompt 仍记录在后续实现项中
-- `apps/web` 现已补充 dev-only tutor fixture 面板：可以本地切换“边界辨析 / 主动回忆 / 导师追问 / 提交报错 / 无卡片回复”等场景，用于打磨 activity 插卡、gating 和失败回滚，不依赖后端联调
+- 已补充共享约束：当 activity 是当前必须完成的学习动作时，主输入区不应继续开放自由聊天；当前 web 已补上"完成当前动作 / 跳过当前动作"的 gating。tutor agent 的专门 system prompt 仍记录在后续实现项中
+- `apps/web` 现已补充 dev-only tutor fixture 面板：可以本地切换"边界辨析 / 主动回忆 / 导师追问 / 提交报错 / 无卡片回复"等场景，用于打磨 activity 插卡、gating 和失败回滚，不依赖后端联调
 - `apps/web` 用户侧已收掉中间学习线程里的编排证据区，但保留右侧 inspector 作为状态与监控面板；学习动作卡当前默认只保留题干、选项或输入框与提交 / 跳过
-- `apps/web` 的选择题 activity card 已进一步收成“题干 + 选项 + 提交 / 跳过”，不再把 objective / support / evidence 这类内部编排字段直接展示给用户
+- `apps/web` 的选择题 activity card 已进一步收成"题干 + 选项 + 提交 / 跳过"，不再把 objective / support / evidence 这类内部编排字段直接展示给用户
 - 已整理一版可借鉴的学习模式 feature 清单，当前优先参考 `ChatGPT Study Mode / Claude 教育场景 / Gemini 学习工具` 的轻交互能力：quiz、flashcards、study guide、hint、more questions、作答后短反馈
-- 已澄清：`flashcards`、quiz、study guide、guided QA 都只是候选学习形式，不是产品目标本身；长期主线仍是“多模态输入 + 多类型学习 + 类 Anki 的 SRS 复习系统”
-- `apps/web` 已将“问答 / 材料”互斥入口收敛为单线程里的随时加材料 tray；当前材料以附加上下文方式挂进这一轮，不再要求用户先切模式
+- 已澄清：`flashcards`、quiz、study guide、guided QA 都只是候选学习形式，不是产品目标本身；长期主线仍是"多模态输入 + 多类型学习 + 类 Anki 的 SRS 复习系统"
+- `apps/web` 已将"问答 / 材料"互斥入口收敛为单线程里的随时加材料 tray；当前材料以附加上下文方式挂进这一轮，不再要求用户先切模式
 - `apps/web` 已补多张 learning activity 的 deck 视觉和 dev fixture；当前可以本地预览一组连续小卡叠放在最后一条 agent 回复后，并按顺序一张张翻下去
 - 已确认下一步学习体验增强优先项之一是 Duolingo 风格的答对 / 答错 / 跳过 / 翻卡音效与动效，先记入 backlog，后续再实现
 - 已确认前端新增学习交互需要同步反推后端 tutor prompt 和 event contract；否则只会出现 UI 有壳、agent 不会稳定配合的落差
@@ -144,8 +148,8 @@
 
 ### In Progress
 
-- 收敛 agent 主路径到“预取 project 证据上下文 -> 单次主决策调用 -> tool / session loop -> 状态回写”，优先解决当前回复过慢与首轮等待偏长问题
-- 将当前 operating docs 从“project / thread + activity-first”进一步收敛到“project-centric MVP”叙事
+- 收敛 agent 主路径到"预取 project 证据上下文 -> 单次主决策调用 -> tool / session loop -> 状态回写"，优先解决当前回复过慢与首轮等待偏长问题
+- 将当前 operating docs 从"project / thread + activity-first"进一步收敛到"project-centric MVP"叙事
 - 收敛 Project 创建流程：主题、描述、材料输入、special rules 生成和初始化编排
 - 收敛 project memory、project learning profile 与 knowledge point pool 的边界
 - 收敛 `project / study / review` 三类 session 的职责与页面展开方式
@@ -154,9 +158,9 @@
 - 将当前展示型 `StudyPlan` 过渡收敛为 session 内可执行 activity contract，支持 agent 在对话里直接触发学习 / 复习动作
 - 收敛 web-agent contract：从当前 `diagnosis / plan` 过渡适配切到结构化 activity / tool result 事件
 - 收敛前端 activity gating：当前学习动作未完成前，主输入区改成受约束交互
-- 收敛用户侧 activity 节奏：让“作答完成 -> 下一轮简短诊断 / 动作反馈”更自然，避免重新把内部证据摊回中间学习线程
+- 收敛用户侧 activity 节奏：让"作答完成 -> 下一轮简短诊断 / 动作反馈"更自然，避免重新把内部证据摊回中间学习线程
 - 规划后续可借鉴的学习模式扩展项：`hint / more questions / performance feedback / 材料直出 quiz 或 study guide`，但不作为第一版选择题 session 的阻塞项
-- 将“project-level material library + session / turn attachments”收成稳定 contract，替换当前前端先行适配的数据壳
+- 将"project-level material library + session / turn attachments"收成稳定 contract，替换当前前端先行适配的数据壳
 - 将多 activity / card deck 从前端 fixture 和过渡归一化推进到真实后端事件
 - 将前端已出现的学习交互件整理成后端 prompt / contract 需求清单，供学习引擎 owner 对齐实现
 - 收敛 tutor system prompt：明确何时发起 activity、何时只给短引导、何时禁止继续自由讲解
@@ -175,17 +179,18 @@
 - 支持知识点 archive 建议与确认流
 - 打通 `exercise-result / review-result` 回传与状态回写闭环，让练习结果和复习表现真正影响下一轮诊断
 - 决定当前 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
-- 决定主案例稳定后优先补哪个次级 demo surface：继续放大“材料导入”，还是转向“导师对练”
+- 决定主案例稳定后优先补哪个次级 demo surface：继续放大"材料导入"，还是转向"导师对练"
 - 补答辩素材与竞品对比摘要，避免 demo 能演示但叙事支撑不足
-- 可选：用真实 API key 做端到端测试，迭代 LLM prompt 效果
+- 可选：迭代 LLM prompt 效果（真实 API 测试已通过）
 - 可选：清理 `enrich_plan_steps`（已被 `llm_build_plan` 替代）
 
 ### Risks
 
 - 如果 Project、Knowledge Point、Session 三个对象边界没有尽快在代码里落稳，MVP 会继续带着旧的 thread-centric 结构前进，后续改动成本会放大
-- 如果知识点新增和 archive 规则不够克制，项目内知识点池会快速膨胀，削弱“系统在组织学习”的主感受
-- 如果 project learning profile 做得过重或过拟人，会把 MVP 从“编排系统”拉偏成“画像产品”
+- 如果知识点新增和 archive 规则不够克制，项目内知识点池会快速膨胀，削弱"系统在组织学习"的主感受
+- 如果 project learning profile 做得过重或过拟人，会把 MVP 从"编排系统"拉偏成"画像产品"
 - 如果过早引入复杂 graph 或多 agent，当前 demo 容易被工程结构拖慢
 - 如果 demo 展示很多能力但没有主线，差异点会不明显
 - 如果主案例虽然锁定，但状态来源和动作理由不够可信，评委仍会把它看成概念样机
-- 如果继续沿用“展示型 plan + 串行文本调用”，agent 会更像会解释的脚本，而不是会安排真实学习动作的系统
+- 中转站 API 单次端到端请求约 27-33s（3 次串行 LLM 调用），延迟主要在中转站/模型侧
+- 如果继续沿用"展示型 plan + 串行文本调用"，agent 会更像会解释的脚本，而不是会安排真实学习动作的系统

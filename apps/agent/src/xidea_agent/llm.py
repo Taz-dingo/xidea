@@ -16,9 +16,11 @@ import json
 import logging
 import os
 import re
+import time
 from ast import literal_eval
 from collections.abc import Iterator
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import httpx
 
@@ -626,6 +628,7 @@ def _chat_completion(
     temperature: float,
     max_tokens: int,
     expect_json_object: bool = False,
+    _caller: str = "",
 ):
     kwargs: dict[str, object] = {
         "model": llm.model,
@@ -642,7 +645,37 @@ def _chat_completion(
             }
         }
 
-    return llm.client.chat.completions.create(**kwargs)
+    label = _caller or "chat_completion"
+    t0 = time.time()
+    logger.info("[LLM:%s] calling model=%s provider=%s", label, llm.model, llm.provider)
+
+    if _read_bool_env("XIDEA_LLM_FORCE_STREAM", False):
+        kwargs["stream"] = True
+        stream = llm.client.chat.completions.create(**kwargs)
+        result = _collect_stream_as_response(stream)
+        elapsed = time.time() - t0
+        content_len = len(getattr(result.choices[0].message, "content", "") or "")
+        logger.info("[LLM:%s] done in %.2fs (stream-collected, %d chars)", label, elapsed, content_len)
+        return result
+
+    result = llm.client.chat.completions.create(**kwargs)
+    elapsed = time.time() - t0
+    content_len = len(getattr(result.choices[0].message, "content", "") or "")
+    logger.info("[LLM:%s] done in %.2fs (%d chars)", label, elapsed, content_len)
+    return result
+
+
+def _collect_stream_as_response(stream):
+    """Consume a streaming response and reassemble it into a non-streaming shape."""
+    content_parts: list[str] = []
+    for chunk in stream:
+        text = _extract_stream_chunk_text(chunk)
+        if text:
+            content_parts.append(text)
+    full_content = "".join(content_parts)
+    message = SimpleNamespace(content=full_content)
+    choice = SimpleNamespace(message=message)
+    return SimpleNamespace(choices=[choice])
 
 
 def _chat_completion_stream(
@@ -651,6 +684,7 @@ def _chat_completion_stream(
     messages: list[dict[str, str]],
     temperature: float,
     max_tokens: int,
+    _caller: str = "",
 ):
     kwargs: dict[str, object] = {
         "model": llm.model,
@@ -666,7 +700,39 @@ def _chat_completion_stream(
             }
         }
 
-    return llm.client.chat.completions.create(**kwargs)
+    label = _caller or "chat_completion_stream"
+    logger.info("[LLM:%s] streaming model=%s provider=%s", label, llm.model, llm.provider)
+    result = llm.client.chat.completions.create(**kwargs)
+    if hasattr(result, "__iter__"):
+        return _TimedStreamWrapper(result, label)
+    return result
+
+
+class _TimedStreamWrapper:
+    """Wraps a streaming response to log total elapsed time and character count."""
+
+    def __init__(self, stream, label: str):
+        self._stream = stream
+        self._label = label
+        self._t0 = time.time()
+        self._char_count = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            chunk = next(self._stream)
+            text = _extract_stream_chunk_text(chunk)
+            self._char_count += len(text)
+            return chunk
+        except StopIteration:
+            elapsed = time.time() - self._t0
+            logger.info(
+                "[LLM:%s] stream done in %.2fs (%d chars)",
+                self._label, elapsed, self._char_count,
+            )
+            raise
 
 
 def _extract_message_text(response: object) -> str:
@@ -868,6 +934,7 @@ def llm_build_signals(
             ],
             temperature=0.3,
             max_tokens=600,
+            _caller="signal_extraction",
         )
         raw = _extract_message_text(response)
         raw = _prepare_structured_output(raw, prefer="[")
@@ -946,6 +1013,7 @@ def llm_diagnose(
             temperature=0.3,
             max_tokens=300,
             expect_json_object=True,
+            _caller="diagnosis",
         )
         raw = _extract_message_text(response)
         raw = _prepare_structured_output(raw, prefer="{")
@@ -1044,6 +1112,7 @@ def llm_build_signals_and_diagnosis(
             temperature=0.3,
             max_tokens=900,
             expect_json_object=True,
+            _caller="bundled_diagnose",
         )
         raw = _extract_message_text(response)
         raw = _prepare_structured_output(raw, prefer="{")
@@ -1124,6 +1193,7 @@ def llm_build_plan(
             temperature=0.5,
             max_tokens=600,
             expect_json_object=True,
+            _caller="build_plan",
         )
         raw = _extract_message_text(response)
         raw = _prepare_structured_output(raw, prefer="{")
@@ -1217,6 +1287,7 @@ def generate_assistant_reply(
             ],
             temperature=0.7,
             max_tokens=300,
+            _caller="generate_reply",
         )
         content = _extract_message_text(response)
         if content and content.strip():
@@ -1272,6 +1343,7 @@ def stream_assistant_reply(
             ],
             temperature=0.7,
             max_tokens=300,
+            _caller="stream_reply",
         )
 
         if hasattr(stream_or_response, "choices"):
@@ -1335,6 +1407,7 @@ def enrich_plan_steps(
             ],
             temperature=0.5,
             max_tokens=500,
+            _caller="enrich_plan",
         )
         raw = _extract_message_text(response)
         raw = raw.strip()
