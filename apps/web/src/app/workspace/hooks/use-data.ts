@@ -1,5 +1,6 @@
 import type { UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { learnerProfiles, learningUnits, sourceAssets } from "@/data/demo";
 import {
   initialKnowledgePoints,
@@ -20,12 +21,8 @@ import {
   buildDevTutorFixtureState,
 } from "@/domain/project-session-runtime";
 import type {
-  AppScreen,
-  HomeSection,
   KnowledgePointItem,
-  ProjectItem,
   SessionItem,
-  WorkspaceSection,
 } from "@/domain/project-workspace";
 import {
   getSelectedKnowledgePoint,
@@ -39,11 +36,11 @@ import {
 } from "@/app/workspace/model/selectors";
 import type {
   EditableKnowledgePointDraft,
-  PendingInitialPrompt,
-  PendingSessionIntent,
   ProjectDraft,
   ProjectMetaDraft,
 } from "@/app/workspace/model/types";
+import { useWorkspaceEntitiesStore } from "@/app/workspace/store/entities-store";
+import { useWorkspaceUiStore } from "@/app/workspace/store/ui-store";
 
 export function useWorkspaceData() {
   const initialProfile = learnerProfiles[1] ?? learnerProfiles[0];
@@ -63,16 +60,92 @@ export function useWorkspaceData() {
     );
   }
 
-  const [screen, setScreen] = useState<AppScreen>("home");
-  const [homeSection, setHomeSection] = useState<HomeSection>("all-projects");
-  const [projects, setProjects] = useState<ReadonlyArray<ProjectItem>>(initialProjects);
-  const [knowledgePoints, setKnowledgePoints] =
-    useState<ReadonlyArray<KnowledgePointItem>>(initialKnowledgePoints);
-  const [sessions, setSessions] = useState<ReadonlyArray<SessionItem>>(initialSessions);
-  const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("overview");
-  const [isProjectMetaOpen, setIsProjectMetaOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const {
+    archiveConfirmationPointId,
+    draftPrompt,
+    homeSection,
+    isCreatingProject,
+    isEditingKnowledgePoint,
+    isEditingProjectMeta,
+    isProjectMetaOpen,
+    pendingInitialPrompt,
+    pendingSessionIntent,
+    screen,
+    searchQuery,
+    selectedKnowledgePointId,
+    selectedProjectId,
+    selectedSessionId,
+    setArchiveConfirmationPointId,
+    setDraftPrompt,
+    setHomeSection,
+    setIsCreatingProject,
+    setIsEditingKnowledgePoint,
+    setIsEditingProjectMeta,
+    setIsProjectMetaOpen,
+    setPendingInitialPrompt,
+    setPendingSessionIntent,
+    setScreen,
+    setSearchQuery,
+    setSelectedKnowledgePointId,
+    setSelectedProjectId,
+    setSelectedSessionId,
+    setWorkspaceSection,
+    workspaceSection,
+  } = useWorkspaceUiStore(
+    useShallow((state) => ({
+      archiveConfirmationPointId: state.archiveConfirmationPointId,
+      draftPrompt: state.draftPrompt,
+      homeSection: state.homeSection,
+      isCreatingProject: state.isCreatingProject,
+      isEditingKnowledgePoint: state.isEditingKnowledgePoint,
+      isEditingProjectMeta: state.isEditingProjectMeta,
+      isProjectMetaOpen: state.isProjectMetaOpen,
+      pendingInitialPrompt: state.pendingInitialPrompt,
+      pendingSessionIntent: state.pendingSessionIntent,
+      screen: state.screen,
+      searchQuery: state.searchQuery,
+      selectedKnowledgePointId: state.selectedKnowledgePointId,
+      selectedProjectId: state.selectedProjectId,
+      selectedSessionId: state.selectedSessionId,
+      setArchiveConfirmationPointId: state.setArchiveConfirmationPointId,
+      setDraftPrompt: state.setDraftPrompt,
+      setHomeSection: state.setHomeSection,
+      setIsCreatingProject: state.setIsCreatingProject,
+      setIsEditingKnowledgePoint: state.setIsEditingKnowledgePoint,
+      setIsEditingProjectMeta: state.setIsEditingProjectMeta,
+      setIsProjectMetaOpen: state.setIsProjectMetaOpen,
+      setPendingInitialPrompt: state.setPendingInitialPrompt,
+      setPendingSessionIntent: state.setPendingSessionIntent,
+      setScreen: state.setScreen,
+      setSearchQuery: state.setSearchQuery,
+      setSelectedKnowledgePointId: state.setSelectedKnowledgePointId,
+      setSelectedProjectId: state.setSelectedProjectId,
+      setSelectedSessionId: state.setSelectedSessionId,
+      setWorkspaceSection: state.setWorkspaceSection,
+      workspaceSection: state.workspaceSection,
+    })),
+  );
+  const {
+    knowledgePoints,
+    projectMaterialIdsByProject,
+    projects,
+    sessions,
+    setKnowledgePoints,
+    setProjectMaterialIdsByProject,
+    setProjects,
+    setSessions,
+  } = useWorkspaceEntitiesStore(
+    useShallow((state) => ({
+      knowledgePoints: state.knowledgePoints,
+      projectMaterialIdsByProject: state.projectMaterialIdsByProject,
+      projects: state.projects,
+      sessions: state.sessions,
+      setKnowledgePoints: state.setKnowledgePoints,
+      setProjectMaterialIdsByProject: state.setProjectMaterialIdsByProject,
+      setProjects: state.setProjects,
+      setSessions: state.setSessions,
+    })),
+  );
   const [projectDraft, setProjectDraft] = useState<ProjectDraft>({
     name: "",
     topic: "",
@@ -80,47 +153,17 @@ export function useWorkspaceData() {
     specialRulesText: "",
     initialMaterialIds: [],
   });
-  const [isEditingProjectMeta, setIsEditingProjectMeta] = useState(false);
   const [projectMetaDraft, setProjectMetaDraft] = useState<ProjectMetaDraft>({
     topic: initialProject.topic,
     description: initialProject.description,
     specialRulesText: initialProject.specialRules.join("\n"),
     materialIds: initialKnowledgePoints.flatMap((point) => point.sourceAssetIds),
   });
-  const [isEditingKnowledgePoint, setIsEditingKnowledgePoint] = useState(false);
-  const [archiveConfirmationPointId, setArchiveConfirmationPointId] = useState<string | null>(
-    null,
-  );
   const [knowledgePointDraft, setKnowledgePointDraft] =
     useState<EditableKnowledgePointDraft>({
       title: initialKnowledgePoint.title,
       description: initialKnowledgePoint.description,
     });
-  const [pendingSessionIntent, setPendingSessionIntent] =
-    useState<PendingSessionIntent | null>(null);
-  const [pendingInitialPrompt, setPendingInitialPrompt] =
-    useState<PendingInitialPrompt | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState(initialProject.id);
-  const [selectedSessionId, setSelectedSessionId] = useState("");
-  const [selectedKnowledgePointId, setSelectedKnowledgePointId] = useState(
-    initialKnowledgePoint.id,
-  );
-  const [projectMaterialIdsByProject, setProjectMaterialIdsByProject] = useState<
-    Record<string, ReadonlyArray<string>>
-  >(() =>
-    Object.fromEntries(
-      initialProjects.map((project) => [
-        project.id,
-        Array.from(
-          new Set(
-            initialKnowledgePoints
-              .filter((point) => point.projectId === project.id)
-              .flatMap((point) => point.sourceAssetIds),
-          ),
-        ),
-      ]),
-    ),
-  );
   const [, setSessionEntryModes] = useState<Record<string, AgentEntryMode>>(() =>
     Object.fromEntries(initialSessions.map((session) => [session.id, "chat-question"])),
   );
@@ -134,7 +177,6 @@ export function useWorkspaceData() {
   const [sessionMaterialTrayOpen, setSessionMaterialTrayOpen] = useState<
     Record<string, boolean>
   >({});
-  const [draftPrompt, setDraftPrompt] = useState("");
   const [devTutorFixtureState, setDevTutorFixtureState] =
     useState<DevTutorFixtureState | null>(() => {
       if (!isDevEnvironment || typeof window === "undefined") {
