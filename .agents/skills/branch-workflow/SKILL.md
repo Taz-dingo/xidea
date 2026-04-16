@@ -26,6 +26,9 @@ Read these files in order:
 - start new scoped work from `main` when practical
 - keep one short-lived branch per topic
 - default to one branch for one PR, then delete the branch after merge
+- prefer small, reviewable commits over one large catch-all commit
+- once one coherent slice builds or is otherwise stable, commit it before continuing
+- do not bundle unrelated frontend, backend, docs, and workflow changes into one commit if they can be split cleanly
 - branch naming must be `type/owner/topic`
 - allowed `type` values are `feat`, `docs`, `fix`, and `refactor`
 - if the task changes team-wide understanding, update `docs/memory/decision-log.md`
@@ -64,6 +67,7 @@ When the user says they want a branch mainly to discuss, align, or document arch
 5. Tell the user the final branch name and any `type` or `owner` assumption you made.
 6. After a PR is merged, prefer deleting the branch and opening the next task from a fresh branch instead of reusing the old one.
 7. Before finishing the task, check whether `decision-log`, `status`, or `plan` also need updates.
+8. If the work naturally breaks into stable slices, create multiple focused commits instead of waiting until the whole branch is done.
 
 ## Output Expectations
 

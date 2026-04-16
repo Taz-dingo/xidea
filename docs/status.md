@@ -130,6 +130,17 @@
 - 已确认下一步学习体验增强优先项之一是 Duolingo 风格的答对 / 答错 / 跳过 / 翻卡音效与动效，先记入 backlog，后续再实现
 - 已确认前端新增学习交互需要同步反推后端 tutor prompt 和 event contract；否则只会出现 UI 有壳、agent 不会稳定配合的落差
 - 已将这轮前端交互对后端的具体支撑要求补进 reference：包括随时加材料、card deck、作答 verdict / 短反馈、以及 tutor prompt 的回合节奏要求
+- `apps/web` 已将主页面切成 `App Home -> Project Workspace -> Knowledge Point Detail` 三层页面，并把默认进入 project 时的主区改成 knowledge point list，而不是自动展开 session
+- `apps/web` 当前已实现 project-centric workspace 的两种核心态：默认浏览态显示 profile summary + knowledge point grid，只有用户显式进入 `project / study / review` session 后才展开消息工作区
+- `apps/web` 已将 project-centric 的前端共享类型与 seed 数据从 `App.tsx` 抽到独立 `domain/data` 模块，并让 `More` 入口承载 project 级 meta 面板，开始补齐 special rules / materials / session summary 这些二级信息
+- `apps/web` 顶部搜索现已接成真实过滤：首页按 project 过滤，workspace 浏览态按 knowledge point 过滤；knowledge point detail 也已支持本地编辑 title / description 并即时写回
+- `apps/web` 已将 session card、meta panel、metric tile、knowledge point card 等展示原语抽到独立组件模块，`App.tsx` 继续收敛为状态与页面编排层
+- `apps/web` 已把 `新建 Project` 从占位按钮补成正式表单流：现在可以录入 project 名称、主题、描述、special rules 和初始 materials，并同步生成初始 project session
+- `apps/web` 当前已把 project materials 升成 project 级本地状态：`Project Meta` 面板里可以继续编辑主题、描述、special rules 和材料池，不再只能在创建时一次性录入
+- `apps/web` 已将 `study / review` 的启动改成先进入待开始卡，只有用户发出第一条真实消息后才懒创建对应 session，不再点按钮就立即新建空 session
+- `apps/web` 已将待开始卡和 session 内材料 tray 对齐到 project 级材料池：当前 session attachment 只能从当前 project materials 里选择，不再直接从全局 demo assets 任意挂载
+- `apps/web` 的 project-centric 前端共享模型已进一步收口：UI 侧 session 关联字段从 `unitId` 统一改为 `knowledgePointId`，减少旧 thread/unit 心智继续外溢
+- `apps/web` 当前已把浏览态知识点卡片收成整卡可点击，并补回掌握度图形、学习状态/复习时间/更新时间 tag 以及更清晰的 session 类型标签，提升 workspace 可读性
 
 ### In Progress
 
