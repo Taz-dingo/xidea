@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from "react";
 import type { SourceAsset } from "@/domain/types";
+import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import type {
   KnowledgePointItem,
   KnowledgePointStatus,
@@ -267,6 +268,58 @@ export function CompactNote({
       <span className="min-w-0 flex-1 break-words text-right text-sm leading-5 text-[var(--xidea-charcoal)]">
         {value}
       </span>
+    </div>
+  );
+}
+
+function getHeatmapCellClass(intensity: ReviewHeatmapCell["intensity"]): string {
+  switch (intensity) {
+    case 0:
+      return "bg-[var(--xidea-parchment)]";
+    case 1:
+      return "bg-[#e7d8cf]";
+    case 2:
+      return "bg-[#ddb9a8]";
+    case 3:
+      return "bg-[#d98e70]";
+    case 4:
+      return "bg-[var(--xidea-terracotta)]";
+  }
+}
+
+export function ReviewHeatmap({
+  weeks,
+}: {
+  weeks: ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>>;
+}): ReactElement {
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1.5">
+        {weeks.map((week, weekIndex) => (
+          <div className="grid gap-1.5" key={`review-week-${weekIndex}`}>
+            {week.map((cell) => (
+              <div
+                className={`h-4 w-4 rounded-[4px] border border-[var(--xidea-border)] ${getHeatmapCellClass(cell.intensity)}`}
+                key={cell.dateKey}
+                title={cell.tooltip}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-3 text-[11px] text-[var(--xidea-stone)]">
+        <span>近 5 周复习轨迹</span>
+        <div className="flex items-center gap-1.5">
+          <span>低</span>
+          {[0, 1, 2, 3, 4].map((intensity) => (
+            <span
+              className={`h-3 w-3 rounded-[3px] border border-[var(--xidea-border)] ${getHeatmapCellClass(intensity as ReviewHeatmapCell["intensity"])}`}
+              key={`review-legend-${intensity}`}
+            />
+          ))}
+          <span>高</span>
+        </div>
+      </div>
     </div>
   );
 }

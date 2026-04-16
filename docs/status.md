@@ -6,6 +6,10 @@
 
 #### 本轮方向确认
 
+- 明确新增一条团队级实现约束：不允许把过多逻辑持续堆进单个文件；这条规则同时适用于前端、后端和 agent，`App` / page / screen / endpoint / graph 入口默认只负责编排，领域逻辑、adapter、repository、prompt 和可复用实现细节必须按职责拆分
+- 已新增 repo-local `clean-code-guardrails` skill，并接入项目技能清单，用来在前端、后端和 agent 里显式检查单文件职责漂移与入口文件过载
+- `apps/web` 本轮继续把 session 工作区从 `App.tsx` 中拆开：session 视图已独立成 workspace/thread/inspector 组件，复习热力图与 session runtime helper 也已移到独立 domain 模块，`App.tsx` 进一步收敛为页面编排与状态 wiring
+
 - 基于一轮产品讨论，将当前 MVP 方向收敛为 project-centric learning workspace，而不是以单条 thread 为中心的 tutor 界面
 - 明确当前产品主对象收敛为 `Project / Knowledge Point / Session / Learning Profile`
 - 明确创建 Project 时必须先确认学习主题，并允许用户直接提供初始材料；AI 自动找资料不作为第一版主链路前提
@@ -145,6 +149,9 @@
 - `apps/web` 已将待开始卡和 session 内材料 tray 对齐到 project 级材料池：当前 session attachment 只能从当前 project materials 里选择，不再直接从全局 demo assets 任意挂载
 - `apps/web` 的 project-centric 前端共享模型已进一步收口：UI 侧 session 关联字段从 `unitId` 统一改为 `knowledgePointId`，减少旧 thread/unit 心智继续外溢
 - `apps/web` 当前已把浏览态知识点卡片收成整卡可点击，并补回掌握度图形、学习状态/复习时间/更新时间 tag 以及更清晰的 session 类型标签，提升 workspace 可读性
+- `apps/web` 首页左侧 `All Projects / Recent / Due Review / Archived` 现已接成真实筛选，不再只是静态占位按钮；首页 `Continue` 卡会跟随当前筛选结果切换
+- `apps/web` 右栏已补上 `Review Engine` 监控区，当前会直接展示近 5 周复习热力图、最近复盘和下次安排，不再只保留内部 helper 未落到 UI
+- `apps/web` 的 `Knowledge Point Detail` 已补复习热力图，并把 archive 从一键切状态收成确认后执行的交互，先让知识点生命周期更接近正式产品心智
 
 ### In Progress
 

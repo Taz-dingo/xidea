@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { RefreshCcw, Sparkles } from "lucide-react";
 import type {
+  HomeSection,
   KnowledgePointItem,
   ProjectItem,
   ProjectStats,
@@ -27,20 +28,28 @@ interface ProjectCardSummary {
 }
 
 export function HomeScreen({
-  continueProject,
+  continueProjectSummary,
   continueActionLabel,
-  continueProjectStats,
   filteredProjects,
+  homeSection,
+  homeSectionCounts,
   onContinueProject,
+  onHomeSectionChange,
   onOpenProject,
   onStartReview,
   totalProjects,
 }: {
-  continueProject: ProjectItem;
-  continueActionLabel: string;
-  continueProjectStats: ProjectStats;
+  continueProjectSummary: ProjectCardSummary | null;
+  continueActionLabel: string | null;
   filteredProjects: ReadonlyArray<ProjectCardSummary>;
+  homeSection: HomeSection;
+  homeSectionCounts: {
+    readonly recent: number;
+    readonly dueReview: number;
+    readonly archived: number;
+  };
   onContinueProject: () => void;
+  onHomeSectionChange: (section: HomeSection) => void;
   onOpenProject: (projectId: string) => void;
   onStartReview: () => void;
   totalProjects: number;
@@ -49,60 +58,84 @@ export function HomeScreen({
     <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
       <Card className="rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none">
         <CardContent className="space-y-2 p-3">
-          <WorkspaceNavButton active count={totalProjects} label="All Projects" onClick={() => undefined} />
-          <WorkspaceNavButton active={false} count={1} label="Recent" onClick={() => undefined} />
           <WorkspaceNavButton
-            active={false}
-            count={continueProjectStats.dueReview}
-            label="Due Review"
-            onClick={() => undefined}
+            active={homeSection === "all-projects"}
+            count={totalProjects}
+            label="All Projects"
+            onClick={() => onHomeSectionChange("all-projects")}
           />
           <WorkspaceNavButton
-            active={false}
-            count={continueProjectStats.archived}
+            active={homeSection === "recent"}
+            count={homeSectionCounts.recent}
+            label="Recent"
+            onClick={() => onHomeSectionChange("recent")}
+          />
+          <WorkspaceNavButton
+            active={homeSection === "due-review"}
+            count={homeSectionCounts.dueReview}
+            label="Due Review"
+            onClick={() => onHomeSectionChange("due-review")}
+          />
+          <WorkspaceNavButton
+            active={homeSection === "archived"}
+            count={homeSectionCounts.archived}
             label="Archived"
-            onClick={() => undefined}
+            onClick={() => onHomeSectionChange("archived")}
           />
         </CardContent>
       </Card>
 
       <div className="space-y-4">
-        <Card className="rounded-[1.5rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none">
-          <CardContent className="space-y-4 p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-2">
-                <p className="xidea-kicker text-[var(--xidea-selection-text)]">Continue</p>
-                <h2 className="text-xl font-medium text-[var(--xidea-near-black)]">
-                  {continueProject.name}
-                </h2>
-                <p className="max-w-3xl text-sm leading-7 text-[var(--xidea-charcoal)]">
-                  {continueProject.description}
-                </p>
+        {continueProjectSummary ? (
+          <Card className="rounded-[1.5rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none">
+            <CardContent className="space-y-4 p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">Continue</p>
+                  <h2 className="text-xl font-medium text-[var(--xidea-near-black)]">
+                    {continueProjectSummary.project.name}
+                  </h2>
+                  <p className="max-w-3xl text-sm leading-7 text-[var(--xidea-charcoal)]">
+                    {continueProjectSummary.project.description}
+                  </p>
+                </div>
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)]">
+                  <Sparkles className="h-5 w-5" />
+                </div>
               </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)]">
-                <Sparkles className="h-5 w-5" />
+              <div className="grid gap-3 md:grid-cols-3">
+                <MetricTile
+                  label="知识点"
+                  tone="amber"
+                  value={`${continueProjectSummary.stats.total} 个`}
+                />
+                <MetricTile
+                  label="待复习"
+                  tone="sky"
+                  value={`${continueProjectSummary.stats.dueReview} 个`}
+                />
+                <MetricTile
+                  label="下一步"
+                  tone="emerald"
+                  value={continueActionLabel ?? "继续当前 project"}
+                />
               </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <MetricTile label="知识点" tone="amber" value={`${continueProjectStats.total} 个`} />
-              <MetricTile label="待复习" tone="sky" value={`${continueProjectStats.dueReview} 个`} />
-              <MetricTile label="下一步" tone="emerald" value={continueActionLabel} />
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button
-                className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                onClick={onContinueProject}
-                type="button"
-              >
-                继续 Project
-              </Button>
-              <Button className="rounded-full" onClick={onStartReview} type="button" variant="outline">
-                <RefreshCcw className="h-4 w-4" />
-                开始复习
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                  onClick={onContinueProject}
+                  type="button"
+                >
+                  继续 Project
+                </Button>
+                <Button className="rounded-full" onClick={onStartReview} type="button" variant="outline">
+                  <RefreshCcw className="h-4 w-4" />
+                  开始复习
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {filteredProjects.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

@@ -2,6 +2,12 @@ export type SessionType = "project" | "study" | "review";
 
 export type AppScreen = "home" | "workspace" | "detail";
 
+export type HomeSection =
+  | "all-projects"
+  | "recent"
+  | "due-review"
+  | "archived";
+
 export type WorkspaceSection = "overview" | "due-review" | "archived";
 
 export type KnowledgePointStatus =

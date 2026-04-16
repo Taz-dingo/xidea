@@ -1,11 +1,13 @@
 import type { ReactElement } from "react";
 import type { KnowledgePointItem, SessionItem } from "@/domain/project-workspace";
+import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import type { SourceAsset } from "@/domain/types";
 import {
   getAssetKindLabel,
   getKnowledgePointAccent,
   InspectorCard,
   MetricTile,
+  ReviewHeatmap,
   SessionCard,
 } from "@/components/project-workspace-primitives";
 import { Badge } from "@/components/ui/badge";
@@ -29,14 +31,19 @@ export function KnowledgePointDetailScreen({
   isEditing,
   knowledgePoint,
   knowledgePointAssets,
-  onArchive,
+  isArchiveConfirmationOpen,
+  onCancelArchiveConfirmation,
   onCancelEditing,
   onChangeDraft,
+  onConfirmArchive,
   onOpenSession,
   onSave,
+  onStartArchiveConfirmation,
   onStartEditing,
   onStartReview,
   onStartStudy,
+  reviewHeatmap,
+  reviewHistorySummary,
   relatedSessions,
   selectedSessionId,
 }: {
@@ -44,14 +51,19 @@ export function KnowledgePointDetailScreen({
   isEditing: boolean;
   knowledgePoint: KnowledgePointItem;
   knowledgePointAssets: ReadonlyArray<SourceAsset>;
-  onArchive: () => void;
+  isArchiveConfirmationOpen: boolean;
+  onCancelArchiveConfirmation: () => void;
   onCancelEditing: () => void;
   onChangeDraft: (draft: EditableKnowledgePointDraftValue) => void;
+  onConfirmArchive: () => void;
   onOpenSession: (sessionId: string) => void;
   onSave: () => void;
+  onStartArchiveConfirmation: () => void;
   onStartEditing: () => void;
   onStartReview: () => void;
   onStartStudy: () => void;
+  reviewHeatmap: ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>>;
+  reviewHistorySummary: string;
   relatedSessions: ReadonlyArray<SessionItem>;
   selectedSessionId: string;
 }): ReactElement {
@@ -138,12 +150,46 @@ export function KnowledgePointDetailScreen({
                   <Button className="rounded-full" onClick={onStartEditing} type="button" variant="outline">
                     编辑
                   </Button>
-                  <Button className="rounded-full" onClick={onArchive} type="button" variant="outline">
+                  <Button
+                    className="rounded-full"
+                    onClick={onStartArchiveConfirmation}
+                    type="button"
+                    variant="outline"
+                  >
                     {knowledgePoint.status === "archived" ? "恢复" : "Archive"}
                   </Button>
                 </>
               )}
             </div>
+
+            {isArchiveConfirmationOpen ? (
+              <Card className="rounded-[1rem] border-[#ebd5cc] bg-[#f9efea] shadow-none">
+                <CardContent className="space-y-3 px-4 py-4">
+                  <p className="text-sm leading-6 text-[var(--xidea-selection-text)]">
+                    {knowledgePoint.status === "archived"
+                      ? "确认把这个知识点重新放回复习池吗？恢复后它会重新出现在活跃工作区里。"
+                      : "确认把这个知识点移出活跃池吗？当前会先按归档处理，后续再收敛成“系统建议 -> 用户确认”的正式流。"}
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                      onClick={onConfirmArchive}
+                      type="button"
+                    >
+                      {knowledgePoint.status === "archived" ? "确认恢复" : "确认归档"}
+                    </Button>
+                    <Button
+                      className="rounded-full"
+                      onClick={onCancelArchiveConfirmation}
+                      type="button"
+                      variant="outline"
+                    >
+                      取消
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -182,6 +228,13 @@ export function KnowledgePointDetailScreen({
       </div>
 
       <div className="space-y-4">
+        <InspectorCard
+          description={reviewHistorySummary}
+          title="Review Heatmap"
+        >
+          <ReviewHeatmap weeks={reviewHeatmap} />
+        </InspectorCard>
+
         <InspectorCard description="这个知识点在项目内如何被继续组织。" title="相关 Sessions">
           {relatedSessions.length > 0 ? (
             relatedSessions.map((session) => (

@@ -19,11 +19,12 @@
 
 ## Project Skills
 
-本项目当前默认使用 9 个技能入口，其中通用工程 skill 优先采用 vendored 外部 skill，项目内只维护 Xidea 特有的协作与文档 skill：
+本项目当前默认使用 10 个技能入口，其中通用工程 skill 优先采用 vendored 外部 skill，项目内只维护 Xidea 特有的协作与文档 skill：
 
 - `project-onboarding`
 - `branch-workflow`
 - `docs-governance`
+- `clean-code-guardrails`
 - `vercel-react-best-practices`
 - `pr-description`
 - `python-pro`
@@ -38,6 +39,7 @@
 - 开始接手项目、隔一段时间重新进入、或 agent 需要快速建立上下文时，用 `project-onboarding`
 - 需要拉分支、改分支名、检查分支命名、决定 `type/owner/topic`、或准备符合规范的 PR 时，用 `branch-workflow`
 - 需要理解文档结构、判断该读哪几份、决定信息该写到哪里、或清理重复文档时，用 `docs-governance`
+- 遇到 `App`、page、endpoint、graph/runtime 入口开始变重，或需要边开发边拆分职责时，用 `clean-code-guardrails`
 - 做前端页面、React 组件、交互性能和实现细节时，用 `vercel-react-best-practices`
 - 需要起 PR、填写 PR 描述、整理 `Summary / Screenshots / Risks` 时，用 `pr-description`
 - 写 Python 后端、类型标注、测试、异步逻辑时，用 `python-pro`
@@ -48,7 +50,7 @@
 如果一个任务同时涉及 UI、React 和类型设计，可以组合使用。
 如果一个任务同时涉及前端交互与后端 agent contract，优先组合 `vercel-react-best-practices`、`ai-agent-basics`、`langgraph-docs`。
 
-默认建议先运行 `project-onboarding`；涉及开分支、重命名分支或 PR 协作时，再加 `branch-workflow`；需要补 PR 描述时，再加 `pr-description`。
+默认建议先运行 `project-onboarding`；遇到超重入口文件或职责漂移时，再加 `clean-code-guardrails`；涉及开分支、重命名分支或 PR 协作时，再加 `branch-workflow`；需要补 PR 描述时，再加 `pr-description`。
 
 ## Repo Conventions
 
@@ -58,6 +60,9 @@
 - Web 纯类型和纯逻辑放在 `apps/web/src/domain`
 - Python agent 核心放在 `apps/agent/src/xidea_agent`
 - 长期记忆文档放在 `docs/memory`
+- 不允许把过多职责和逻辑持续堆进单个文件；这条约束同时适用于前端、后端和 agent 实现
+- 页面编排、领域逻辑、数据转换、网络交互、持久化访问、graph/node 逻辑和展示组件都必须按职责拆分
+- `App`、page / screen / route、FastAPI endpoint、LangGraph graph/runtime 入口文件默认只负责编排与组装，不承担大段 domain helper、adapter、repository、prompt 构造或可独立复用的实现细节
 
 ## Collaboration Rules
 
@@ -68,6 +73,7 @@
 - 可以提出额外产品能力建议，但未经用户明确确认，不要主动实现新的产品功能
 - 涉及代码改动的任务默认补测试；如果当前阶段不补测试，必须明确说明原因、风险和后续补齐点
 - 会影响团队共识的内容，先更新 `docs/memory/decision-log.md`
+- 如果某个文件开始同时承载多个职责，先拆分再继续堆功能；不要把“先做完再重构”当成前端、后端或 agent 的默认路径
 
 ## Current Workstream Split
 

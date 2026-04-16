@@ -11,15 +11,13 @@ import {
 } from "react";
 import {
   ArrowLeft,
-  FileInput,
   MessageSquareText,
   MoreHorizontal,
   Plus,
   Search,
 } from "lucide-react";
 import { KnowledgePointDetailScreen } from "@/components/project-workspace-detail";
-import { LearningActivityStack } from "@/components/learning-activity-stack";
-import { MarkdownContent } from "@/components/markdown-content";
+import { ProjectSessionWorkspace } from "@/components/project-session-workspace";
 import {
   CreateProjectPanel,
   EditProjectMetaPanel,
@@ -29,28 +27,13 @@ import {
   WorkspaceBrowseScreen,
 } from "@/components/project-workspace-screens";
 import {
-  CompactNote,
-  getAssetKindLabel,
-  MetricTile,
-  MonitorSection,
   ProjectMetaPanel,
-  SessionCard,
-  SessionTypeBadge,
-  WorkspaceNavButton,
-  getKnowledgePointAccent,
 } from "@/components/project-workspace-primitives";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
 import { learnerProfiles, learningUnits, projectContext, sourceAssets } from "@/data/demo";
 import {
   initialKnowledgePoints,
@@ -60,7 +43,6 @@ import {
 import {
   getTutorFixtureScenario,
   tutorFixtureScenarios,
-  type TutorFixtureScenario,
 } from "@/data/tutor-fixtures";
 import {
   buildDefaultAgentPrompt,
@@ -70,23 +52,41 @@ import {
   hydrateRuntimeSnapshotFromLearnerState,
   type AgentAssetSummary,
   type AgentEntryMode,
-  type AgentReviewEvent,
   type AgentReviewInspector,
-  type AgentAction,
   type RuntimeSnapshot,
 } from "@/domain/agent-runtime";
 import {
   getNextSuggestedAction,
   getProjectStats,
   type AppScreen,
+  type HomeSection,
   type KnowledgePointItem,
-  type KnowledgePointStatus,
   type ProjectItem,
   type SessionItem,
   type SessionType,
   type WorkspaceSection,
 } from "@/domain/project-workspace";
-import type { LearningActivitySubmission, LearningMode, SourceAsset } from "@/domain/types";
+import {
+  buildEmptyReviewHeatmap,
+  buildReviewHeatmap,
+  formatDateLabel,
+  getLatestIsoDate,
+} from "@/domain/review-heatmap";
+import {
+  buildDevTutorFixtureState,
+  buildGeneratedProfileSummary,
+  createFixtureUiMessage,
+  getActionLabel,
+  getDefaultSourceAssetIds,
+  getErrorMessage,
+  getLatestReviewEvent,
+  getNextFixtureSnapshot,
+  getRelativeTimeRank,
+  type ActivityResolution,
+  type DevTutorFixtureState,
+} from "@/domain/project-session-runtime";
+import type { LearningActivitySubmission, SourceAsset } from "@/domain/types";
+import { getLatestUserDraft } from "@/domain/chat-message";
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
 import {
   getAgentBaseUrl,
@@ -96,15 +96,6 @@ import {
   getReviewInspector,
   getThreadContext,
 } from "@/lib/agent-client";
-
-type ActivityResolution = "submitted" | "skipped";
-
-interface DevTutorFixtureState {
-  readonly fixtureId: string;
-  readonly messages: ReadonlyArray<UIMessage>;
-  readonly snapshot: RuntimeSnapshot;
-  readonly errorMessage: string | null;
-}
 
 interface ProjectDraft {
   readonly name: string;
@@ -154,316 +145,6 @@ function setDevTutorFixtureQueryParam(fixtureId: string | null): void {
   window.history.replaceState({}, "", url);
 }
 
-const metricCopy = [
-  { key: "understandingLevel", label: "理解", tone: "emerald" },
-  { key: "memoryStrength", label: "记忆", tone: "amber" },
-  { key: "confusion", label: "混淆", tone: "rose" },
-  { key: "transferReadiness", label: "迁移", tone: "sky" },
-] as const;
-
-function getModeBadgeClass(_mode: LearningMode): string {
-  return "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)]";
-}
-
-function getActionLabel(action: AgentAction): string {
-  switch (action) {
-    case "apply":
-      return "迁移验证";
-    case "clarify":
-      return "边界澄清";
-    case "practice":
-      return "练习强化";
-    case "review":
-      return "复习回拉";
-    case "teach":
-      return "导师建模";
-  }
-}
-
-function sanitizeVisibleAssistantText(text: string): string {
-  const withoutThinkBlocks = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
-  const withoutDanglingThink = withoutThinkBlocks.replace(/<think\b[^>]*>[\s\S]*$/i, "");
-  const withoutWrappers = withoutDanglingThink
-    .replace(/^\s*<(answer|output|response|result|json)\b[^>]*>\s*/i, "")
-    .replace(/\s*<\/(answer|output|response|result|json)>\s*$/i, "");
-  return withoutWrappers.trim();
-}
-
-function getMessageText(message: UIMessage): string {
-  const textFromParts = message.parts
-    .map((part) => {
-      if (part.type === "text") {
-        return part.text;
-      }
-
-      return "";
-    })
-    .join("")
-    .trim();
-  const fallbackText =
-    typeof (message as { content?: unknown }).content === "string"
-      ? (message as { content?: string }).content ?? ""
-      : "";
-  const text = (textFromParts || fallbackText).trim();
-  const visibleText = message.role === "assistant" ? sanitizeVisibleAssistantText(text) : text;
-
-  if (visibleText === "" && message.role === "assistant") {
-    return "";
-  }
-
-  return visibleText === "" ? "当前消息没有文本内容。" : visibleText;
-}
-
-function getLatestUserDraft(messages: ReadonlyArray<UIMessage>, draftPrompt: string): string {
-  const latestUserMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === "user");
-
-  if (latestUserMessage !== undefined) {
-    const text = getMessageText(latestUserMessage);
-    if (text !== "当前消息没有文本内容。") {
-      return text;
-    }
-  }
-
-  return draftPrompt.trim();
-}
-
-function createFixtureUiMessage(
-  role: "assistant" | "user",
-  content: string,
-  seed: string,
-): UIMessage {
-  return {
-    id: `fixture-${seed}-${Math.random().toString(36).slice(2, 8)}`,
-    role,
-    parts: [{ type: "text", text: content }],
-    content,
-  } as UIMessage;
-}
-
-function buildDevTutorFixtureState(
-  fixture: TutorFixtureScenario,
-): DevTutorFixtureState {
-  return {
-    fixtureId: fixture.id,
-    messages: fixture.messages.map((message, index) =>
-      createFixtureUiMessage(message.role, message.content, `${fixture.id}-${index}`),
-    ),
-    snapshot: fixture.snapshot,
-    errorMessage: null,
-  };
-}
-
-function getDefaultSourceAssetIds(): ReadonlyArray<string> {
-  return [];
-}
-
-function getNextFixtureSnapshot(
-  snapshot: RuntimeSnapshot,
-  assistantMessage: string,
-): RuntimeSnapshot {
-  const remainingActivities = snapshot.activities.slice(1);
-
-  return {
-    ...snapshot,
-    activity: remainingActivities[0] ?? null,
-    activities: remainingActivities,
-    assistantMessage,
-  };
-}
-
-function buildGeneratedProfileSummary(
-  runtime: RuntimeSnapshot,
-  latestUserInput: string,
-): {
-  readonly title: string;
-  readonly summary: string;
-  readonly evidence: ReadonlyArray<string>;
-} {
-  const stage =
-    runtime.state.recommendedAction === "clarify" || runtime.state.confusion >= 65
-      ? "概念边界待拉清"
-      : runtime.state.recommendedAction === "review" || runtime.state.memoryStrength <= 50
-        ? "记忆可用性待回拉"
-        : runtime.state.recommendedAction === "apply" ||
-            (runtime.state.transferReadiness !== null && runtime.state.transferReadiness >= 65)
-          ? "已进入项目迁移验证"
-          : "理解框架待稳定";
-  const evidence = [
-    runtime.state.weakSignals[0] ?? runtime.stateSource,
-    runtime.source === "live-agent"
-      ? runtime.decision.reason
-      : "当前只恢复了 learner state，下一轮会基于真实状态重新生成诊断和路径。",
-    latestUserInput === "" ? "还没有新的用户输入，先沿用当前 session 状态。" : `最近输入：${latestUserInput}`,
-  ];
-
-  return {
-    title: `系统当前把这个 session 视为「${stage}」`,
-    summary: "画像来自当前 learner state、诊断动作和已落库证据，不再依赖前端预设角色猜测。",
-    evidence,
-  };
-}
-
-interface ReviewHeatmapCell {
-  readonly dateKey: string;
-  readonly tooltip: string;
-  readonly intensity: 0 | 1 | 2 | 3 | 4;
-}
-
-function getLatestReviewEvent(
-  events: ReadonlyArray<AgentReviewEvent>,
-  kind: AgentReviewEvent["event_kind"],
-): AgentReviewEvent | null {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (event?.event_kind === kind) {
-      return event;
-    }
-  }
-
-  return null;
-}
-
-function formatDateLabel(value: string | null): string | null {
-  if (value === null || value.trim() === "") {
-    return null;
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toISOString().slice(0, 10);
-}
-
-function toDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function buildReviewHeatmap(
-  reviewEvents: ReadonlyArray<AgentReviewEvent>,
-  lastReviewedAt: string | null,
-  nextReviewAt: string | null,
-): ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>> {
-  const totalDays = 35;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const eventMap = new Map<string, { intensity: ReviewHeatmapCell["intensity"]; notes: string[] }>();
-
-  for (const event of reviewEvents) {
-    const date = formatDateLabel(event.event_at);
-    if (date === null) {
-      continue;
-    }
-
-    const existing = eventMap.get(date);
-    const nextIntensity = event.event_kind === "reviewed" ? 4 : 2;
-    const nextNotes = existing?.notes ?? [];
-    nextNotes.push(
-      event.event_kind === "reviewed"
-        ? "已发生一次真实复盘"
-        : `已安排复盘：${event.review_reason ?? "等待本轮回拉"}`,
-    );
-    eventMap.set(date, {
-      intensity: existing ? Math.max(existing.intensity, nextIntensity) as ReviewHeatmapCell["intensity"] : nextIntensity,
-      notes: nextNotes,
-    });
-  }
-
-  const cells: ReviewHeatmapCell[] = [];
-
-  for (let index = totalDays - 1; index >= 0; index -= 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - index);
-
-    const dateKey = toDateKey(date);
-    const event = eventMap.get(dateKey);
-    let intensity: 0 | 1 | 2 | 3 | 4 = event?.intensity ?? 0;
-    const notes = event?.notes ?? [];
-
-    if (lastReviewedAt !== null && dateKey === lastReviewedAt) {
-      intensity = Math.max(intensity, 4) as ReviewHeatmapCell["intensity"];
-      notes.push("当前 learner state 记录：最近一次复盘");
-    }
-
-    if (nextReviewAt !== null && dateKey === nextReviewAt) {
-      intensity = Math.max(intensity, 1) as ReviewHeatmapCell["intensity"];
-      notes.push("当前 Review Engine 计划：下一次复盘");
-    }
-
-    const tooltip =
-      notes.length === 0
-        ? `${dateKey} 暂无复习动作`
-        : `${dateKey} ${notes.join(" / ")}`;
-
-    cells.push({
-      dateKey,
-      tooltip,
-      intensity,
-    });
-  }
-
-  return Array.from({ length: 5 }, (_, weekIndex) =>
-    cells.slice(weekIndex * 7, weekIndex * 7 + 7),
-  );
-}
-
-function buildEmptyReviewHeatmap(): ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>> {
-  const totalDays = 35;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const cells = Array.from({ length: totalDays }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (totalDays - index - 1));
-
-    return {
-      dateKey: toDateKey(date),
-      tooltip: `${toDateKey(date)} 暂无复习动作`,
-      intensity: 0 as const,
-    };
-  });
-
-  return Array.from({ length: 5 }, (_, weekIndex) =>
-    cells.slice(weekIndex * 7, weekIndex * 7 + 7),
-  );
-}
-
-function getHeatmapCellClass(intensity: ReviewHeatmapCell["intensity"]): string {
-  switch (intensity) {
-    case 0:
-      return "bg-[var(--xidea-parchment)]";
-    case 1:
-      return "bg-[#e7d8cf]";
-    case 2:
-      return "bg-[#ddb9a8]";
-    case 3:
-      return "bg-[#d98e70]";
-    case 4:
-      return "bg-[var(--xidea-terracotta)]";
-  }
-}
-
-function getErrorMessage(error: Error | undefined): string | null {
-  if (error === undefined) {
-    return null;
-  }
-
-  const message = error.message.trim();
-  if (message === "") {
-    return "Agent 当前不可用，请稍后重试。";
-  }
-
-  if (message.startsWith("{")) {
-    return "Agent 当前不可用，请检查本地服务或代理配置。";
-  }
-
-  return message;
-}
-
 export function App(): ReactElement {
   const initialProfile = learnerProfiles[1] ?? learnerProfiles[0];
   const initialUnit = learningUnits[0];
@@ -481,6 +162,7 @@ export function App(): ReactElement {
   }
 
   const [screen, setScreen] = useState<AppScreen>("home");
+  const [homeSection, setHomeSection] = useState<HomeSection>("all-projects");
   const [projects, setProjects] = useState<ReadonlyArray<ProjectItem>>(initialProjects);
   const [knowledgePoints, setKnowledgePoints] = useState<ReadonlyArray<KnowledgePointItem>>(initialKnowledgePoints);
   const [sessions, setSessions] = useState<ReadonlyArray<SessionItem>>(initialSessions);
@@ -503,6 +185,7 @@ export function App(): ReactElement {
     materialIds: initialKnowledgePoints.flatMap((point) => point.sourceAssetIds),
   });
   const [isEditingKnowledgePoint, setIsEditingKnowledgePoint] = useState(false);
+  const [archiveConfirmationPointId, setArchiveConfirmationPointId] = useState<string | null>(null);
   const [knowledgePointDraft, setKnowledgePointDraft] = useState<EditableKnowledgePointDraft>({
     title: initialKnowledgePoint.title,
     description: initialKnowledgePoint.description,
@@ -611,6 +294,20 @@ export function App(): ReactElement {
           ),
     [selectedKnowledgePoint, selectedProjectSessions],
   );
+  const knowledgePointReviewInspectors = useMemo(
+    () =>
+      knowledgePointRelatedSessions
+        .map((session) => sessionReviewInspectors[session.id])
+        .filter(
+          (inspector): inspector is AgentReviewInspector =>
+            inspector !== null && inspector !== undefined,
+        ),
+    [knowledgePointRelatedSessions, sessionReviewInspectors],
+  );
+  const knowledgePointReviewEvents = useMemo(
+    () => knowledgePointReviewInspectors.flatMap((inspector) => inspector.events),
+    [knowledgePointReviewInspectors],
+  );
   const selectedProjectMaterials = useMemo(
     () =>
       sourceAssets.filter((asset) =>
@@ -637,18 +334,59 @@ export function App(): ReactElement {
     }
   }, [selectedProjectKnowledgePoints, workspaceSection]);
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
-  const filteredProjects = useMemo(() => {
+  const projectSummaries = useMemo(
+    () =>
+      projects.map((project) => ({
+        project,
+        stats: getProjectStats(
+          knowledgePoints.filter((point) => point.projectId === project.id),
+        ),
+      })),
+    [knowledgePoints, projects],
+  );
+  const recentProjectSummaries = useMemo(
+    () =>
+      [...projectSummaries]
+        .sort(
+          (left, right) =>
+            getRelativeTimeRank(right.project.updatedAt) -
+            getRelativeTimeRank(left.project.updatedAt),
+        )
+        .slice(0, Math.min(projectSummaries.length, 4)),
+    [projectSummaries],
+  );
+  const homeSectionCounts = useMemo(
+    () => ({
+      recent: recentProjectSummaries.length,
+      dueReview: projectSummaries.filter(({ stats }) => stats.dueReview > 0).length,
+      archived: projectSummaries.filter(({ stats }) => stats.archived > 0).length,
+    }),
+    [projectSummaries, recentProjectSummaries.length],
+  );
+  const homeSectionProjectSummaries = useMemo(() => {
+    switch (homeSection) {
+      case "all-projects":
+        return projectSummaries;
+      case "recent":
+        return recentProjectSummaries;
+      case "due-review":
+        return projectSummaries.filter(({ stats }) => stats.dueReview > 0);
+      case "archived":
+        return projectSummaries.filter(({ stats }) => stats.archived > 0);
+    }
+  }, [homeSection, projectSummaries, recentProjectSummaries]);
+  const filteredProjectSummaries = useMemo(() => {
     if (normalizedSearchQuery === "") {
-      return projects;
+      return homeSectionProjectSummaries;
     }
 
-    return projects.filter((project) =>
+    return homeSectionProjectSummaries.filter(({ project }) =>
       [project.name, project.topic, project.description]
         .join(" ")
         .toLowerCase()
         .includes(normalizedSearchQuery),
     );
-  }, [normalizedSearchQuery, projects]);
+  }, [homeSectionProjectSummaries, normalizedSearchQuery]);
   const filteredKnowledgePoints = useMemo(() => {
     if (normalizedSearchQuery === "") {
       return visibleKnowledgePoints;
@@ -756,22 +494,24 @@ export function App(): ReactElement {
         : runningSessionIds[selectedSessionKey] === true;
   const hasPendingActivity =
     hasStructuredRuntime && currentActivity !== null && currentActivityResolution === null;
-  const continueProject = projects[0] ?? selectedProject;
-  const continueProjectPoints = knowledgePoints.filter((point) => point.projectId === continueProject.id);
-  const continueProjectStats = getProjectStats(continueProjectPoints);
-  const continueActionLabel = getNextSuggestedAction(continueProjectPoints);
-  const continueReviewTargetPoint =
-    continueProjectPoints.find((point) => point.status === "active_review") ?? null;
-  const filteredProjectSummaries = useMemo(
+  const continueProjectSummary = filteredProjectSummaries[0] ?? null;
+  const continueProjectPoints = useMemo(
     () =>
-      filteredProjects.map((project) => ({
-        project,
-        stats: getProjectStats(
-          knowledgePoints.filter((point) => point.projectId === project.id),
-        ),
-      })),
-    [filteredProjects, knowledgePoints],
+      continueProjectSummary === null
+        ? []
+        : knowledgePoints.filter(
+            (point) => point.projectId === continueProjectSummary.project.id,
+          ),
+    [continueProjectSummary, knowledgePoints],
   );
+  const continueActionLabel =
+    continueProjectSummary === null
+      ? null
+      : getNextSuggestedAction(continueProjectPoints);
+  const continueReviewTargetPoint =
+    continueProjectSummary === null
+      ? null
+      : continueProjectPoints.find((point) => point.status === "active_review") ?? null;
   const browseProfileSummary = {
     title: generatedProfile.title
       .replace("系统当前把这个 session 视为", "")
@@ -804,6 +544,28 @@ export function App(): ReactElement {
 
     return selectedProjectKnowledgePoints.slice(0, 3);
   }, [selectedKnowledgePoint, selectedProjectKnowledgePoints, selectedSession?.knowledgePointId]);
+  const latestKnowledgePointReviewedEvent = getLatestReviewEvent(
+    knowledgePointReviewEvents,
+    "reviewed",
+  );
+  const knowledgePointReviewHeatmap =
+    selectedKnowledgePoint === null
+      ? buildEmptyReviewHeatmap()
+      : buildReviewHeatmap(
+          knowledgePointReviewEvents,
+          latestKnowledgePointReviewedEvent?.event_at
+            ? formatDateLabel(latestKnowledgePointReviewedEvent.event_at)
+            : null,
+          formatDateLabel(
+            getLatestIsoDate(
+              knowledgePointReviewInspectors.map((inspector) => inspector.scheduledAt),
+            ),
+          ),
+        );
+  const knowledgePointReviewHistorySummary =
+    knowledgePointReviewInspectors.length > 0
+      ? "热力图汇总这个知识点在相关 sessions 里的复习安排与完成记录。"
+      : "当前还没有回读到这个知识点的真实复习记录；打开相关 session 后会回填热力图。";
 
   useEffect(() => {
     if (selectedKnowledgePoint === null) {
@@ -815,6 +577,10 @@ export function App(): ReactElement {
       description: selectedKnowledgePoint.description,
     });
     setIsEditingKnowledgePoint(false);
+  }, [selectedKnowledgePoint?.id]);
+
+  useEffect(() => {
+    setArchiveConfirmationPointId(null);
   }, [selectedKnowledgePoint?.id]);
 
   useEffect(() => {
@@ -1417,6 +1183,12 @@ export function App(): ReactElement {
     setScreen("detail");
   }
 
+  function handleStartArchiveConfirmation(pointId: string): void {
+    setArchiveConfirmationPointId((current) =>
+      current === pointId ? null : pointId,
+    );
+  }
+
   function handleArchiveKnowledgePoint(pointId: string): void {
     setKnowledgePoints((current) =>
       current.map((point) =>
@@ -1431,6 +1203,7 @@ export function App(): ReactElement {
           : point,
       ),
     );
+    setArchiveConfirmationPointId(null);
   }
 
   function handleStartEditingKnowledgePoint(): void {
@@ -1438,6 +1211,7 @@ export function App(): ReactElement {
       return;
     }
 
+    setArchiveConfirmationPointId(null);
     setKnowledgePointDraft({
       title: selectedKnowledgePoint.title,
       description: selectedKnowledgePoint.description,
@@ -1469,6 +1243,7 @@ export function App(): ReactElement {
       ),
     );
     setIsEditingKnowledgePoint(false);
+    setArchiveConfirmationPointId(null);
   }
 
   function handleSubmitPrompt(): void {
@@ -1773,18 +1548,26 @@ export function App(): ReactElement {
 
           {screen === "home" ? (
             <HomeScreen
+              continueProjectSummary={continueProjectSummary}
               continueActionLabel={continueActionLabel}
-              continueProject={continueProject}
-              continueProjectStats={continueProjectStats}
               filteredProjects={filteredProjectSummaries}
-              onContinueProject={() => handleSelectProject(continueProject.id)}
+              homeSection={homeSection}
+              homeSectionCounts={homeSectionCounts}
+              onContinueProject={() => {
+                if (continueProjectSummary !== null) {
+                  handleSelectProject(continueProjectSummary.project.id);
+                }
+              }}
+              onHomeSectionChange={setHomeSection}
               onOpenProject={handleSelectProject}
               onStartReview={() => {
-                handlePrepareSessionStart(
-                  continueProject.id,
-                  "review",
-                  continueReviewTargetPoint?.id ?? null,
-                );
+                if (continueProjectSummary !== null) {
+                  handlePrepareSessionStart(
+                    continueProjectSummary.project.id,
+                    "review",
+                    continueReviewTargetPoint?.id ?? null,
+                  );
+                }
               }}
               totalProjects={projects.length}
             />
@@ -1912,9 +1695,12 @@ export function App(): ReactElement {
                 <KnowledgePointDetailScreen
                   draft={knowledgePointDraft}
                   isEditing={isEditingKnowledgePoint}
+                  isArchiveConfirmationOpen={
+                    archiveConfirmationPointId === selectedKnowledgePoint.id
+                  }
                   knowledgePoint={selectedKnowledgePoint}
                   knowledgePointAssets={selectedKnowledgePointAssets}
-                  onArchive={() => handleArchiveKnowledgePoint(selectedKnowledgePoint.id)}
+                  onCancelArchiveConfirmation={() => setArchiveConfirmationPointId(null)}
                   onCancelEditing={() => {
                     setKnowledgePointDraft({
                       title: selectedKnowledgePoint.title,
@@ -1923,12 +1709,18 @@ export function App(): ReactElement {
                     setIsEditingKnowledgePoint(false);
                   }}
                   onChangeDraft={setKnowledgePointDraft}
+                  onConfirmArchive={() =>
+                    handleArchiveKnowledgePoint(selectedKnowledgePoint.id)
+                  }
                   onOpenSession={(sessionId) => {
                     setPendingSessionIntent(null);
                     setSelectedSessionId(sessionId);
                     setScreen("workspace");
                   }}
                   onSave={handleSaveKnowledgePoint}
+                  onStartArchiveConfirmation={() =>
+                    handleStartArchiveConfirmation(selectedKnowledgePoint.id)
+                  }
                   onStartEditing={handleStartEditingKnowledgePoint}
                   onStartReview={() =>
                     handlePrepareSessionStart(
@@ -1944,6 +1736,8 @@ export function App(): ReactElement {
                       selectedKnowledgePoint.id,
                     )
                   }
+                  reviewHeatmap={knowledgePointReviewHeatmap}
+                  reviewHistorySummary={knowledgePointReviewHistorySummary}
                   relatedSessions={knowledgePointRelatedSessions}
                   selectedSessionId={selectedSessionId}
                 />
@@ -1985,441 +1779,121 @@ export function App(): ReactElement {
                   workspaceSection={workspaceSection}
                 />
               ) : (
-                <div className="grid items-start gap-4 lg:grid-cols-[292px_minmax(0,1fr)_320px]">
-                  <Card className="rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none">
-                    <CardContent className="space-y-4 p-3">
-                      <div className="space-y-2">
-                        <WorkspaceNavButton active={workspaceSection === "overview"} count={projectStats.total - projectStats.archived} label="Overview" onClick={() => {
-                          setWorkspaceSection("overview");
-                          setSelectedSessionId("");
-                        }} />
-                        <WorkspaceNavButton active={workspaceSection === "due-review"} count={projectStats.dueReview} label="Due Review" onClick={() => {
-                          setWorkspaceSection("due-review");
-                          setSelectedSessionId("");
-                        }} />
-                        <WorkspaceNavButton active={workspaceSection === "archived"} count={projectStats.archived} label="Archived" onClick={() => {
-                          setWorkspaceSection("archived");
-                          setSelectedSessionId("");
-                        }} />
-                      </div>
+                <ProjectSessionWorkspace
+                  activeAssetSummary={activeAssetSummary}
+                  activeReviewInspector={activeReviewInspector}
+                  activeRuntime={activeRuntime}
+                  activeSourceAssets={activeSourceAssets}
+                  activeTutorFixtureId={activeTutorFixture?.id ?? null}
+                  agentConnectionState={agentConnectionState}
+                  currentActivities={currentActivities}
+                  currentActivity={currentActivity}
+                  currentActivityKey={currentActivityKey}
+                  currentActivityResolution={currentActivityResolution}
+                  displayMessages={displayMessages}
+                  draftPrompt={draftPrompt}
+                  errorMessage={errorMessage}
+                  generatedProfileSummary={generatedProfile.summary}
+                  hasPendingActivity={hasPendingActivity}
+                  hasPersistedState={hasPersistedState}
+                  hasStructuredRuntime={hasStructuredRuntime}
+                  isAgentRunning={isAgentRunning}
+                  isBlankSession={isBlankSession}
+                  isDevEnvironment={isDevEnvironment}
+                  isMaterialsTrayOpen={isMaterialsTrayOpen}
+                  isUsingDevTutorFixture={isUsingDevTutorFixture}
+                  latestAssistantMessageId={latestAssistantMessageId}
+                  latestReviewedLabel={
+                    latestReviewedEvent?.event_at
+                      ? formatDateLabel(latestReviewedEvent.event_at) ?? "待回读"
+                      : activeRuntime.state.lastReviewedAt ?? "待回读"
+                  }
+                  nextReviewLabel={
+                    activeReviewInspector?.scheduledAt
+                      ? formatDateLabel(activeReviewInspector.scheduledAt) ?? "待安排"
+                      : activeRuntime.state.nextReviewAt ?? "待安排"
+                  }
+                  onChangeDraftPrompt={(value) => {
+                    if (error !== undefined) {
+                      clearError();
+                    }
+                    if (isUsingDevTutorFixture) {
+                      setDevTutorFixtureState((current) =>
+                        current === null
+                          ? current
+                          : {
+                              ...current,
+                              errorMessage: null,
+                            },
+                      );
+                    }
+                    setDraftPrompt(value);
+                  }}
+                  onCloseSession={() => setSelectedSessionId("")}
+                  onDisableTutorFixture={() => {
+                    setDevTutorFixtureQueryParam(null);
+                    setDevTutorFixtureState(null);
+                  }}
+                  onOpenKnowledgePoint={handleOpenKnowledgePoint}
+                  onOpenSession={(sessionId) => {
+                    setPendingSessionIntent(null);
+                    setSelectedSessionId(sessionId);
+                  }}
+                  onSelectTutorFixture={(fixture) => {
+                    setDevTutorFixtureQueryParam(fixture.id);
+                    setDevTutorFixtureState(buildDevTutorFixtureState(fixture));
+                  }}
+                  onSkipActivity={handleSkipActivity}
+                  onSubmitActivity={handleSubmitActivity}
+                  onSubmitPrompt={handleSubmitPrompt}
+                  onToggleMaterialsTray={() => {
+                    if (selectedSessionKey === null) {
+                      return;
+                    }
 
-                      <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3">
-                        <p className="xidea-kicker text-[var(--xidea-stone)]">Recent Sessions</p>
-                        {selectedProjectSessions.slice(0, 5).map((session) => (
-                          <SessionCard
-                            active={session.id === selectedSession.id}
-                            key={session.id}
-                            onClick={() => {
-                              setPendingSessionIntent(null);
-                              setSelectedSessionId(session.id);
-                            }}
-                            title={session.title}
-                            type={session.type}
-                            updatedAt={session.updatedAt}
-                          />
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
+                    setSessionMaterialTrayOpen((current) => ({
+                      ...current,
+                      [selectedSessionKey]: !isMaterialsTrayOpen,
+                    }));
+                  }}
+                  onToggleProjectMaterial={(assetId) => {
+                    setSessionSourceAssetIds((current) => {
+                      const currentSelection = current[selectedSession.id] ?? [];
 
-                  <Card className="flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none">
-                    <CardHeader className="gap-3 border-b border-[var(--xidea-border)] px-5 pb-4 pt-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <CardTitle className="truncate text-sm font-medium text-[var(--xidea-near-black)]">
-                            {selectedSession.title}
-                          </CardTitle>
-                          <CardDescription className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--xidea-stone)]">
-                            <SessionTypeBadge type={selectedSession.type} />
-                            <span>{selectedSession.status}</span>
-                          </CardDescription>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            className="border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-stone)] shadow-none"
-                            variant="outline"
-                          >
-                            {isAgentRunning
-                              ? "Streaming"
-                              : agentConnectionState === "offline"
-                                ? "Offline"
-                                : activeRuntime.source === "live-agent"
-                                  ? "Live Agent"
-                                  : activeRuntime.source === "hydrated-state"
-                                    ? "Hydrated"
-                                    : agentConnectionState === "ready"
-                                      ? "Agent Ready"
-                                      : "Checking"}
-                          </Badge>
-                          <Button className="rounded-full" onClick={() => setSelectedSessionId("")} type="button" variant="outline">
-                            关闭 session
-                          </Button>
-                        </div>
-                      </div>
-                    </CardHeader>
-
-                    <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
-                      <div className="px-5 pt-5 lg:px-6">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <Button
-                              className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
-                              onClick={() => {
-                                if (selectedSessionKey === null) {
-                                  return;
-                                }
-
-                                setSessionMaterialTrayOpen((current) => ({
-                                  ...current,
-                                  [selectedSessionKey]: !isMaterialsTrayOpen,
-                                }));
-                              }}
-                              type="button"
-                              variant="outline"
-                            >
-                              <FileInput className="h-4 w-4" />
-                              {isMaterialsTrayOpen ? "收起材料" : "添加材料"}
-                            </Button>
-                            {selectedSourceAssetIds.length > 0 ? (
-                              <Badge
-                                className="border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] shadow-none"
-                                variant="outline"
-                              >
-                                已附 {selectedSourceAssetIds.length} 份材料
-                              </Badge>
-                            ) : (
-                              <span className="text-sm text-[var(--xidea-stone)]">
-                                当前先按纯对话推进，需要时再把材料挂进这一轮。
-                              </span>
-                            )}
-                          </div>
-
-                          {selectedSourceAssetIds.length > 0 ? (
-                            <div className="flex flex-wrap justify-end gap-2">
-                              {activeSourceAssets.slice(0, 3).map((asset) => (
-                                <button
-                                  className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-1.5 text-[12px] text-[var(--xidea-selection-text)] transition-colors hover:bg-[#f2e6df]"
-                                  key={asset.id}
-                                  onClick={() => {
-                                    setSessionSourceAssetIds((current) => ({
-                                      ...current,
-                                      [selectedSession.id]: (current[selectedSession.id] ?? []).filter(
-                                        (id) => id !== asset.id,
-                                      ),
-                                    }));
-                                  }}
-                                  type="button"
-                                >
-                                  {asset.title}
-                                </button>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <Separator className="bg-[var(--xidea-border)]" />
-
-                      <div className="min-h-0 flex-1 px-5 lg:px-6">
-                        <ScrollArea className="h-full pr-3">
-                          <div className="space-y-4 pb-4">
-                            {isMaterialsTrayOpen ? (
-                              <section className="space-y-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
-                                    <FileInput className="h-4 w-4" />
-                                  </div>
-                                  <div>
-                                    <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
-                                    <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                                      这些材料会作为本轮附加上下文一起送给 agent，不需要先切模式。
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="grid gap-3 lg:grid-cols-2">
-                                  {selectedProjectMaterials.map((asset) => {
-                                    const selected = selectedSourceAssetIds.includes(asset.id);
-
-                                    return (
-                                      <button
-                                        className={
-                                          selected
-                                            ? "rounded-[1rem] bg-[var(--xidea-selection)] px-4 py-4 text-left transition-colors"
-                                            : "rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4 text-left transition-colors hover:bg-[#f8f2ee]"
-                                        }
-                                        key={asset.id}
-                                        onClick={() => {
-                                          setSessionSourceAssetIds((current) => {
-                                            const currentSelection = current[selectedSession.id] ?? [];
-
-                                            return {
-                                              ...current,
-                                              [selectedSession.id]: currentSelection.includes(asset.id)
-                                                ? currentSelection.filter((id) => id !== asset.id)
-                                                : [...currentSelection, asset.id],
-                                            };
-                                          });
-                                        }}
-                                        type="button"
-                                      >
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                                            {asset.title}
-                                          </p>
-                                          <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
-                                            {getAssetKindLabel(asset.kind)}
-                                          </span>
-                                        </div>
-                                        <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                                          {asset.topic}
-                                        </p>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                                {selectedProjectMaterials.length === 0 ? (
-                                    <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                                      <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
-                                      当前 project 还没有材料。先到 More 里的“编辑 Project Meta”把材料加入项目池，再挂进 session。
-                                      </CardContent>
-                                    </Card>
-                                  ) : null}
-                              </section>
-                            ) : null}
-
-                            {displayMessages.length === 0 ? (
-                              <Card className="rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                                <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
-                                  当前 session 还没有消息。你可以先输入问题、补材料，或让系统直接开始学习 / 复习。
-                                </CardContent>
-                              </Card>
-                            ) : (
-                              displayMessages.map((message) => {
-                                const isAssistant = message.role === "assistant";
-                                const rawText = getMessageText(message);
-                                if (isAssistant && rawText === "") {
-                                  return null;
-                                }
-
-                                return (
-                                  <div className="space-y-3" key={message.id}>
-                                    <div className={isAssistant ? "flex justify-start" : "flex justify-end"}>
-                                      {isAssistant ? (
-                                        <div className="w-full max-w-[82%] py-0.5">
-                                          <div className="mb-1.5 flex items-center gap-2">
-                                            <span className="xidea-kicker text-[var(--xidea-selection-text)]">
-                                              Agent
-                                            </span>
-                                          </div>
-                                          <MarkdownContent content={rawText} />
-                                        </div>
-                                      ) : (
-                                        <Card className="w-full max-w-[72%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                                          <CardContent className="px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                                            <div>{rawText}</div>
-                                          </CardContent>
-                                        </Card>
-                                      )}
-                                    </div>
-
-                                    {isAssistant &&
-                                    message.id === latestAssistantMessageId &&
-                                    hasStructuredRuntime &&
-                                    currentActivity !== null ? (
-                                      <div className="w-full max-w-[82%] pl-1">
-                                        <LearningActivityStack
-                                          activities={currentActivities}
-                                          disabled={isAgentRunning || agentBaseUrl === null}
-                                          key={`${selectedSession.id}-${currentActivityKey ?? currentActivity.id}`}
-                                          onSkip={handleSkipActivity}
-                                          onSubmit={handleSubmitActivity}
-                                          resolution={currentActivityResolution}
-                                        />
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                );
-                              })
-                            )}
-                          </div>
-                        </ScrollArea>
-                      </div>
-
-                      <div className="shrink-0 border-t border-[var(--xidea-border)] px-5 py-4 lg:px-6">
-                        <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                          <CardContent className="p-4">
-                            <div className="relative">
-                              <Textarea
-                                className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] pr-28 pb-12 text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
-                                disabled={hasPendingActivity || isAgentRunning || agentBaseUrl === null}
-                                onChange={(event) => {
-                                  if (error !== undefined) {
-                                    clearError();
-                                  }
-                                  if (isUsingDevTutorFixture) {
-                                    setDevTutorFixtureState((current) =>
-                                      current === null
-                                        ? current
-                                        : {
-                                            ...current,
-                                            errorMessage: null,
-                                          },
-                                    );
-                                  }
-                                  setDraftPrompt(event.target.value);
-                                }}
-                                placeholder={
-                                  hasPendingActivity
-                                    ? "先完成当前学习动作或跳过，再继续对话。"
-                                    : selectedSourceAssetIds.length > 0
-                                      ? "补一句你希望系统围绕这些材料先判断什么、澄清什么，或生成什么训练动作。"
-                                      : "输入这一轮你想推进的问题或材料。"
-                                }
-                                value={draftPrompt}
-                              />
-
-                              <Button
-                                className="absolute bottom-3 right-3 rounded-full bg-[var(--xidea-terracotta)] px-4 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                                disabled={hasPendingActivity || isAgentRunning || agentBaseUrl === null}
-                                onClick={handleSubmitPrompt}
-                                type="button"
-                              >
-                                {isAgentRunning ? "运行中..." : "发送"}
-                              </Button>
-                            </div>
-
-                            {errorMessage ? (
-                              <Card className="mt-4 rounded-[1rem] border-[#ebd5cc] bg-[#f9efea] shadow-none">
-                                <CardContent className="px-4 py-3 text-sm leading-6 text-[var(--xidea-selection-text)]">
-                                  {errorMessage}
-                                </CardContent>
-                              </Card>
-                            ) : hasPendingActivity ? (
-                              <p className="mt-3 text-sm leading-6 text-[var(--xidea-stone)]">
-                                这轮先完成上面的学习动作，或者选择跳过，再继续自由对话。
-                              </p>
-                            ) : null}
-                          </CardContent>
-                        </Card>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <div className="space-y-4">
-                    {isDevEnvironment ? (
-                      <MonitorSection accent="Mock" title="Tutor Fixtures">
-                        <div className="space-y-2">
-                          <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                            用前端本地场景直接打磨 activity 插卡、gating 和失败回滚，不用起后端。
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              className="h-8 rounded-full px-3"
-                              onClick={() => {
-                                setDevTutorFixtureQueryParam(null);
-                                setDevTutorFixtureState(null);
-                              }}
-                              size="sm"
-                              type="button"
-                              variant={isUsingDevTutorFixture ? "outline" : "default"}
-                            >
-                              关闭
-                            </Button>
-                            {tutorFixtureScenarios.map((fixture) => (
-                              <Button
-                                className="h-8 rounded-full px-3"
-                                key={fixture.id}
-                                onClick={() => {
-                                  setDevTutorFixtureQueryParam(fixture.id);
-                                  setDevTutorFixtureState(buildDevTutorFixtureState(fixture));
-                                }}
-                                size="sm"
-                                type="button"
-                                variant={activeTutorFixture?.id === fixture.id ? "default" : "outline"}
-                              >
-                                {fixture.label}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      </MonitorSection>
-                    ) : null}
-
-                    <MonitorSection title="当前相关知识点">
-                      <div className="space-y-3">
-                        {relatedKnowledgePoints.map((point) => (
-                          <button
-                            className="w-full rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3 text-left transition-colors hover:border-[var(--xidea-selection-border)]"
-                            key={point.id}
-                            onClick={() => handleOpenKnowledgePoint(point.id)}
-                            type="button"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-medium text-[var(--xidea-near-black)]">{point.title}</p>
-                              <Badge className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`} variant="outline">
-                                {point.stageLabel}
-                              </Badge>
-                            </div>
-                            <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">{point.description}</p>
-                            <p className="mt-2 text-[12px] text-[var(--xidea-stone)]">{point.nextReviewLabel ?? "等待下一次调度"}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </MonitorSection>
-
-                    <MonitorSection
-                      accent={
-                        activeRuntime.source === "live-agent"
-                          ? "Live"
-                          : activeRuntime.source === "hydrated-state"
-                            ? "Hydrated"
-                            : "Mock"
-                      }
-                      title="Session Summary"
-                    >
-                      <CompactNote label="Project" value={selectedProject.name} />
-                      <CompactNote label="Session" value={selectedSession.status} />
-                      <CompactNote label="Mode" value={hasStructuredRuntime ? activeRuntime.decision.title : "待生成"} />
-                      <CompactNote
-                        label="State"
-                        value={hasPersistedState ? activeRuntime.stateSource : "当前 session 还没有真实 learner state。"}
-                      />
-                      {hasPersistedState ? (
-                        <div className="rounded-[0.95rem] bg-[var(--xidea-selection)] px-3 py-3 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                          {generatedProfile.summary}
-                        </div>
-                      ) : null}
-                    </MonitorSection>
-
-                    <MonitorSection title="Materials">
-                      <CompactNote
-                        label="Selected"
-                        value={
-                          isBlankSession
-                            ? "0 assets"
-                            : selectedSourceAssetIds.length > 0
-                              ? `${requestSourceAssetIds.length} attached`
-                              : `${requestSourceAssetIds.length} linked`
-                        }
-                      />
-                      <CompactNote label="Knowledge" value={selectedUnit?.title ?? "未指定"} />
-                      <CompactNote label="Context" value={activeAssetSummary?.summary ?? "等待读取真实材料上下文"} />
-                      {activeAssetSummary?.keyConcepts.length ? (
-                        <div className="flex flex-wrap gap-2">
-                          {activeAssetSummary.keyConcepts.slice(0, 4).map((concept) => (
-                            <Badge
-                              className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
-                              key={concept}
-                              variant="outline"
-                            >
-                              {concept}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : null}
-                    </MonitorSection>
-                  </div>
-                </div>
+                      return {
+                        ...current,
+                        [selectedSession.id]: currentSelection.includes(assetId)
+                          ? currentSelection.filter((id) => id !== assetId)
+                          : [...currentSelection, assetId],
+                      };
+                    });
+                  }}
+                  onUnsetSourceAsset={(assetId) => {
+                    setSessionSourceAssetIds((current) => ({
+                      ...current,
+                      [selectedSession.id]: (current[selectedSession.id] ?? []).filter(
+                        (id) => id !== assetId,
+                      ),
+                    }));
+                  }}
+                  onWorkspaceSectionChange={(section) => {
+                    setWorkspaceSection(section);
+                    setSelectedSessionId("");
+                  }}
+                  projectStats={projectStats}
+                  relatedKnowledgePoints={relatedKnowledgePoints}
+                  requestSourceAssetIds={requestSourceAssetIds}
+                  reviewHeatmap={reviewHeatmap}
+                  selectedProject={selectedProject}
+                  selectedProjectMaterials={selectedProjectMaterials}
+                  selectedProjectSessions={selectedProjectSessions}
+                  selectedSession={selectedSession}
+                  selectedSourceAssetIds={selectedSourceAssetIds}
+                  selectedUnitTitle={selectedUnit?.title ?? null}
+                  submitDisabled={hasPendingActivity || isAgentRunning || agentBaseUrl === null}
+                  tutorFixtureScenarios={tutorFixtureScenarios}
+                  workspaceSection={workspaceSection}
+                />
               )}
             </div>
           )}
