@@ -8,18 +8,31 @@ import {
   useRef,
   useState,
   type ReactElement,
-  type ReactNode,
 } from "react";
 import {
-  Brain,
+  ArrowLeft,
   FileInput,
-  Folder,
-  FolderOpen,
+  MessageSquareText,
+  MoreHorizontal,
   Plus,
   RefreshCcw,
+  Search,
+  Sparkles,
 } from "lucide-react";
 import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MarkdownContent } from "@/components/markdown-content";
+import {
+  CompactNote,
+  getAssetKindLabel,
+  InspectorCard,
+  KnowledgePointCard,
+  MetricTile,
+  MonitorSection,
+  ProjectMetaPanel,
+  SessionCard,
+  WorkspaceNavButton,
+  getKnowledgePointAccent,
+} from "@/components/project-workspace-primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,9 +47,13 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { learnerProfiles, learningUnits, projectContext, sourceAssets } from "@/data/demo";
 import {
+  initialKnowledgePoints,
+  initialProjects,
+  initialSessions,
+} from "@/data/project-workspace-demo";
+import {
   getTutorFixtureScenario,
   tutorFixtureScenarios,
-  type TutorFixtureMessage,
   type TutorFixtureScenario,
 } from "@/data/tutor-fixtures";
 import {
@@ -52,7 +69,18 @@ import {
   type AgentAction,
   type RuntimeSnapshot,
 } from "@/domain/agent-runtime";
-import { MODE_LABELS } from "@/domain/planner";
+import {
+  getNextSuggestedAction,
+  getProjectStats,
+  getSessionTypeLabel,
+  type AppScreen,
+  type KnowledgePointItem,
+  type KnowledgePointStatus,
+  type ProjectItem,
+  type SessionItem,
+  type SessionType,
+  type WorkspaceSection,
+} from "@/domain/project-workspace";
 import type { LearningActivitySubmission, LearningMode, SourceAsset } from "@/domain/types";
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
 import {
@@ -63,36 +91,6 @@ import {
   getReviewInspector,
   getThreadContext,
 } from "@/lib/agent-client";
-
-const sessionMetaByUnitId: Record<string, { updatedAt: string; status: string }> = {
-  "unit-1": { updatedAt: "1h", status: "诊断中" },
-  "unit-2": { updatedAt: "昨天", status: "待澄清" },
-  "unit-3": { updatedAt: "2d", status: "待答辩" },
-};
-
-interface ProjectItem {
-  readonly id: string;
-  readonly name: string;
-  readonly description: string;
-}
-
-const initialProjects: ReadonlyArray<ProjectItem> = [
-  {
-    id: "project-rag-demo",
-    name: projectContext.name,
-    description: "围绕同一个比赛案例组织 session。",
-  },
-] as const;
-
-interface SessionItem {
-  readonly id: string;
-  readonly projectId: string;
-  readonly unitId: string | null;
-  readonly title: string;
-  readonly summary: string;
-  readonly updatedAt: string;
-  readonly status: string;
-}
 
 type ActivityResolution = "submitted" | "skipped";
 
@@ -117,20 +115,6 @@ function setDevTutorFixtureQueryParam(fixtureId: string | null): void {
   window.history.replaceState({}, "", url);
 }
 
-const initialSessions: ReadonlyArray<SessionItem> = learningUnits.map((unit) => {
-  const meta = sessionMetaByUnitId[unit.id] ?? { updatedAt: "刚刚", status: "进行中" };
-
-  return {
-    id: `session-${unit.id}`,
-    projectId: "project-rag-demo",
-    unitId: unit.id,
-    title: unit.title,
-    summary: unit.summary,
-    updatedAt: meta.updatedAt,
-    status: meta.status,
-  };
-});
-
 const metricCopy = [
   { key: "understandingLevel", label: "理解", tone: "emerald" },
   { key: "memoryStrength", label: "记忆", tone: "amber" },
@@ -154,36 +138,6 @@ function getActionLabel(action: AgentAction): string {
       return "复习回拉";
     case "teach":
       return "导师建模";
-  }
-}
-
-function getMetricDotClass(tone: "emerald" | "amber" | "rose" | "sky"): string {
-  switch (tone) {
-    case "emerald":
-      return "bg-[#7a9d83]";
-    case "amber":
-      return "bg-[#b98a4a]";
-    case "sky":
-      return "bg-[#7f9eb7]";
-    case "rose":
-      return "bg-[#b37a7f]";
-  }
-}
-
-function getAssetKindLabel(kind: (typeof sourceAssets)[number]["kind"]): string {
-  switch (kind) {
-    case "audio":
-      return "音频";
-    case "image":
-      return "图片";
-    case "note":
-      return "笔记";
-    case "pdf":
-      return "PDF";
-    case "video":
-      return "视频";
-    case "web":
-      return "网页";
   }
 }
 
@@ -454,179 +408,6 @@ function getHeatmapCellClass(intensity: ReviewHeatmapCell["intensity"]): string 
   }
 }
 
-function SessionCard({
-  active,
-  title,
-  updatedAt,
-  onClick,
-}: {
-  active: boolean;
-  title: string;
-  updatedAt: string;
-  onClick: () => void;
-}): ReactElement {
-  return (
-    <button
-      className={
-        active
-          ? "flex w-full items-center justify-between gap-3 rounded-[0.9rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
-          : "flex w-full items-center justify-between gap-3 rounded-[0.9rem] border border-transparent bg-transparent px-3 py-2 text-left transition-colors hover:border-[var(--xidea-border)] hover:bg-[var(--xidea-white)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
-      }
-      onClick={onClick}
-      type="button"
-    >
-      <p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
-      <span
-        className={
-          active
-            ? "shrink-0 text-[11px] text-[var(--xidea-selection-text)]"
-            : "shrink-0 text-[11px] text-[var(--xidea-stone)]"
-        }
-      >
-        {updatedAt}
-      </span>
-    </button>
-  );
-}
-
-function ProjectCard({
-  active,
-  expanded,
-  name,
-  onClick,
-  onCreateSession,
-}: {
-  active: boolean;
-  expanded: boolean;
-  name: string;
-  onClick: () => void;
-  onCreateSession: () => void;
-}): ReactElement {
-  return (
-    <div
-      className={
-        active
-          ? "flex items-center justify-between gap-2 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] px-2 py-2 shadow-none transition-colors"
-          : "flex items-center justify-between gap-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-2 py-2 shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7]"
-      }
-    >
-      <button
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-[0.85rem] px-1 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)]"
-        onClick={onClick}
-        type="button"
-      >
-        <div
-          className={
-            active
-              ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.85rem] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)]"
-              : "flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.85rem] bg-[var(--xidea-parchment)] text-[var(--xidea-stone)]"
-          }
-        >
-          {expanded ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{name}</p>
-        </div>
-      </button>
-
-      <Button
-        className="h-8 w-8 shrink-0 rounded-[0.85rem] text-[var(--xidea-stone)] hover:bg-[var(--xidea-parchment)] hover:text-[var(--xidea-near-black)]"
-        onClick={onCreateSession}
-        size="icon"
-        type="button"
-        variant="ghost"
-      >
-        <Plus className="h-4 w-4" />
-      </Button>
-    </div>
-  );
-}
-
-function InspectorCard({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: ReactNode;
-}): ReactElement {
-  return (
-    <Card className="rounded-[1.25rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-      <CardHeader className="pb-4">
-        <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">{title}</CardTitle>
-        {description ? <CardDescription className="text-sm text-[var(--xidea-stone)]">{description}</CardDescription> : null}
-      </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
-    </Card>
-  );
-}
-
-function MonitorSection({
-  title,
-  accent,
-  children,
-}: {
-  title: string;
-  accent?: string;
-  children: ReactNode;
-}): ReactElement {
-  return (
-    <Card className="min-w-0 overflow-hidden rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-      <CardHeader className="px-4 pb-3 pt-4">
-        <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">
-          {title}
-          {accent ? <span className="ml-2 text-[var(--xidea-selection-text)]">{accent}</span> : null}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="min-w-0 space-y-3 px-4 pb-4 pt-0">{children}</CardContent>
-    </Card>
-  );
-}
-
-function MetricTile({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: "emerald" | "amber" | "rose" | "sky";
-}): ReactElement {
-  return (
-    <div className="min-w-0 overflow-hidden rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-3">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className={`inline-block h-2 w-2 rounded-full ${getMetricDotClass(tone)}`} />
-        <span className="truncate text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
-          {label}
-        </span>
-      </div>
-      <p className="mt-2 min-w-0 break-words text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function CompactNote({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): ReactElement {
-  return (
-    <div className="flex min-w-0 items-start gap-2 rounded-[0.95rem] bg-[var(--xidea-parchment)] px-3 py-2.5">
-      <span className="shrink-0 pt-0.5 text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
-        {label}
-      </span>
-      <span className="min-w-0 flex-1 break-words text-right text-sm leading-5 text-[var(--xidea-charcoal)]">
-        {value}
-      </span>
-    </div>
-  );
-}
-
 function getErrorMessage(error: Error | undefined): string | null {
   if (error === undefined) {
     return null;
@@ -648,19 +429,33 @@ export function App(): ReactElement {
   const initialProfile = learnerProfiles[1] ?? learnerProfiles[0];
   const initialUnit = learningUnits[0];
   const initialProject = initialProjects[0];
+  const initialKnowledgePoint = initialKnowledgePoints[0];
   const isDevEnvironment = import.meta.env.DEV;
 
-  if (initialProfile === undefined || initialUnit === undefined || initialProject === undefined) {
-    throw new Error("Demo data must contain at least one learner profile, learning unit, and project.");
+  if (
+    initialProfile === undefined ||
+    initialUnit === undefined ||
+    initialProject === undefined ||
+    initialKnowledgePoint === undefined
+  ) {
+    throw new Error("Demo data must contain at least one learner profile, learning unit, knowledge point, and project.");
   }
 
+  const [screen, setScreen] = useState<AppScreen>("home");
   const [projects, setProjects] = useState<ReadonlyArray<ProjectItem>>(initialProjects);
+  const [knowledgePoints, setKnowledgePoints] = useState<ReadonlyArray<KnowledgePointItem>>(initialKnowledgePoints);
   const [sessions, setSessions] = useState<ReadonlyArray<SessionItem>>(initialSessions);
-  const [expandedProjectIds, setExpandedProjectIds] = useState<ReadonlyArray<string>>([
-    initialProject.id,
-  ]);
-  const [selectedProjectId, setSelectedProjectId] = useState(initialSessions[0]?.projectId ?? initialProject.id);
-  const [selectedSessionId, setSelectedSessionId] = useState(initialSessions[0]?.id ?? "");
+  const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("overview");
+  const [isProjectMetaOpen, setIsProjectMetaOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isEditingKnowledgePoint, setIsEditingKnowledgePoint] = useState(false);
+  const [knowledgePointDraft, setKnowledgePointDraft] = useState({
+    title: initialKnowledgePoint.title,
+    description: initialKnowledgePoint.description,
+  });
+  const [selectedProjectId, setSelectedProjectId] = useState(initialProject.id);
+  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [selectedKnowledgePointId, setSelectedKnowledgePointId] = useState(initialKnowledgePoint.id);
   const [, setSessionEntryModes] = useState<Record<string, AgentEntryMode>>(
     () => Object.fromEntries(initialSessions.map((session) => [session.id, "chat-question"])),
   );
@@ -716,6 +511,76 @@ export function App(): ReactElement {
   const seedProfile = initialProfile;
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? initialProject;
+  const selectedProjectKnowledgePoints = useMemo(
+    () => knowledgePoints.filter((point) => point.projectId === selectedProject.id),
+    [knowledgePoints, selectedProject.id],
+  );
+  const selectedKnowledgePoint =
+    selectedProjectKnowledgePoints.find((point) => point.id === selectedKnowledgePointId) ??
+    selectedProjectKnowledgePoints[0] ??
+    null;
+  const selectedKnowledgePointAssets = selectedKnowledgePoint
+    ? sourceAssets.filter((asset) => selectedKnowledgePoint.sourceAssetIds.includes(asset.id))
+    : [];
+  const selectedProjectSessions = useMemo(
+    () => sessions.filter((session) => session.projectId === selectedProject.id),
+    [selectedProject.id, sessions],
+  );
+  const selectedProjectMaterials = useMemo(
+    () =>
+      sourceAssets.filter((asset) =>
+        selectedProjectKnowledgePoints.some((point) =>
+          point.sourceAssetIds.includes(asset.id),
+        ),
+      ),
+    [selectedProjectKnowledgePoints],
+  );
+  const projectStats = useMemo(
+    () => getProjectStats(selectedProjectKnowledgePoints),
+    [selectedProjectKnowledgePoints],
+  );
+  const projectMaterialCount = useMemo(
+    () =>
+      new Set(
+        selectedProjectKnowledgePoints.flatMap((point) => point.sourceAssetIds),
+      ).size,
+    [selectedProjectKnowledgePoints],
+  );
+  const visibleKnowledgePoints = useMemo(() => {
+    switch (workspaceSection) {
+      case "archived":
+        return selectedProjectKnowledgePoints.filter((point) => point.status === "archived");
+      case "due-review":
+        return selectedProjectKnowledgePoints.filter((point) => point.status === "active_review");
+      case "overview":
+        return selectedProjectKnowledgePoints.filter((point) => point.status !== "archived");
+    }
+  }, [selectedProjectKnowledgePoints, workspaceSection]);
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const filteredProjects = useMemo(() => {
+    if (normalizedSearchQuery === "") {
+      return projects;
+    }
+
+    return projects.filter((project) =>
+      [project.name, project.topic, project.description]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedSearchQuery),
+    );
+  }, [normalizedSearchQuery, projects]);
+  const filteredKnowledgePoints = useMemo(() => {
+    if (normalizedSearchQuery === "") {
+      return visibleKnowledgePoints;
+    }
+
+    return visibleKnowledgePoints.filter((point) =>
+      [point.title, point.description, point.stageLabel]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedSearchQuery),
+    );
+  }, [normalizedSearchQuery, visibleKnowledgePoints]);
   const selectedSourceAssetIds = selectedSession
     ? sessionSourceAssetIds[selectedSession.id] ?? getDefaultSourceAssetIds()
     : getDefaultSourceAssetIds();
@@ -811,6 +676,42 @@ export function App(): ReactElement {
         : runningSessionIds[selectedSessionKey] === true;
   const hasPendingActivity =
     hasStructuredRuntime && currentActivity !== null && currentActivityResolution === null;
+  const continueProject = projects[0] ?? selectedProject;
+  const continueProjectPoints = knowledgePoints.filter((point) => point.projectId === continueProject.id);
+  const continueProjectStats = getProjectStats(continueProjectPoints);
+  const studyTargetPoint =
+    selectedKnowledgePoint?.status === "active_unlearned"
+      ? selectedKnowledgePoint
+      : selectedProjectKnowledgePoints.find((point) => point.status === "active_unlearned") ??
+        selectedKnowledgePoint;
+  const reviewTargetPoint =
+    selectedKnowledgePoint?.status === "active_review"
+      ? selectedKnowledgePoint
+      : selectedProjectKnowledgePoints.find((point) => point.status === "active_review") ??
+        selectedKnowledgePoint;
+  const relatedKnowledgePoints = useMemo(() => {
+    if (selectedSession?.unitId !== null && selectedSession?.unitId !== undefined) {
+      return selectedProjectKnowledgePoints.filter((point) => point.id === selectedSession.unitId);
+    }
+
+    if (selectedKnowledgePoint !== null) {
+      return [selectedKnowledgePoint];
+    }
+
+    return selectedProjectKnowledgePoints.slice(0, 3);
+  }, [selectedKnowledgePoint, selectedProjectKnowledgePoints, selectedSession?.unitId]);
+
+  useEffect(() => {
+    if (selectedKnowledgePoint === null) {
+      return;
+    }
+
+    setKnowledgePointDraft({
+      title: selectedKnowledgePoint.title,
+      description: selectedKnowledgePoint.description,
+    });
+    setIsEditingKnowledgePoint(false);
+  }, [selectedKnowledgePoint?.id]);
 
   const handleTransportSnapshot = useCallback((sessionId: string, snapshot: RuntimeSnapshot) => {
     setSessionSnapshots((current) => ({
@@ -1155,17 +1056,16 @@ export function App(): ReactElement {
 
   function handleSelectProject(projectId: string): void {
     setSelectedProjectId(projectId);
-
-    const firstProjectSession = sessions.find((session) => session.projectId === projectId);
-    setSelectedSessionId(firstProjectSession?.id ?? "");
-  }
-
-  function handleToggleProject(projectId: string): void {
-    setExpandedProjectIds((current) =>
-      current.includes(projectId)
-        ? current.filter((id) => id !== projectId)
-        : [...current, projectId],
-    );
+    setSelectedSessionId("");
+    setWorkspaceSection("overview");
+    setIsProjectMetaOpen(false);
+    setScreen("workspace");
+    startTransition(() => {
+      const firstKnowledgePoint = knowledgePoints.find((point) => point.projectId === projectId);
+      if (firstKnowledgePoint !== undefined) {
+        setSelectedKnowledgePointId(firstKnowledgePoint.id);
+      }
+    });
   }
 
   function handleCreateProject(): void {
@@ -1173,16 +1073,24 @@ export function App(): ReactElement {
     const createdProject: ProjectItem = {
       id: `project-${Date.now()}`,
       name: `新项目 ${nextIndex}`,
-      description: "围绕一个新的答辩主题组织 session。",
+      topic: "新的项目型学习主题",
+      description: "围绕一个新的答辩主题组织知识点、材料和 session。",
+      specialRules: ["先收敛主题和材料，再开始学习编排。"],
+      updatedAt: "刚刚",
     };
 
     setProjects((current) => [createdProject, ...current]);
     setSelectedProjectId(createdProject.id);
     setSelectedSessionId("");
-    setExpandedProjectIds((current) => [createdProject.id, ...current]);
+    setIsProjectMetaOpen(true);
+    setScreen("workspace");
   }
 
-  function handleCreateSession(projectId: string): void {
+  function handleCreateSession(
+    projectId: string,
+    type: SessionType = "project",
+    unitId: string | null = null,
+  ): void {
     const targetProject =
       projects.find((project) => project.id === projectId) ?? selectedProject ?? projects[0];
 
@@ -1191,12 +1099,21 @@ export function App(): ReactElement {
     }
 
     const nextIndex = sessions.filter((session) => session.projectId === targetProject.id).length + 1;
+    const titlePrefix =
+      type === "study" ? "学习" : type === "review" ? "复习" : "project";
+    const summary =
+      type === "study"
+        ? "围绕未学知识点启动一轮学习。"
+        : type === "review"
+          ? "围绕待复习知识点安排一轮回拉。"
+          : "继续围绕 project 目标推进材料与知识点。";
     const createdSession: SessionItem = {
       id: `session-${Date.now()}`,
       projectId: targetProject.id,
-      unitId: null,
-      title: `新对话 ${nextIndex}`,
-      summary: "暂无内容",
+      type,
+      unitId,
+      title: `${titlePrefix} session ${nextIndex}`,
+      summary,
       updatedAt: "刚刚",
       status: "空白",
     };
@@ -1208,9 +1125,68 @@ export function App(): ReactElement {
     setSessionSourceAssetIds((current) => ({ ...current, [createdSession.id]: getDefaultSourceAssetIds() }));
     setSelectedProjectId(targetProject.id);
     setSelectedSessionId(createdSession.id);
-    setExpandedProjectIds((current) =>
-      current.includes(targetProject.id) ? current : [...current, targetProject.id],
+    setIsProjectMetaOpen(false);
+    setScreen("workspace");
+  }
+
+  function handleOpenKnowledgePoint(pointId: string): void {
+    setSelectedKnowledgePointId(pointId);
+    setSelectedSessionId("");
+    setIsProjectMetaOpen(false);
+    setScreen("detail");
+  }
+
+  function handleArchiveKnowledgePoint(pointId: string): void {
+    setKnowledgePoints((current) =>
+      current.map((point) =>
+        point.id === pointId
+          ? {
+              ...point,
+              status: point.status === "archived" ? "active_review" : "archived",
+              stageLabel: point.status === "archived" ? "待复习" : "已归档",
+              nextReviewLabel: point.status === "archived" ? "等待重新安排" : null,
+            }
+          : point,
+      ),
     );
+  }
+
+  function handleStartEditingKnowledgePoint(): void {
+    if (selectedKnowledgePoint === null) {
+      return;
+    }
+
+    setKnowledgePointDraft({
+      title: selectedKnowledgePoint.title,
+      description: selectedKnowledgePoint.description,
+    });
+    setIsEditingKnowledgePoint(true);
+  }
+
+  function handleSaveKnowledgePoint(): void {
+    if (selectedKnowledgePoint === null) {
+      return;
+    }
+
+    const nextTitle = knowledgePointDraft.title.trim();
+    const nextDescription = knowledgePointDraft.description.trim();
+    if (nextTitle === "" || nextDescription === "") {
+      return;
+    }
+
+    setKnowledgePoints((current) =>
+      current.map((point) =>
+        point.id === selectedKnowledgePoint.id
+          ? {
+              ...point,
+              title: nextTitle,
+              description: nextDescription,
+              updatedAt: "刚刚",
+            }
+          : point,
+      ),
+    );
+    setIsEditingKnowledgePoint(false);
   }
 
   function handleSubmitPrompt(): void {
@@ -1403,656 +1379,888 @@ export function App(): ReactElement {
 
   return (
     <main className="xidea-shell min-h-screen bg-[var(--xidea-parchment)] text-[var(--xidea-near-black)]">
-      <div className="relative mx-auto min-h-screen max-w-[1520px] px-3 py-3 lg:h-screen lg:min-h-0 lg:px-4 lg:py-4">
-        <div className="grid items-start gap-3 lg:h-full lg:grid-cols-[280px_minmax(0,1fr)_328px] lg:items-stretch">
-          <Card className="overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none lg:h-full">
-            <CardContent className="flex h-full flex-col p-3">
-              <div className="flex min-h-0 flex-1 flex-col space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="xidea-kicker">Projects</p>
-                  <Button
-                    className="h-8 w-8 rounded-[0.85rem] text-[var(--xidea-stone)] hover:bg-[var(--xidea-white)] hover:text-[var(--xidea-near-black)]"
-                    onClick={handleCreateProject}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
+      <div className="relative mx-auto min-h-screen max-w-[1520px] px-3 py-3 lg:px-4 lg:py-4">
+        <div className="space-y-4">
+          <Card className="rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+            <CardContent className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  className="rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-1.5 text-sm font-medium text-[var(--xidea-near-black)]"
+                  onClick={() => {
+                    setScreen("home");
+                    setSelectedSessionId("");
+                  }}
+                  type="button"
+                >
+                  Xidea
+                </button>
+                <div className="min-w-0">
+                  <p className="xidea-kicker">Project-centric learning workspace</p>
+                  <p className="text-sm text-[var(--xidea-stone)]">
+                    {screen === "home"
+                      ? "先选 project，再进入知识点池或 session 工作态。"
+                      : `${selectedProject.name} / ${screen === "detail" ? "Knowledge Point Detail" : "Project Workspace"}`}
+                  </p>
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                  <div className="space-y-2 pr-1">
-                    {projects.map((project) => {
-                      const projectSessions = sessions.filter((session) => session.projectId === project.id);
-                      const activeProject = project.id === selectedProject?.id;
-                      const expanded = expandedProjectIds.includes(project.id);
+              </div>
 
-                      return (
-                        <div key={project.id}>
-                          <ProjectCard
-                            active={activeProject}
-                            expanded={expanded}
-                            name={project.name}
-                            onClick={() => {
-                              if (!activeProject) {
-                                handleSelectProject(project.id);
-                              }
-                              handleToggleProject(project.id);
-                            }}
-                            onCreateSession={() => {
-                              handleCreateSession(project.id);
-                            }}
-                          />
-
-                          <div
-                            className={
-                              expanded
-                                ? "xidea-sidebar-reveal mt-2 ml-4 box-border grid w-[calc(100%-1rem)] grid-rows-[1fr] border-l border-[var(--xidea-sand)] pl-3 opacity-100"
-                                : "xidea-sidebar-reveal ml-4 box-border grid w-[calc(100%-1rem)] grid-rows-[0fr] border-l border-[var(--xidea-sand)] pl-3 opacity-0"
-                            }
-                          >
-                            <div className="overflow-hidden">
-                              <div className="space-y-2">
-                                {projectSessions.length === 0 ? (
-                                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                                    <CardContent className="px-4 py-3 text-sm text-[var(--xidea-stone)]">
-                                      这个 project 还没有 session。
-                                    </CardContent>
-                                  </Card>
-                                ) : null}
-                                {projectSessions.map((session) => (
-                                  <SessionCard
-                                    active={session.id === selectedSession?.id}
-                                    key={session.id}
-                                    onClick={() => {
-                                      startTransition(() => {
-                                        setSelectedProjectId(project.id);
-                                        setSelectedSessionId(session.id);
-                                      });
-                                    }}
-                                    title={session.title}
-                                    updatedAt={session.updatedAt}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex min-w-[220px] items-center gap-2 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-2 text-sm text-[var(--xidea-charcoal)]">
+                  <Search className="h-4 w-4 shrink-0 text-[var(--xidea-stone)]" />
+                  <input
+                    className="w-full bg-transparent outline-none placeholder:text-[var(--xidea-stone)]"
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder={
+                      screen === "home"
+                        ? "搜索 project"
+                        : "搜索 knowledge point"
+                    }
+                    value={searchQuery}
+                  />
+                </label>
+                <Button
+                  className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                  onClick={handleCreateProject}
+                  type="button"
+                >
+                  <Plus className="h-4 w-4" />
+                  新建 Project
+                </Button>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none lg:h-full">
-            <CardHeader className="gap-3 border-b border-[var(--xidea-border)] px-5 pb-4 pt-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <CardTitle className="truncate text-sm font-medium text-[var(--xidea-near-black)]">
-                    {selectedSession?.title ?? `${selectedProject.name} / 暂无 session`}
-                  </CardTitle>
-                  <CardDescription className="mt-1 text-sm text-[var(--xidea-stone)]">
-                    {selectedProject.name} / {selectedSession?.status ?? "等待创建 session"}
-                  </CardDescription>
-                </div>
-                <Badge
-                  className="border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-stone)] shadow-none"
-                  variant="outline"
-                >
-                  {isAgentRunning
-                    ? "Streaming"
-                    : agentConnectionState === "offline"
-                      ? "Offline"
-                      : activeRuntime.source === "live-agent"
-                        ? "Live Agent"
-                        : activeRuntime.source === "hydrated-state"
-                          ? "Hydrated"
-                          : agentConnectionState === "ready"
-                            ? "Agent Ready"
-                            : "Checking"}
-                </Badge>
-              </div>
-            </CardHeader>
+          {screen === "home" ? (
+            <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+              <Card className="rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none">
+                <CardContent className="space-y-2 p-3">
+                  <WorkspaceNavButton active label="All Projects" count={projects.length} onClick={() => setScreen("home")} />
+                  <WorkspaceNavButton active={false} label="Recent" count={1} onClick={() => setScreen("home")} />
+                  <WorkspaceNavButton active={false} label="Due Review" count={continueProjectStats.dueReview} onClick={() => setScreen("home")} />
+                  <WorkspaceNavButton active={false} label="Archived" count={continueProjectStats.archived} onClick={() => setScreen("home")} />
+                </CardContent>
+              </Card>
 
-            <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
-              <div className="px-5 pt-5 lg:px-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <Button
-                      className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
-                      disabled={selectedSession === undefined}
-                      onClick={() => {
-                        if (selectedSessionKey === null) {
-                          return;
-                        }
-
-                        setSessionMaterialTrayOpen((current) => ({
-                          ...current,
-                          [selectedSessionKey]: !isMaterialsTrayOpen,
-                        }));
-                      }}
-                      type="button"
-                      variant="outline"
-                    >
-                      <FileInput className="h-4 w-4" />
-                      {isMaterialsTrayOpen ? "收起材料" : "添加材料"}
-                    </Button>
-                    {selectedSourceAssetIds.length > 0 ? (
-                      <Badge
-                        className="border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] shadow-none"
-                        variant="outline"
-                      >
-                        已附 {selectedSourceAssetIds.length} 份材料
-                      </Badge>
-                    ) : (
-                      <span className="text-sm text-[var(--xidea-stone)]">
-                        当前先按纯对话推进，需要时再把材料挂进这一轮。
-                      </span>
-                    )}
-                  </div>
-
-                  {selectedSourceAssetIds.length > 0 ? (
-                    <div className="flex flex-wrap justify-end gap-2">
-                      {activeSourceAssets.slice(0, 3).map((asset) => (
-                        <button
-                          className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-1.5 text-[12px] text-[var(--xidea-selection-text)] transition-colors hover:bg-[#f2e6df]"
-                          key={asset.id}
-                          onClick={() => {
-                            if (selectedSession === undefined) {
-                              return;
-                            }
-
-                            setSessionSourceAssetIds((current) => ({
-                              ...current,
-                              [selectedSession.id]: (current[selectedSession.id] ?? []).filter(
-                                (id) => id !== asset.id,
-                              ),
-                            }));
-                          }}
-                          type="button"
-                        >
-                          {asset.title}
-                        </button>
-                      ))}
+              <div className="space-y-4">
+                <Card className="rounded-[1.5rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none">
+                  <CardContent className="space-y-4 p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-2">
+                        <p className="xidea-kicker text-[var(--xidea-selection-text)]">Continue</p>
+                        <h2 className="text-xl font-medium text-[var(--xidea-near-black)]">{continueProject.name}</h2>
+                        <p className="max-w-3xl text-sm leading-7 text-[var(--xidea-charcoal)]">{continueProject.description}</p>
+                      </div>
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)]">
+                        <Sparkles className="h-5 w-5" />
+                      </div>
                     </div>
-                  ) : null}
-                </div>
-              </div>
-
-              <Separator className="bg-[var(--xidea-border)]" />
-
-              <div className="min-h-0 flex-1 px-5 lg:px-6">
-                <ScrollArea className="h-full pr-3">
-                  <div className="space-y-4 pb-4">
-                    {isMaterialsTrayOpen ? (
-                      <section className="space-y-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
-                            <FileInput className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
-                            <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                              这些材料会作为本轮附加上下文一起送给 agent，不需要先切模式。
-                            </p>
-                          </div>
-                        </div>
-                        <div className="grid gap-3 lg:grid-cols-2">
-                          {sourceAssets.map((asset) => {
-                            const selected = selectedSourceAssetIds.includes(asset.id);
-
-                            return (
-                              <button
-                                className={
-                                  selected
-                                    ? "rounded-[1rem] bg-[var(--xidea-selection)] px-4 py-4 text-left transition-colors"
-                                    : "rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4 text-left transition-colors hover:bg-[#f8f2ee]"
-                                }
-                                key={asset.id}
-                                onClick={() => {
-                                  if (selectedSession === undefined) {
-                                    return;
-                                  }
-
-                                  setSessionSourceAssetIds((current) => {
-                                    const currentSelection = current[selectedSession.id] ?? [];
-
-                                    return {
-                                      ...current,
-                                      [selectedSession.id]: currentSelection.includes(asset.id)
-                                        ? currentSelection.filter((id) => id !== asset.id)
-                                        : [...currentSelection, asset.id],
-                                    };
-                                  });
-                                }}
-                                type="button"
-                              >
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                                    {asset.title}
-                                  </p>
-                                  <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
-                                    {getAssetKindLabel(asset.kind)}
-                                  </span>
-                                </div>
-                                <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                                  {asset.topic}
-                                </p>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </section>
-                    ) : null}
-
-                    {selectedSession === undefined || displayMessages.length === 0 ? null : (
-                      displayMessages.map((message) => {
-                        const isAssistant = message.role === "assistant";
-                        const rawText = getMessageText(message);
-                        if (isAssistant && rawText === "") {
-                          return null;
-                        }
-
-                        return (
-                          <div className="space-y-3" key={message.id}>
-                            <div className={isAssistant ? "flex justify-start" : "flex justify-end"}>
-                              {isAssistant ? (
-                                <div className="w-full max-w-[82%] py-0.5">
-                                  <div className="mb-1.5 flex items-center gap-2">
-                                    <span className="xidea-kicker text-[var(--xidea-selection-text)]">
-                                      Agent
-                                    </span>
-                                  </div>
-                                  <MarkdownContent content={rawText} />
-                                </div>
-                              ) : (
-                                <Card className="w-full max-w-[72%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                                  <CardContent className="px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                                    <div>{rawText}</div>
-                                  </CardContent>
-                                </Card>
-                              )}
-                            </div>
-
-                            {isAssistant &&
-                            message.id === latestAssistantMessageId &&
-                            hasStructuredRuntime &&
-                            currentActivity !== null ? (
-                              <div className="w-full max-w-[82%] pl-1">
-                                <LearningActivityStack
-                                  activities={currentActivities}
-                                  disabled={
-                                    selectedSession === undefined ||
-                                    isAgentRunning ||
-                                    agentBaseUrl === null
-                                  }
-                                  key={`${selectedSession?.id ?? "seed"}-${currentActivityKey ?? currentActivity.id}`}
-                                  onSkip={handleSkipActivity}
-                                  onSubmit={handleSubmitActivity}
-                                  resolution={currentActivityResolution}
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      })
-                    )}
-
-                  </div>
-                </ScrollArea>
-              </div>
-
-              <div className="shrink-0 border-t border-[var(--xidea-border)] px-5 py-4 lg:px-6">
-                <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                  <CardContent className="p-4">
-                    <div className="relative">
-                      <Textarea
-                        className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] pr-28 pb-12 text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
-                        disabled={hasPendingActivity || isAgentRunning || agentBaseUrl === null}
-                        onChange={(event) => {
-                          if (error !== undefined) {
-                            clearError();
-                          }
-                          if (isUsingDevTutorFixture) {
-                            setDevTutorFixtureState((current) =>
-                              current === null
-                                ? current
-                                : {
-                                    ...current,
-                                    errorMessage: null,
-                                  },
-                            );
-                          }
-                          setDraftPrompt(event.target.value);
-                        }}
-                        placeholder={
-                          hasPendingActivity
-                            ? "先完成当前学习动作或跳过，再继续对话。"
-                            : selectedSourceAssetIds.length > 0
-                            ? "补一句你希望系统围绕这些材料先判断什么、澄清什么，或生成什么训练动作。"
-                            : "输入这一轮你想推进的问题或材料。"
-                        }
-                        value={draftPrompt}
-                      />
-
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <MetricTile label="知识点" tone="amber" value={`${continueProjectStats.total} 个`} />
+                      <MetricTile label="待复习" tone="sky" value={`${continueProjectStats.dueReview} 个`} />
+                      <MetricTile label="下一步" tone="emerald" value={getNextSuggestedAction(continueProjectPoints)} />
+                    </div>
+                    <div className="flex flex-wrap gap-3">
                       <Button
-                        className="absolute right-3 bottom-3 rounded-full bg-[var(--xidea-terracotta)] px-4 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                        disabled={
-                          selectedSession === undefined ||
-                          hasPendingActivity ||
-                          isAgentRunning ||
-                          agentBaseUrl === null
-                        }
-                        onClick={handleSubmitPrompt}
+                        className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                        onClick={() => handleSelectProject(continueProject.id)}
                         type="button"
                       >
-                        {isAgentRunning ? "运行中..." : "发送"}
+                        继续 Project
+                      </Button>
+                      <Button
+                        className="rounded-full"
+                        onClick={() => {
+                          handleSelectProject(continueProject.id);
+                          handleCreateSession(
+                            continueProject.id,
+                            "review",
+                            reviewTargetPoint?.id ?? null,
+                          );
+                        }}
+                        type="button"
+                        variant="outline"
+                      >
+                        <RefreshCcw className="h-4 w-4" />
+                        开始复习
                       </Button>
                     </div>
-
-                    {errorMessage ? (
-                      <Card className="mt-4 rounded-[1rem] border-[#ebd5cc] bg-[#f9efea] shadow-none">
-                        <CardContent className="px-4 py-3 text-sm leading-6 text-[var(--xidea-selection-text)]">
-                          {errorMessage}
-                        </CardContent>
-                      </Card>
-                    ) : hasPendingActivity ? (
-                      <p className="mt-3 text-sm leading-6 text-[var(--xidea-stone)]">
-                        这轮先完成上面的学习动作，或者选择跳过，再继续自由对话。
-                      </p>
-                    ) : null}
                   </CardContent>
                 </Card>
-              </div>
-            </CardContent>
-          </Card>
 
-          <div className="min-h-0 min-w-0 lg:h-full">
-            <ScrollArea className="h-full pr-1">
-              <div className="grid gap-3 pb-1">
-                {isDevEnvironment ? (
-                  <MonitorSection accent="Mock" title="Tutor Fixtures">
+                {filteredProjects.length > 0 ? (
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {filteredProjects.map((project) => {
+                    const projectPoints = knowledgePoints.filter((point) => point.projectId === project.id);
+                    const stats = getProjectStats(projectPoints);
+
+                    return (
+                      <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none" key={project.id}>
+                        <CardContent className="space-y-4 p-5">
+                          <div className="space-y-2">
+                            <p className="text-base font-medium text-[var(--xidea-near-black)]">{project.name}</p>
+                            <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">{project.topic}</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <MetricTile label="知识点" tone="amber" value={`${stats.total}`} />
+                            <MetricTile label="待复习" tone="sky" value={`${stats.dueReview}`} />
+                          </div>
+                          <p className="text-[12px] text-[var(--xidea-stone)]">最近更新：{project.updatedAt}</p>
+                          <Button className="w-full rounded-full" onClick={() => handleSelectProject(project.id)} type="button" variant="outline">
+                            进入
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                    })}
+                  </div>
+                ) : (
+                  <Card className="rounded-[1.3rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                    <CardContent className="px-5 py-6 text-sm text-[var(--xidea-stone)]">
+                      没找到匹配的 project，可以换个关键词再试。
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Card className="rounded-[1.45rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none">
+                <CardContent className="space-y-4 p-6">
+                  {screen === "detail" ? (
+                    <button
+                      className="inline-flex items-center gap-2 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-1.5 text-sm text-[var(--xidea-charcoal)]"
+                      onClick={() => setScreen("workspace")}
+                      type="button"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      返回 Project Workspace
+                    </button>
+                  ) : null}
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-2">
-                      <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                        用前端本地场景直接打磨 activity 插卡、gating 和失败回滚，不用起后端。
-                      </p>
+                      <p className="xidea-kicker text-[var(--xidea-selection-text)]">Project Workspace</p>
+                      <h1 className="text-2xl font-medium text-[var(--xidea-near-black)]">{selectedProject.name}</h1>
+                      <p className="text-sm leading-7 text-[var(--xidea-charcoal)]">{selectedProject.topic}</p>
+                      <p className="max-w-4xl text-sm leading-7 text-[var(--xidea-stone)]">{selectedProject.description}</p>
+                    </div>
+
+                    {screen !== "detail" ? (
                       <div className="flex flex-wrap gap-2">
                         <Button
-                          className="h-8 rounded-full px-3"
-                          onClick={() => {
-                            setDevTutorFixtureQueryParam(null);
-                            setDevTutorFixtureState(null);
-                          }}
-                          size="sm"
+                          className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                          disabled={studyTargetPoint === undefined}
+                          onClick={() =>
+                            handleCreateSession(
+                              selectedProject.id,
+                              "study",
+                              studyTargetPoint?.id ?? null,
+                            )
+                          }
                           type="button"
-                          variant={isUsingDevTutorFixture ? "outline" : "default"}
                         >
-                          关闭
+                          学习
                         </Button>
-                        {tutorFixtureScenarios.map((fixture) => (
-                          <Button
-                            className="h-8 rounded-full px-3"
-                            key={fixture.id}
-                            onClick={() => {
-                              setDevTutorFixtureQueryParam(fixture.id);
-                              setDevTutorFixtureState(buildDevTutorFixtureState(fixture));
-                            }}
-                            size="sm"
-                            type="button"
-                            variant={
-                              activeTutorFixture?.id === fixture.id ? "default" : "outline"
-                            }
-                          >
-                            {fixture.label}
-                          </Button>
-                        ))}
-                      </div>
-                      {activeTutorFixture !== null ? (
-                        <div className="rounded-[0.95rem] bg-[var(--xidea-selection)] px-3 py-3">
-                          <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                            {activeTutorFixture.label}
-                          </p>
-                          <p className="mt-1 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                            {activeTutorFixture.description}
-                          </p>
-                          <Button
-                            className="mt-3 h-8 rounded-full px-3"
-                            onClick={() => {
-                              setDevTutorFixtureQueryParam(activeTutorFixture.id);
-                              setDevTutorFixtureState(
-                                buildDevTutorFixtureState(activeTutorFixture),
-                              );
-                            }}
-                            size="sm"
-                            type="button"
-                            variant="outline"
-                          >
-                            重置场景
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                  </MonitorSection>
-                ) : null}
-
-                <MonitorSection
-                  accent={
-                    activeRuntime.source === "live-agent"
-                      ? "Live"
-                      : activeRuntime.source === "hydrated-state"
-                        ? "Hydrated"
-                        : "Mock"
-                  }
-                  title="Session"
-                >
-                  <CompactNote label="Project" value={selectedProject.name} />
-                  <CompactNote label="Thread" value={selectedSession?.status ?? "等待创建"} />
-                  <CompactNote label="Mode" value={hasStructuredRuntime ? activeRuntime.decision.title : "待生成"} />
-                  <CompactNote
-                    label="Agent"
-                    value={
-                      !hasStructuredRuntime
-                        ? "--"
-                        : activeRuntime.decision.confidence !== null
-                        ? `${(activeRuntime.decision.confidence * 100).toFixed(0)}% confidence`
-                        : "live"
-                    }
-                  />
-                  <CompactNote
-                    label="State"
-                    value={
-                      hasPersistedState
-                        ? activeRuntime.stateSource
-                        : "当前 session 还没有真实 learner state。"
-                    }
-                  />
-                </MonitorSection>
-
-                <MonitorSection title="Learner">
-                  <div className="grid grid-cols-2 gap-2">
-                    {metricCopy.map((metric) => (
-                      <MetricTile
-                        key={metric.key}
-                        label={metric.label}
-                        tone={metric.tone}
-                        value={
-                          !hasPersistedState || activeRuntime.state[metric.key] === null
-                            ? "--"
-                            : `${activeRuntime.state[metric.key]}%`
-                        }
-                      />
-                    ))}
-                  </div>
-                  <div className="rounded-[0.95rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-selection-text)]">
-                      Profile
-                    </p>
-                    <p className="mt-2 text-sm font-medium text-[var(--xidea-near-black)]">
-                      {hasPersistedState ? generatedProfile.title : "--"}
-                    </p>
-                    {hasPersistedState ? (
-                      <>
-                        <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                          {generatedProfile.summary}
-                        </p>
-                        <p className="mt-2 text-[12px] leading-6 text-[var(--xidea-charcoal)]/80">
-                          {generatedProfile.evidence[0]}
-                        </p>
-                      </>
-                    ) : null}
-                  </div>
-                </MonitorSection>
-
-                <MonitorSection title="Review">
-                  <div className="grid grid-cols-2 gap-2">
-                    <MetricTile
-                      label="Last"
-                      tone="amber"
-                      value={
-                        !hasPersistedState
-                          ? "--"
-                          : latestReviewedEvent?.event_at
-                            ? formatDateLabel(latestReviewedEvent.event_at) ?? "未记录"
-                            : activeRuntime.state.lastReviewedAt ?? "未记录"
-                      }
-                    />
-                    <MetricTile
-                      label="Next"
-                      tone="sky"
-                      value={
-                        !hasPersistedState
-                          ? "--"
-                          : activeReviewInspector?.scheduledAt
-                            ? formatDateLabel(activeReviewInspector.scheduledAt) ?? "待决定"
-                            : activeRuntime.state.nextReviewAt ?? "待决定"
-                      }
-                    />
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(!hasPersistedState
-                      ? []
-                      : activeReviewInspector?.performanceTrend?.weakSignals ?? activeRuntime.state.weakSignals.slice(0, 3)
-                    ).slice(0, 3).map((signal) => (
-                      <Badge
-                        className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
-                        key={signal}
-                        variant="outline"
-                      >
-                        {signal}
-                      </Badge>
-                    ))}
-                  </div>
-                  <CompactNote
-                    label="Risk"
-                    value={!hasPersistedState ? "--" : activeReviewInspector?.decayRisk ?? "unknown"}
-                  />
-                  {activeReviewInspector?.summary ? (
-                    <div className="rounded-[0.95rem] bg-[var(--xidea-selection)] px-3 py-3 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                      {activeReviewInspector.summary}
-                    </div>
-                  ) : null}
-                  <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
-                        Heatmap
-                      </p>
-                      <span className="text-[11px] text-[var(--xidea-stone)]">5w</span>
-                    </div>
-                    <div className="mt-3 grid grid-cols-5 gap-1.5">
-                      {reviewHeatmap.map((week, weekIndex) => (
-                        <div className="grid grid-rows-7 gap-1.5" key={`week-${weekIndex}`}>
-                          {week.map((cell) => (
-                            <div
-                              className={`h-3.5 w-full rounded-[3px] ${getHeatmapCellClass(cell.intensity)}`}
-                              key={cell.dateKey}
-                              title={cell.tooltip}
-                            />
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </MonitorSection>
-
-                <MonitorSection title="Materials">
-                  <CompactNote
-                    label="Selected"
-                    value={
-                      isBlankSession
-                        ? "0 assets"
-                        : selectedSourceAssetIds.length > 0
-                          ? `${requestSourceAssetIds.length} attached`
-                          : `${requestSourceAssetIds.length} linked`
-                    }
-                  />
-                  <CompactNote label="Unit" value={selectedUnit?.title ?? "未指定"} />
-                  <CompactNote
-                    label="Context"
-                    value={activeAssetSummary?.summary ?? "等待读取真实材料上下文"}
-                  />
-                  <div className="rounded-[0.95rem] bg-[var(--xidea-parchment)] px-3 py-3">
-                    <div className="flex items-center gap-2">
-                      <Brain className="h-4 w-4 text-[var(--xidea-terracotta)]" />
-                      <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                        {hasStructuredRuntime ? activeRuntime.decision.title : "材料上下文"}
-                      </p>
-                    </div>
-                    {hasStructuredRuntime ? (
-                      <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                        {activeRuntime.decision.objective}
-                      </p>
-                    ) : activeAssetSummary ? (
-                      <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                        {activeAssetSummary.summary}
-                      </p>
-                    ) : null}
-                  </div>
-                  {activeAssetSummary?.keyConcepts.length ? (
-                    <div className="flex flex-wrap gap-2">
-                      {activeAssetSummary.keyConcepts.slice(0, 4).map((concept) => (
-                        <Badge
-                          className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
-                          key={concept}
+                        <Button
+                          className="rounded-full"
+                          disabled={reviewTargetPoint === undefined}
+                          onClick={() =>
+                            handleCreateSession(
+                              selectedProject.id,
+                              "review",
+                              reviewTargetPoint?.id ?? null,
+                            )
+                          }
+                          type="button"
                           variant="outline"
                         >
-                          {concept}
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : null}
-                  {activeAssetSummary?.assets.slice(0, 2).map((asset) => (
-                    <div
-                      className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-3"
-                      key={asset.id}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-[var(--xidea-near-black)]">{asset.title}</p>
-                        <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
-                          {getAssetKindLabel(asset.kind)}
-                        </span>
+                          复习
+                        </Button>
+                        <Button
+                          className="rounded-full"
+                          onClick={() => handleCreateSession(selectedProject.id, "project")}
+                          type="button"
+                          variant="outline"
+                        >
+                          <MessageSquareText className="h-4 w-4" />
+                          新建 project session
+                        </Button>
+                        <Button
+                          className="rounded-full"
+                          onClick={() => setIsProjectMetaOpen((current) => !current)}
+                          type="button"
+                          variant="outline"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                          More
+                        </Button>
                       </div>
-                      <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                        {asset.contentExcerpt}
-                      </p>
-                    </div>
-                  ))}
-                  <div className="flex flex-wrap gap-2">
-                    {(selectedUnit?.candidateModes ?? []).slice(0, 3).map((mode) => (
-                      <Badge
-                        className={`border px-2 py-1 text-[12px] shadow-none ${getModeBadgeClass(mode)}`}
-                        key={mode}
-                        variant="outline"
-                      >
-                        {MODE_LABELS[mode]}
-                      </Badge>
-                    ))}
+                    ) : null}
                   </div>
-                </MonitorSection>
-              </div>
-            </ScrollArea>
-          </div>
+                </CardContent>
+              </Card>
+
+              {isProjectMetaOpen ? (
+                <ProjectMetaPanel
+                  materialCount={projectMaterialCount}
+                  materials={selectedProjectMaterials}
+                  onClose={() => setIsProjectMetaOpen(false)}
+                  project={selectedProject}
+                  sessionCount={selectedProjectSessions.length}
+                />
+              ) : null}
+
+              {screen === "detail" && selectedKnowledgePoint !== null ? (
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+                  <div className="space-y-4">
+                    <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                      <CardContent className="space-y-5 p-6">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="min-w-0 flex-1 space-y-3">
+                            {isEditingKnowledgePoint ? (
+                              <>
+                                <input
+                                  className="w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-3 py-2 text-lg font-medium text-[var(--xidea-near-black)] outline-none focus:border-[var(--xidea-selection-border)]"
+                                  onChange={(event) =>
+                                    setKnowledgePointDraft((current) => ({
+                                      ...current,
+                                      title: event.target.value,
+                                    }))
+                                  }
+                                  value={knowledgePointDraft.title}
+                                />
+                                <Textarea
+                                  className="min-h-28 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
+                                  onChange={(event) =>
+                                    setKnowledgePointDraft((current) => ({
+                                      ...current,
+                                      description: event.target.value,
+                                    }))
+                                  }
+                                  value={knowledgePointDraft.description}
+                                />
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-xl font-medium text-[var(--xidea-near-black)]">{selectedKnowledgePoint.title}</p>
+                                <p className="max-w-3xl text-sm leading-7 text-[var(--xidea-charcoal)]">{selectedKnowledgePoint.description}</p>
+                              </>
+                            )}
+                          </div>
+                          <Badge className={`border px-3 py-1.5 text-[12px] shadow-none ${getKnowledgePointAccent(selectedKnowledgePoint.status)}`} variant="outline">
+                            {selectedKnowledgePoint.stageLabel}
+                          </Badge>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <MetricTile label="掌握度" tone="emerald" value={`${selectedKnowledgePoint.mastery}%`} />
+                          <MetricTile label="下次复习" tone="sky" value={selectedKnowledgePoint.nextReviewLabel ?? "待安排"} />
+                          <MetricTile label="最近更新" tone="amber" value={selectedKnowledgePoint.updatedAt} />
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          {isEditingKnowledgePoint ? (
+                            <>
+                              <Button
+                                className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                                disabled={
+                                  knowledgePointDraft.title.trim() === "" ||
+                                  knowledgePointDraft.description.trim() === ""
+                                }
+                                onClick={handleSaveKnowledgePoint}
+                                type="button"
+                              >
+                                保存
+                              </Button>
+                              <Button
+                                className="rounded-full"
+                                onClick={() => {
+                                  setKnowledgePointDraft({
+                                    title: selectedKnowledgePoint.title,
+                                    description: selectedKnowledgePoint.description,
+                                  });
+                                  setIsEditingKnowledgePoint(false);
+                                }}
+                                type="button"
+                                variant="outline"
+                              >
+                                取消
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                                onClick={() => handleCreateSession(selectedProject.id, "study", selectedKnowledgePoint.id)}
+                                type="button"
+                              >
+                                加入学习
+                              </Button>
+                              <Button
+                                className="rounded-full"
+                                onClick={() => handleCreateSession(selectedProject.id, "review", selectedKnowledgePoint.id)}
+                                type="button"
+                                variant="outline"
+                              >
+                                加入复习
+                              </Button>
+                              <Button
+                                className="rounded-full"
+                                onClick={handleStartEditingKnowledgePoint}
+                                type="button"
+                                variant="outline"
+                              >
+                                编辑
+                              </Button>
+                              <Button
+                                className="rounded-full"
+                                onClick={() => handleArchiveKnowledgePoint(selectedKnowledgePoint.id)}
+                                type="button"
+                                variant="outline"
+                              >
+                                {selectedKnowledgePoint.status === "archived" ? "恢复" : "Archive"}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                      <CardHeader>
+                        <CardTitle className="text-base font-medium text-[var(--xidea-near-black)]">来源材料</CardTitle>
+                        <CardDescription>当前知识点关联的 project materials。</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {selectedKnowledgePointAssets.length > 0 ? selectedKnowledgePointAssets.map((asset) => (
+                          <div className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-4 py-3" key={asset.id}>
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-sm font-medium text-[var(--xidea-near-black)]">{asset.title}</p>
+                              <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">{getAssetKindLabel(asset.kind)}</span>
+                            </div>
+                            <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">{asset.topic}</p>
+                          </div>
+                        )) : (
+                          <p className="text-sm text-[var(--xidea-stone)]">当前还没有挂接材料。</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="space-y-4">
+                    <InspectorCard description="这个知识点在项目内如何被继续组织。" title="相关 Sessions">
+                      {selectedProjectSessions.filter((session) => session.unitId === selectedKnowledgePoint.id).length > 0 ? (
+                        selectedProjectSessions
+                          .filter((session) => session.unitId === selectedKnowledgePoint.id)
+                          .map((session) => (
+                            <SessionCard
+                              active={session.id === selectedSessionId}
+                              key={session.id}
+                              onClick={() => {
+                                setSelectedSessionId(session.id);
+                                setScreen("workspace");
+                              }}
+                              title={session.title}
+                              type={session.type}
+                              updatedAt={session.updatedAt}
+                            />
+                          ))
+                      ) : (
+                        <p className="text-sm text-[var(--xidea-stone)]">还没有围绕这个知识点展开过独立 session。</p>
+                      )}
+                    </InspectorCard>
+                  </div>
+                </div>
+              ) : selectedSession === undefined ? (
+                <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+                  <Card className="rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none">
+                    <CardContent className="space-y-4 p-3">
+                      <div className="space-y-2">
+                        <WorkspaceNavButton active={workspaceSection === "overview"} count={projectStats.total - projectStats.archived} label="Overview" onClick={() => setWorkspaceSection("overview")} />
+                        <WorkspaceNavButton active={workspaceSection === "due-review"} count={projectStats.dueReview} label="Due Review" onClick={() => setWorkspaceSection("due-review")} />
+                        <WorkspaceNavButton active={workspaceSection === "archived"} count={projectStats.archived} label="Archived" onClick={() => setWorkspaceSection("archived")} />
+                      </div>
+
+                      <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3">
+                        <p className="xidea-kicker text-[var(--xidea-stone)]">Recent Sessions</p>
+                        {selectedProjectSessions.length > 0 ? (
+                          selectedProjectSessions.slice(0, 4).map((session) => (
+                            <SessionCard
+                              active={false}
+                              key={session.id}
+                              onClick={() => setSelectedSessionId(session.id)}
+                              title={session.title}
+                              type={session.type}
+                              updatedAt={session.updatedAt}
+                            />
+                          ))
+                        ) : (
+                          <p className="text-sm text-[var(--xidea-stone)]">这个 project 还没有 session。</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <div className="space-y-4">
+                    <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                      <CardContent className="grid gap-4 p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                        <div className="space-y-2">
+                          <p className="xidea-kicker text-[var(--xidea-selection-text)]">Profile Summary</p>
+                          <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                            当前阶段：{generatedProfile.title.replace("系统当前把这个 session 视为", "").replace(/[「」]/g, "")}
+                          </p>
+                          <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">{generatedProfile.evidence[0]}</p>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          <MetricTile label="未学" tone="amber" value={`${projectStats.unlearned}`} />
+                          <MetricTile label="待复习" tone="sky" value={`${projectStats.dueReview}`} />
+                          <MetricTile label="已归档" tone="rose" value={`${projectStats.archived}`} />
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {filteredKnowledgePoints.length > 0 ? (
+                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        {filteredKnowledgePoints.map((point) => (
+                          <KnowledgePointCard key={point.id} onClick={() => handleOpenKnowledgePoint(point.id)} point={point} />
+                        ))}
+                      </div>
+                    ) : (
+                      <Card className="rounded-[1.3rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                        <CardContent className="px-5 py-6 text-sm text-[var(--xidea-stone)]">
+                          {normalizedSearchQuery === ""
+                            ? "当前筛选下还没有知识点，可以先切回 Overview 或开始一个新的 project session。"
+                            : "没找到匹配的 knowledge point，可以换个关键词再试。"}
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)_320px]">
+                  <Card className="rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none">
+                    <CardContent className="space-y-4 p-3">
+                      <div className="space-y-2">
+                        <WorkspaceNavButton active={workspaceSection === "overview"} count={projectStats.total - projectStats.archived} label="Overview" onClick={() => {
+                          setWorkspaceSection("overview");
+                          setSelectedSessionId("");
+                        }} />
+                        <WorkspaceNavButton active={workspaceSection === "due-review"} count={projectStats.dueReview} label="Due Review" onClick={() => {
+                          setWorkspaceSection("due-review");
+                          setSelectedSessionId("");
+                        }} />
+                        <WorkspaceNavButton active={workspaceSection === "archived"} count={projectStats.archived} label="Archived" onClick={() => {
+                          setWorkspaceSection("archived");
+                          setSelectedSessionId("");
+                        }} />
+                      </div>
+
+                      <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3">
+                        <p className="xidea-kicker text-[var(--xidea-stone)]">Recent Sessions</p>
+                        {selectedProjectSessions.slice(0, 5).map((session) => (
+                          <SessionCard
+                            active={session.id === selectedSession.id}
+                            key={session.id}
+                            onClick={() => setSelectedSessionId(session.id)}
+                            title={session.title}
+                            type={session.type}
+                            updatedAt={session.updatedAt}
+                          />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none">
+                    <CardHeader className="gap-3 border-b border-[var(--xidea-border)] px-5 pb-4 pt-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <CardTitle className="truncate text-sm font-medium text-[var(--xidea-near-black)]">
+                            {selectedSession.title}
+                          </CardTitle>
+                          <CardDescription className="mt-1 text-sm text-[var(--xidea-stone)]">
+                            {getSessionTypeLabel(selectedSession.type)} / {selectedSession.status}
+                          </CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            className="border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-stone)] shadow-none"
+                            variant="outline"
+                          >
+                            {isAgentRunning
+                              ? "Streaming"
+                              : agentConnectionState === "offline"
+                                ? "Offline"
+                                : activeRuntime.source === "live-agent"
+                                  ? "Live Agent"
+                                  : activeRuntime.source === "hydrated-state"
+                                    ? "Hydrated"
+                                    : agentConnectionState === "ready"
+                                      ? "Agent Ready"
+                                      : "Checking"}
+                          </Badge>
+                          <Button className="rounded-full" onClick={() => setSelectedSessionId("")} type="button" variant="outline">
+                            关闭 session
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
+                      <div className="px-5 pt-5 lg:px-6">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <Button
+                              className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
+                              onClick={() => {
+                                if (selectedSessionKey === null) {
+                                  return;
+                                }
+
+                                setSessionMaterialTrayOpen((current) => ({
+                                  ...current,
+                                  [selectedSessionKey]: !isMaterialsTrayOpen,
+                                }));
+                              }}
+                              type="button"
+                              variant="outline"
+                            >
+                              <FileInput className="h-4 w-4" />
+                              {isMaterialsTrayOpen ? "收起材料" : "添加材料"}
+                            </Button>
+                            {selectedSourceAssetIds.length > 0 ? (
+                              <Badge
+                                className="border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] shadow-none"
+                                variant="outline"
+                              >
+                                已附 {selectedSourceAssetIds.length} 份材料
+                              </Badge>
+                            ) : (
+                              <span className="text-sm text-[var(--xidea-stone)]">
+                                当前先按纯对话推进，需要时再把材料挂进这一轮。
+                              </span>
+                            )}
+                          </div>
+
+                          {selectedSourceAssetIds.length > 0 ? (
+                            <div className="flex flex-wrap justify-end gap-2">
+                              {activeSourceAssets.slice(0, 3).map((asset) => (
+                                <button
+                                  className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-1.5 text-[12px] text-[var(--xidea-selection-text)] transition-colors hover:bg-[#f2e6df]"
+                                  key={asset.id}
+                                  onClick={() => {
+                                    setSessionSourceAssetIds((current) => ({
+                                      ...current,
+                                      [selectedSession.id]: (current[selectedSession.id] ?? []).filter(
+                                        (id) => id !== asset.id,
+                                      ),
+                                    }));
+                                  }}
+                                  type="button"
+                                >
+                                  {asset.title}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <Separator className="bg-[var(--xidea-border)]" />
+
+                      <div className="min-h-0 flex-1 px-5 lg:px-6">
+                        <ScrollArea className="h-full pr-3">
+                          <div className="space-y-4 pb-4">
+                            {isMaterialsTrayOpen ? (
+                              <section className="space-y-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
+                                    <FileInput className="h-4 w-4" />
+                                  </div>
+                                  <div>
+                                    <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
+                                    <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                                      这些材料会作为本轮附加上下文一起送给 agent，不需要先切模式。
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="grid gap-3 lg:grid-cols-2">
+                                  {sourceAssets.map((asset) => {
+                                    const selected = selectedSourceAssetIds.includes(asset.id);
+
+                                    return (
+                                      <button
+                                        className={
+                                          selected
+                                            ? "rounded-[1rem] bg-[var(--xidea-selection)] px-4 py-4 text-left transition-colors"
+                                            : "rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4 text-left transition-colors hover:bg-[#f8f2ee]"
+                                        }
+                                        key={asset.id}
+                                        onClick={() => {
+                                          setSessionSourceAssetIds((current) => {
+                                            const currentSelection = current[selectedSession.id] ?? [];
+
+                                            return {
+                                              ...current,
+                                              [selectedSession.id]: currentSelection.includes(asset.id)
+                                                ? currentSelection.filter((id) => id !== asset.id)
+                                                : [...currentSelection, asset.id],
+                                            };
+                                          });
+                                        }}
+                                        type="button"
+                                      >
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                                            {asset.title}
+                                          </p>
+                                          <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+                                            {getAssetKindLabel(asset.kind)}
+                                          </span>
+                                        </div>
+                                        <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
+                                          {asset.topic}
+                                        </p>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </section>
+                            ) : null}
+
+                            {displayMessages.length === 0 ? (
+                              <Card className="rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                                <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
+                                  当前 session 还没有消息。你可以先输入问题、补材料，或让系统直接开始学习 / 复习。
+                                </CardContent>
+                              </Card>
+                            ) : (
+                              displayMessages.map((message) => {
+                                const isAssistant = message.role === "assistant";
+                                const rawText = getMessageText(message);
+                                if (isAssistant && rawText === "") {
+                                  return null;
+                                }
+
+                                return (
+                                  <div className="space-y-3" key={message.id}>
+                                    <div className={isAssistant ? "flex justify-start" : "flex justify-end"}>
+                                      {isAssistant ? (
+                                        <div className="w-full max-w-[82%] py-0.5">
+                                          <div className="mb-1.5 flex items-center gap-2">
+                                            <span className="xidea-kicker text-[var(--xidea-selection-text)]">
+                                              Agent
+                                            </span>
+                                          </div>
+                                          <MarkdownContent content={rawText} />
+                                        </div>
+                                      ) : (
+                                        <Card className="w-full max-w-[72%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                                          <CardContent className="px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
+                                            <div>{rawText}</div>
+                                          </CardContent>
+                                        </Card>
+                                      )}
+                                    </div>
+
+                                    {isAssistant &&
+                                    message.id === latestAssistantMessageId &&
+                                    hasStructuredRuntime &&
+                                    currentActivity !== null ? (
+                                      <div className="w-full max-w-[82%] pl-1">
+                                        <LearningActivityStack
+                                          activities={currentActivities}
+                                          disabled={isAgentRunning || agentBaseUrl === null}
+                                          key={`${selectedSession.id}-${currentActivityKey ?? currentActivity.id}`}
+                                          onSkip={handleSkipActivity}
+                                          onSubmit={handleSubmitActivity}
+                                          resolution={currentActivityResolution}
+                                        />
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </ScrollArea>
+                      </div>
+
+                      <div className="shrink-0 border-t border-[var(--xidea-border)] px-5 py-4 lg:px-6">
+                        <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                          <CardContent className="p-4">
+                            <div className="relative">
+                              <Textarea
+                                className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] pr-28 pb-12 text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
+                                disabled={hasPendingActivity || isAgentRunning || agentBaseUrl === null}
+                                onChange={(event) => {
+                                  if (error !== undefined) {
+                                    clearError();
+                                  }
+                                  if (isUsingDevTutorFixture) {
+                                    setDevTutorFixtureState((current) =>
+                                      current === null
+                                        ? current
+                                        : {
+                                            ...current,
+                                            errorMessage: null,
+                                          },
+                                    );
+                                  }
+                                  setDraftPrompt(event.target.value);
+                                }}
+                                placeholder={
+                                  hasPendingActivity
+                                    ? "先完成当前学习动作或跳过，再继续对话。"
+                                    : selectedSourceAssetIds.length > 0
+                                      ? "补一句你希望系统围绕这些材料先判断什么、澄清什么，或生成什么训练动作。"
+                                      : "输入这一轮你想推进的问题或材料。"
+                                }
+                                value={draftPrompt}
+                              />
+
+                              <Button
+                                className="absolute bottom-3 right-3 rounded-full bg-[var(--xidea-terracotta)] px-4 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                                disabled={hasPendingActivity || isAgentRunning || agentBaseUrl === null}
+                                onClick={handleSubmitPrompt}
+                                type="button"
+                              >
+                                {isAgentRunning ? "运行中..." : "发送"}
+                              </Button>
+                            </div>
+
+                            {errorMessage ? (
+                              <Card className="mt-4 rounded-[1rem] border-[#ebd5cc] bg-[#f9efea] shadow-none">
+                                <CardContent className="px-4 py-3 text-sm leading-6 text-[var(--xidea-selection-text)]">
+                                  {errorMessage}
+                                </CardContent>
+                              </Card>
+                            ) : hasPendingActivity ? (
+                              <p className="mt-3 text-sm leading-6 text-[var(--xidea-stone)]">
+                                这轮先完成上面的学习动作，或者选择跳过，再继续自由对话。
+                              </p>
+                            ) : null}
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <div className="space-y-4">
+                    {isDevEnvironment ? (
+                      <MonitorSection accent="Mock" title="Tutor Fixtures">
+                        <div className="space-y-2">
+                          <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                            用前端本地场景直接打磨 activity 插卡、gating 和失败回滚，不用起后端。
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              className="h-8 rounded-full px-3"
+                              onClick={() => {
+                                setDevTutorFixtureQueryParam(null);
+                                setDevTutorFixtureState(null);
+                              }}
+                              size="sm"
+                              type="button"
+                              variant={isUsingDevTutorFixture ? "outline" : "default"}
+                            >
+                              关闭
+                            </Button>
+                            {tutorFixtureScenarios.map((fixture) => (
+                              <Button
+                                className="h-8 rounded-full px-3"
+                                key={fixture.id}
+                                onClick={() => {
+                                  setDevTutorFixtureQueryParam(fixture.id);
+                                  setDevTutorFixtureState(buildDevTutorFixtureState(fixture));
+                                }}
+                                size="sm"
+                                type="button"
+                                variant={activeTutorFixture?.id === fixture.id ? "default" : "outline"}
+                              >
+                                {fixture.label}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      </MonitorSection>
+                    ) : null}
+
+                    <MonitorSection title="当前相关知识点">
+                      <div className="space-y-3">
+                        {relatedKnowledgePoints.map((point) => (
+                          <button
+                            className="w-full rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3 text-left transition-colors hover:border-[var(--xidea-selection-border)]"
+                            key={point.id}
+                            onClick={() => handleOpenKnowledgePoint(point.id)}
+                            type="button"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-sm font-medium text-[var(--xidea-near-black)]">{point.title}</p>
+                              <Badge className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`} variant="outline">
+                                {point.stageLabel}
+                              </Badge>
+                            </div>
+                            <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">{point.description}</p>
+                            <p className="mt-2 text-[12px] text-[var(--xidea-stone)]">{point.nextReviewLabel ?? "等待下一次调度"}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </MonitorSection>
+
+                    <MonitorSection
+                      accent={
+                        activeRuntime.source === "live-agent"
+                          ? "Live"
+                          : activeRuntime.source === "hydrated-state"
+                            ? "Hydrated"
+                            : "Mock"
+                      }
+                      title="Session Summary"
+                    >
+                      <CompactNote label="Project" value={selectedProject.name} />
+                      <CompactNote label="Session" value={selectedSession.status} />
+                      <CompactNote label="Mode" value={hasStructuredRuntime ? activeRuntime.decision.title : "待生成"} />
+                      <CompactNote
+                        label="State"
+                        value={hasPersistedState ? activeRuntime.stateSource : "当前 session 还没有真实 learner state。"}
+                      />
+                      {hasPersistedState ? (
+                        <div className="rounded-[0.95rem] bg-[var(--xidea-selection)] px-3 py-3 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                          {generatedProfile.summary}
+                        </div>
+                      ) : null}
+                    </MonitorSection>
+
+                    <MonitorSection title="Materials">
+                      <CompactNote
+                        label="Selected"
+                        value={
+                          isBlankSession
+                            ? "0 assets"
+                            : selectedSourceAssetIds.length > 0
+                              ? `${requestSourceAssetIds.length} attached`
+                              : `${requestSourceAssetIds.length} linked`
+                        }
+                      />
+                      <CompactNote label="Knowledge" value={selectedUnit?.title ?? "未指定"} />
+                      <CompactNote label="Context" value={activeAssetSummary?.summary ?? "等待读取真实材料上下文"} />
+                      {activeAssetSummary?.keyConcepts.length ? (
+                        <div className="flex flex-wrap gap-2">
+                          {activeAssetSummary.keyConcepts.slice(0, 4).map((concept) => (
+                            <Badge
+                              className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
+                              key={concept}
+                              variant="outline"
+                            >
+                              {concept}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+                    </MonitorSection>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </main>
