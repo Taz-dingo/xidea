@@ -33,9 +33,9 @@ import {
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
 import {
   selectFixture,
-} from "@/app/workspace/session-agent-fixture";
-import { createSessionActions } from "@/app/workspace/session-agent-actions";
-import type { WorkspaceData } from "@/app/workspace/use-data";
+} from "@/app/workspace/agent/session-fixture";
+import { createSessionActions } from "@/app/workspace/agent/session-actions";
+import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useSessionAgent({
   data,

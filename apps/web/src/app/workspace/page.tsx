@@ -23,12 +23,12 @@ import {
   getReviewTargetPoint,
   getStudyTargetPoint,
   getVisibleKnowledgePoints,
-} from "@/app/workspace/selectors";
-import { WorkspaceHeader } from "@/app/workspace/header";
-import { WorkspaceHero } from "@/app/workspace/hero";
-import { useSessionAgent } from "@/app/workspace/use-session-agent";
-import { useWorkspaceActions } from "@/app/workspace/use-actions";
-import { useWorkspaceData } from "@/app/workspace/use-data";
+} from "@/app/workspace/model/selectors";
+import { WorkspaceHeader } from "@/app/workspace/ui/header";
+import { WorkspaceHero } from "@/app/workspace/ui/hero";
+import { useSessionAgent } from "@/app/workspace/agent/use-session-agent";
+import { useWorkspaceActions } from "@/app/workspace/hooks/use-actions";
+import { useWorkspaceData } from "@/app/workspace/hooks/use-data";
 import { KnowledgePointDetailScreen } from "@/components/workspace/detail";
 import { SessionWorkspace } from "@/components/session/workspace";
 import {
@@ -36,10 +36,8 @@ import {
   EditMetaPanel,
 } from "@/components/workspace/management";
 import { MetaPanel } from "@/components/workspace/core";
-import {
-  HomeScreen,
-  WorkspaceBrowseScreen,
-} from "@/components/workspace/screens";
+import { HomeScreen } from "@/components/workspace/screens/home";
+import { WorkspaceBrowseScreen } from "@/components/workspace/screens/browse";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 

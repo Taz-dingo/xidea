@@ -1,7 +1,11 @@
 import { startTransition } from "react";
-import type { SessionItem, SessionType, WorkspaceSection } from "@/domain/project-workspace";
+import type {
+  SessionItem,
+  SessionType,
+  WorkspaceSection,
+} from "@/domain/project-workspace";
 import { getDefaultSourceAssetIds } from "@/domain/project-session-runtime";
-import type { WorkspaceData } from "@/app/workspace/use-data";
+import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useWorkspaceActions(data: WorkspaceData) {
   function handleSelectProject(projectId: string): void {
@@ -78,7 +82,10 @@ export function useWorkspaceActions(data: WorkspaceData) {
       [createdProject.id]: data.projectDraft.initialMaterialIds,
     }));
     data.setSessions((current) => [createdSession, ...current]);
-    data.setSessionMessagesById((current) => ({ ...current, [createdSession.id]: [] }));
+    data.setSessionMessagesById((current) => ({
+      ...current,
+      [createdSession.id]: [],
+    }));
     data.setSessionSourceAssetIds((current) => ({
       ...current,
       [createdSession.id]: getDefaultSourceAssetIds(),
@@ -98,7 +105,8 @@ export function useWorkspaceActions(data: WorkspaceData) {
       topic: data.selectedProject.topic,
       description: data.selectedProject.description,
       specialRulesText: data.selectedProject.specialRules.join("\n"),
-      materialIds: data.projectMaterialIdsByProject[data.selectedProject.id] ?? [],
+      materialIds:
+        data.projectMaterialIdsByProject[data.selectedProject.id] ?? [],
     });
     data.setIsEditingProjectMeta(true);
   }
@@ -143,7 +151,8 @@ export function useWorkspaceActions(data: WorkspaceData) {
       topic: data.selectedProject.topic,
       description: data.selectedProject.description,
       specialRulesText: data.selectedProject.specialRules.join("\n"),
-      materialIds: data.projectMaterialIdsByProject[data.selectedProject.id] ?? [],
+      materialIds:
+        data.projectMaterialIdsByProject[data.selectedProject.id] ?? [],
     });
     data.setIsEditingProjectMeta(false);
   }
@@ -165,16 +174,23 @@ export function useWorkspaceActions(data: WorkspaceData) {
     const targetPoint =
       knowledgePointId === null
         ? null
-        : data.knowledgePoints.find((point) => point.id === knowledgePointId) ?? null;
-    const projectMaterialIds = data.projectMaterialIdsByProject[targetProject.id] ?? [];
+        : (data.knowledgePoints.find(
+            (point) => point.id === knowledgePointId,
+          ) ?? null);
+    const projectMaterialIds =
+      data.projectMaterialIdsByProject[targetProject.id] ?? [];
     const suggestedSourceAssetIds =
       targetPoint === null
         ? []
-        : targetPoint.sourceAssetIds.filter((assetId) => projectMaterialIds.includes(assetId));
+        : targetPoint.sourceAssetIds.filter((assetId) =>
+            projectMaterialIds.includes(assetId),
+          );
 
     data.setSelectedProjectId(targetProject.id);
     data.setSelectedSessionId("");
-    data.setSelectedKnowledgePointId(targetPoint?.id ?? data.selectedKnowledgePointId);
+    data.setSelectedKnowledgePointId(
+      targetPoint?.id ?? data.selectedKnowledgePointId,
+    );
     data.setWorkspaceSection(type === "review" ? "due-review" : "overview");
     data.setIsEditingProjectMeta(false);
     data.setIsProjectMetaOpen(false);
@@ -207,8 +223,10 @@ export function useWorkspaceActions(data: WorkspaceData) {
     }
 
     const nextIndex =
-      data.sessions.filter((session) => session.projectId === targetProject.id).length + 1;
-    const titlePrefix = type === "study" ? "学习" : type === "review" ? "复习" : "project";
+      data.sessions.filter((session) => session.projectId === targetProject.id)
+        .length + 1;
+    const titlePrefix =
+      type === "study" ? "学习" : type === "review" ? "复习" : "project";
     const createdSession: SessionItem = {
       id: `session-${Date.now()}`,
       projectId: targetProject.id,
@@ -226,9 +244,15 @@ export function useWorkspaceActions(data: WorkspaceData) {
     };
 
     data.setSessions((current) => [createdSession, ...current]);
-    data.setSessionMessagesById((current) => ({ ...current, [createdSession.id]: [] }));
+    data.setSessionMessagesById((current) => ({
+      ...current,
+      [createdSession.id]: [],
+    }));
     data.setDraftPrompt("");
-    data.sessionEntryModesSetter((current) => ({ ...current, [createdSession.id]: "chat-question" }));
+    data.sessionEntryModesSetter((current) => ({
+      ...current,
+      [createdSession.id]: "chat-question",
+    }));
     data.setSessionSourceAssetIds((current) => ({
       ...current,
       [createdSession.id]: initialSourceAssetIds,
@@ -257,9 +281,11 @@ export function useWorkspaceActions(data: WorkspaceData) {
         point.id === pointId
           ? {
               ...point,
-              status: point.status === "archived" ? "active_review" : "archived",
+              status:
+                point.status === "archived" ? "active_review" : "archived",
               stageLabel: point.status === "archived" ? "待复习" : "已归档",
-              nextReviewLabel: point.status === "archived" ? "等待重新安排" : null,
+              nextReviewLabel:
+                point.status === "archived" ? "等待重新安排" : null,
               updatedAt: "刚刚",
             }
           : point,
@@ -282,7 +308,12 @@ export function useWorkspaceActions(data: WorkspaceData) {
     data.setKnowledgePoints((current) =>
       current.map((point) =>
         point.id === data.selectedKnowledgePoint?.id
-          ? { ...point, title: nextTitle, description: nextDescription, updatedAt: "刚刚" }
+          ? {
+              ...point,
+              title: nextTitle,
+              description: nextDescription,
+              updatedAt: "刚刚",
+            }
           : point,
       ),
     );
@@ -290,7 +321,9 @@ export function useWorkspaceActions(data: WorkspaceData) {
     data.setArchiveConfirmationPointId(null);
   }
 
-  function handleSessionWorkspaceSectionChange(section: WorkspaceSection): void {
+  function handleSessionWorkspaceSectionChange(
+    section: WorkspaceSection,
+  ): void {
     data.setWorkspaceSection(section);
     data.setSelectedSessionId("");
   }
@@ -337,7 +370,9 @@ export function useWorkspaceActions(data: WorkspaceData) {
     handleSelectProject,
     handleSessionWorkspaceSectionChange,
     handleStartArchiveConfirmation: (pointId: string) =>
-      data.setArchiveConfirmationPointId((current) => (current === pointId ? null : pointId)),
+      data.setArchiveConfirmationPointId((current) =>
+        current === pointId ? null : pointId,
+      ),
     handleStartCreatingProject,
     handleStartEditingKnowledgePoint: () => {
       if (data.selectedKnowledgePoint === null) {
@@ -363,6 +398,7 @@ export function useWorkspaceActions(data: WorkspaceData) {
             },
       );
     },
-    handleToggleProjectMeta: () => data.setIsProjectMetaOpen((current) => !current),
+    handleToggleProjectMeta: () =>
+      data.setIsProjectMetaOpen((current) => !current),
   };
 }

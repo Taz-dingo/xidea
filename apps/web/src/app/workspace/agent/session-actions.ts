@@ -8,8 +8,8 @@ import {
   buildSkippedFixtureState,
   selectFixture,
   setDevTutorFixtureQueryParam,
-} from "@/app/workspace/session-agent-fixture";
-import type { WorkspaceData } from "@/app/workspace/use-data";
+} from "@/app/workspace/agent/session-fixture";
+import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function createSessionActions({
   activeRuntime,

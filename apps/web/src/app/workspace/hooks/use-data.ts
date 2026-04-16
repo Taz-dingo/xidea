@@ -36,14 +36,14 @@ import {
   getSelectedProjectKnowledgePoints,
   getSelectedProjectMaterials,
   getSelectedProjectSessions,
-} from "@/app/workspace/selectors";
+} from "@/app/workspace/model/selectors";
 import type {
   EditableKnowledgePointDraft,
   PendingInitialPrompt,
   PendingSessionIntent,
   ProjectDraft,
   ProjectMetaDraft,
-} from "@/app/workspace/types";
+} from "@/app/workspace/model/types";
 
 export function useWorkspaceData() {
   const initialProfile = learnerProfiles[1] ?? learnerProfiles[0];
