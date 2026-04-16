@@ -68,6 +68,8 @@ Treat `docs/archive/` as historical context only.
 - Default to simplifying scope, not expanding it
 - Keep `main` buildable and demoable
 - Use short-lived branches
+- Keep changes moving in small stable slices; when one slice is buildable or otherwise coherent, commit it before starting the next one
+- Avoid letting many unrelated edits accumulate into one large commit that hides what actually changed
 - Before implementation, first route the task to a primary owner / workstream
 - If a task changes team-wide understanding, update the relevant memory doc
 
