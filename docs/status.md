@@ -1,8 +1,28 @@
 # Status
 
-## As Of 2026-04-15
+## As Of 2026-04-16
 
 ### Done
+
+#### 本轮方向确认
+
+- 基于一轮产品讨论，将当前 MVP 方向收敛为 project-centric learning workspace，而不是以单条 thread 为中心的 tutor 界面
+- 明确当前产品主对象收敛为 `Project / Knowledge Point / Session / Learning Profile`
+- 明确创建 Project 时必须先确认学习主题，并允许用户直接提供初始材料；AI 自动找资料不作为第一版主链路前提
+- 明确每个 Project 拥有项目级 memory、项目级 learning profile，以及一组扁平 knowledge points
+- 明确知识点是项目内最小学习单元；学习和复习都围绕知识点组织，不先做知识点层级关系
+- 明确知识点卡片只负责浏览和状态展示，真正作答发生在 `study session / review session`
+- 明确第一版学习 / 复习形式先只做选择题，不先做简答题和开放式多轮对练
+- 明确 project chat 默认继续当前会话，但允许用户手动新建新的 `project session`；系统不自动切分 project session
+- 明确 session 类型显式分为 `project / study / review`
+- 明确 project 页默认优先展示 knowledge points 工作台；session workspace 只在用户明确进入某个 session 后展开
+- 明确 knowledge point 详情页采用独立跳转，而不是在主工作台持续维持四块并列信息
+- 明确学习画像只做 project 级聚合画像，主要服务编排；用户侧只看轻量摘要并提供轻量反馈
+- 明确知识点新增规则：材料导入可批量生成，聊天中新知识点默认先建议、再确认
+- 明确知识点支持 archive；第一版由系统建议、用户确认后执行
+- 明确 project 主题不相关的聊天要被主动提醒，且不更新 project memory、不新增知识点、不触发学习/复习编排
+
+#### 已落地实现基线（部分仍属旧 thread-centric 过渡实现）
 
 - 初始化 repo 并接上 remote
 - 搭了最小可运行的 web demo，并迁移到 `apps/web`
@@ -14,7 +34,7 @@
 - 建立 `apps/agent` Python 骨架，承接后续 LangGraph 编排
 - 将当前比赛 demo 收敛到最小 agent loop
 - 明确 `Review Engine / Agent Memory / Consolidation` 三层边界
-- 明确学习上下文按 `project / thread` 组织
+- 上一轮实现基线按 `project / thread` 组织学习上下文，为当前 project-centric 重构提供了可运行底座
 - 明确技术方向切到"受约束单 agent + LangChain / LangGraph 最小接入"
 - 新增 `branch-workflow` 项目级 skill，把开分支、改分支名和 PR 协作约束变成可触发流程
 - 明确 Vercel AI SDK 属于 web 交互层，Python + LangGraph 继续作为核心编排层
@@ -26,8 +46,8 @@
 - 将 web demo 数据统一收敛到 RAG 主案例，不再并列展示跨学科样例
 - 将主案例映射成更可信的状态来源、诊断信号和回写预览
 - 将编排证据链做成默认可见输出，并把 planner explanation 结构化为主决策与写回预览
-- 完成 web 前端首页重构，强化"项目线程 -> 诊断 -> 动作选择 -> 学习路径 -> 回写"的默认叙事结构
-- 首页信息架构已进一步改成更克制的 codex-style workspace：左侧 `project / session` 侧栏，中间保留当前 thread 必要内容，右侧放学习画像、复习系统和项目特有 inspector
+- 完成一轮 web 前端首页重构，强化过渡态里的"项目线程 -> 诊断 -> 动作选择 -> 学习路径 -> 回写"叙事结构
+- 上一轮首页信息架构曾收敛为更克制的 codex-style workspace：左侧 `project / session` 侧栏，中间保留当前 thread 必要内容，右侧放学习画像、复习系统和项目特有 inspector
 - 当前 workspace 的视觉规则已收敛为"轻选中态 + 中性色主导 + 侧栏单行排版"，不再使用大面积黑色 active 和多彩状态块
 - `apps/web` 已接入真实 `/runs/v0` 结果，可用本地代理和运行面板把 mock 证据链切到 agent 返回的 `diagnosis / plan / state-patch`
 - `apps/web` 已正式接入 `shadcn/ui` 基础组件，当前 workspace 的按钮、卡片、徽标、滚动区和输入区不再是纯手写 primitive
@@ -109,13 +129,19 @@
 
 ### In Progress
 
-- 收敛学习引擎下一步运行形态：让学习资料、thread memory、learner state、review context 在主决策前完成预取，并进入同一证据上下文
-- 将展示型 `StudyPlan` 收敛为可执行 learning activity contract，支持 agent 在对话里直接触发出题 / 复习 / 导师追问
+- 收敛 agent 主路径到“预取 project 证据上下文 -> 单次主决策调用 -> tool / session loop -> 状态回写”，优先解决当前回复过慢与首轮等待偏长问题
+- 将当前 operating docs 从“project / thread + activity-first”进一步收敛到“project-centric MVP”叙事
+- 收敛 Project 创建流程：主题、描述、材料输入、special rules 生成和初始化编排
+- 收敛 project memory、project learning profile 与 knowledge point pool 的边界
+- 收敛 `project / study / review` 三类 session 的职责与页面展开方式
+- 收敛知识点生命周期：初始化生成、project chat 建议新增、轻量编辑、archive 建议
+- 收敛学习引擎下一步运行形态：让 project materials、project memory、learning profile、session context、review context 在主决策前完成预取，并进入同一证据上下文
+- 将当前展示型 `StudyPlan` 过渡收敛为 session 内可执行 activity contract，支持 agent 在对话里直接触发学习 / 复习动作
 - 收敛 web-agent contract：从当前 `diagnosis / plan` 过渡适配切到结构化 activity / tool result 事件
 - 收敛前端 activity gating：当前学习动作未完成前，主输入区改成受约束交互
 - 收敛用户侧 activity 节奏：让“作答完成 -> 下一轮简短诊断 / 动作反馈”更自然，避免重新把内部证据摊回中间学习线程
-- 规划并后续实现学习模式借鉴项：`hint / more questions / performance feedback / 材料直出 quiz 或 study guide`
-- 将“thread-level material library + turn-level attachments”收成稳定 contract，替换当前前端先行适配的数据壳
+- 规划后续可借鉴的学习模式扩展项：`hint / more questions / performance feedback / 材料直出 quiz 或 study guide`，但不作为第一版选择题 session 的阻塞项
+- 将“project-level material library + session / turn attachments”收成稳定 contract，替换当前前端先行适配的数据壳
 - 将多 activity / card deck 从前端 fixture 和过渡归一化推进到真实后端事件
 - 将前端已出现的学习交互件整理成后端 prompt / contract 需求清单，供学习引擎 owner 对齐实现
 - 收敛 tutor system prompt：明确何时发起 activity、何时只给短引导、何时禁止继续自由讲解
@@ -123,7 +149,15 @@
 
 ### Next
 
-- 压缩主链路 LLM 调用次数，取消 `diagnosis -> reply -> plan` 这种独立串行文本调用，改成单次主决策 turn + loop
+- 压缩主链路 LLM 调用次数，减少当前串行请求带来的首轮回复延迟
+- 定义 Project 创建与初始化编排所需的最小 schema：topic、description、materials、special rules、initial memory
+- 定义 knowledge point 最小 schema：title、description、source materials、origin session、mastery/review/archive state
+- 定义 project learning profile 最小 schema：当前阶段、主要薄弱点、学习偏好、新鲜度
+- 将前端页面信息架构改到 `App Home -> Project Workspace -> Knowledge Point Detail`
+- 将 Project Workspace 改成默认知识点工作台、按需展开 session workspace 的布局
+- 为 `project / study / review` 三类 session 定义明确交互和事件 contract
+- 支持 project chat 中的新增材料、知识点建议新增、知识点轻量编辑和 topic/rules 修改入口
+- 支持知识点 archive 建议与确认流
 - 打通 `exercise-result / review-result` 回传与状态回写闭环，让练习结果和复习表现真正影响下一轮诊断
 - 决定当前 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
 - 决定主案例稳定后优先补哪个次级 demo surface：继续放大“材料导入”，还是转向“导师对练”
@@ -133,6 +167,9 @@
 
 ### Risks
 
+- 如果 Project、Knowledge Point、Session 三个对象边界没有尽快在代码里落稳，MVP 会继续带着旧的 thread-centric 结构前进，后续改动成本会放大
+- 如果知识点新增和 archive 规则不够克制，项目内知识点池会快速膨胀，削弱“系统在组织学习”的主感受
+- 如果 project learning profile 做得过重或过拟人，会把 MVP 从“编排系统”拉偏成“画像产品”
 - 如果过早引入复杂 graph 或多 agent，当前 demo 容易被工程结构拖慢
 - 如果 demo 展示很多能力但没有主线，差异点会不明显
 - 如果主案例虽然锁定，但状态来源和动作理由不够可信，评委仍会把它看成概念样机

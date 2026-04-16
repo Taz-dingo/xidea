@@ -8,8 +8,11 @@
 
 ## Current Scope
 
-- 用 `project / thread` 组织学习上下文、材料、问题历史和状态
-- 用 mock 数据表达多样输入、学习者状态、复习状态和编排输出
+- 用 `Project` 组织学习主题、材料、知识点、session 历史和状态
+- 每个 Project 拥有项目级 memory 与 project-level learning profile
+- 用扁平 knowledge points 作为项目内最小学习单元
+- 用显式的 `project / study / review` session 承接聊天、学习与复习过程
+- 用 mock 数据表达多样输入、学习状态、复习状态和编排输出
 - 保持前端简单、稳定、易改
 - 保留一个最小可讲清的受约束单 agent：输入、读状态、选择动作、生成结果、状态回写
 - 区分面向学习者的复习系统与面向 agent 的项目记忆系统
@@ -25,4 +28,6 @@
 - 复杂语音交互
 - 完整 spaced repetition 引擎
 - 大而全的产品化后台
+- AI 自动找资料作为第一版主链路
+- 知识点层级关系和复杂 curriculum graph
 - 开放式 autonomous agent
