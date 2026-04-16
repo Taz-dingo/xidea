@@ -12,6 +12,7 @@
 - `apps/web` 已进一步把 `workspace` 和 `session` 相关文件按 feature folder 收进 `app/workspace`、`components/workspace`、`components/session`，同时去掉一批冗长的 `project-workspace-*` / `project-session-*` 命名；当前 `apps/web/src/app` 与 `apps/web/src/components` 下文件均控制在 500 行以内
 - 团队实现约束继续补齐：开发前默认先匹配对应的 best-practice / framework / project skill，再按 skill 落代码；前端跨组件共享的客户端状态默认使用 Zustand，组件内临时状态继续用 React state
 - 团队协作规则补齐为全局显式约束：改动默认按小步、稳定、可验证的切片推进，每完成一段可构建、可 review 的改动就尽快单独 commit
+- 团队 PR 规则补齐为显式约束：提 PR 前先补齐对应 docs 更新，并先完成一轮自 review，再进入正式 reviewer 流程
 
 - 基于一轮产品讨论，将当前 MVP 方向收敛为 project-centric learning workspace，而不是以单条 thread 为中心的 tutor 界面
 - 明确当前产品主对象收敛为 `Project / Knowledge Point / Session / Learning Profile`
