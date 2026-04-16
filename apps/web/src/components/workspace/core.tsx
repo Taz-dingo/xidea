@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement } from "react";
 import type { SourceAsset } from "@/domain/types";
 import type {
   KnowledgePointItem,
@@ -9,13 +9,7 @@ import type {
 import { getSessionTypeLabel } from "@/domain/project-workspace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 
 type MetricTone = "emerald" | "amber" | "rose" | "sky";
 
@@ -77,11 +71,9 @@ function getReviewTimingAccent(label: string): string {
   if (label.includes("今日") || label.includes("到期")) {
     return "border-[#e1c5bb] bg-[#f8ece7] text-[#9d5b43]";
   }
-
   if (label.includes("明天")) {
     return "border-[#e7d8a6] bg-[#fbf5df] text-[#98711c]";
   }
-
   return "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)]";
 }
 
@@ -89,27 +81,16 @@ function getUpdatedAtAccent(label: string): string {
   if (label.includes("刚刚") || label.includes("今天") || label.includes("1h")) {
     return "border-[#cadecf] bg-[#eef5ef] text-[#56795e]";
   }
-
   if (label.includes("昨天") || label.includes("2d") || label.includes("天前")) {
     return "border-[#d9d4c8] bg-[#f3f0e7] text-[#786c57]";
   }
-
   return "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)]";
 }
 
 function getMasteryFillCount(mastery: number): number {
-  if (mastery >= 80) {
-    return 4;
-  }
-
-  if (mastery >= 55) {
-    return 3;
-  }
-
-  if (mastery >= 30) {
-    return 2;
-  }
-
+  if (mastery >= 80) return 4;
+  if (mastery >= 55) return 3;
+  if (mastery >= 30) return 2;
   return 1;
 }
 
@@ -172,60 +153,6 @@ export function SessionCard({
   );
 }
 
-export function InspectorCard({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: ReactNode;
-}): ReactElement {
-  return (
-    <Card className="rounded-[1.25rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-      <CardHeader className="pb-4">
-        <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">
-          {title}
-        </CardTitle>
-        {description ? (
-          <CardDescription className="text-sm text-[var(--xidea-stone)]">
-            {description}
-          </CardDescription>
-        ) : null}
-      </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
-    </Card>
-  );
-}
-
-export function MonitorSection({
-  title,
-  accent,
-  children,
-}: {
-  title: string;
-  accent?: string;
-  children: ReactNode;
-}): ReactElement {
-  return (
-    <Card className="min-w-0 overflow-hidden rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-      <CardHeader className="px-4 pb-3 pt-4">
-        <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">
-          {title}
-          {accent ? (
-            <span className="ml-2 text-[var(--xidea-selection-text)]">
-              {accent}
-            </span>
-          ) : null}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="min-w-0 space-y-3 px-4 pb-4 pt-0">
-        {children}
-      </CardContent>
-    </Card>
-  );
-}
-
 export function MetricTile({
   label,
   value,
@@ -238,9 +165,7 @@ export function MetricTile({
   return (
     <div className="min-w-0 overflow-hidden rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-3">
       <div className="flex min-w-0 items-center gap-2">
-        <span
-          className={`inline-block h-2 w-2 rounded-full ${getMetricDotClass(tone)}`}
-        />
+        <span className={`inline-block h-2 w-2 rounded-full ${getMetricDotClass(tone)}`} />
         <span className="truncate text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
           {label}
         </span>
@@ -249,56 +174,6 @@ export function MetricTile({
         {value}
       </p>
     </div>
-  );
-}
-
-export function CompactNote({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): ReactElement {
-  return (
-    <div className="flex min-w-0 items-start gap-2 rounded-[0.95rem] bg-[var(--xidea-parchment)] px-3 py-2.5">
-      <span className="shrink-0 pt-0.5 text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
-        {label}
-      </span>
-      <span className="min-w-0 flex-1 break-words text-right text-sm leading-5 text-[var(--xidea-charcoal)]">
-        {value}
-      </span>
-    </div>
-  );
-}
-
-export function WorkspaceNavButton({
-  active,
-  label,
-  count,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  count?: number;
-  onClick: () => void;
-}): ReactElement {
-  return (
-    <button
-      className={
-        active
-          ? "flex w-full items-center justify-between rounded-[0.95rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-2 text-left"
-          : "flex w-full items-center justify-between rounded-[0.95rem] border border-transparent px-3 py-2 text-left hover:border-[var(--xidea-border)] hover:bg-[var(--xidea-white)]"
-      }
-      onClick={onClick}
-      type="button"
-    >
-      <span className="text-sm font-medium text-[var(--xidea-near-black)]">
-        {label}
-      </span>
-      {count !== undefined ? (
-        <span className="text-[12px] text-[var(--xidea-stone)]">{count}</span>
-      ) : null}
-    </button>
   );
 }
 
@@ -318,12 +193,8 @@ export function KnowledgePointCard({
       type="button"
     >
       <div className="min-w-0">
-        <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
-          {point.title}
-        </p>
-        <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
-          {point.description}
-        </p>
+        <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">{point.title}</p>
+        <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">{point.description}</p>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -362,15 +233,13 @@ export function KnowledgePointCard({
             />
           ))}
         </div>
-        <span className="text-[12px] text-[var(--xidea-stone)]">
-          掌握度 {point.mastery}%
-        </span>
+        <span className="text-[12px] text-[var(--xidea-stone)]">掌握度 {point.mastery}%</span>
       </div>
     </button>
   );
 }
 
-export function ProjectMetaPanel({
+export function MetaPanel({
   project,
   materialCount,
   materials,
@@ -388,12 +257,8 @@ export function ProjectMetaPanel({
       <CardContent className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <p className="xidea-kicker text-[var(--xidea-selection-text)]">
-              Project Meta
-            </p>
-            <p className="text-base font-medium text-[var(--xidea-near-black)]">
-              {project.name}
-            </p>
+            <p className="xidea-kicker text-[var(--xidea-selection-text)]">Project Meta</p>
+            <p className="text-base font-medium text-[var(--xidea-near-black)]">{project.name}</p>
           </div>
           <Button className="rounded-full" onClick={onClose} type="button" variant="outline">
             收起
@@ -407,9 +272,7 @@ export function ProjectMetaPanel({
         </div>
 
         <div className="space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
-            Special Rules
-          </p>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">Special Rules</p>
           <div className="flex flex-wrap gap-2">
             {project.specialRules.length > 0 ? (
               project.specialRules.map((rule) => (
@@ -422,17 +285,13 @@ export function ProjectMetaPanel({
                 </Badge>
               ))
             ) : (
-              <p className="text-sm text-[var(--xidea-stone)]">
-                当前还没有 special rules。
-              </p>
+              <p className="text-sm text-[var(--xidea-stone)]">当前还没有 special rules。</p>
             )}
           </div>
         </div>
 
         <div className="space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
-            Project Materials
-          </p>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">Project Materials</p>
           <div className="space-y-2">
             {materials.length > 0 ? (
               materials.map((material) => (
@@ -441,22 +300,16 @@ export function ProjectMetaPanel({
                   key={material.id}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                      {material.title}
-                    </p>
+                    <p className="text-sm font-medium text-[var(--xidea-near-black)]">{material.title}</p>
                     <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
                       {getAssetKindLabel(material.kind)}
                     </span>
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                    {material.topic}
-                  </p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">{material.topic}</p>
                 </div>
               ))
             ) : (
-              <p className="text-sm text-[var(--xidea-stone)]">
-                当前还没有 project materials。
-              </p>
+              <p className="text-sm text-[var(--xidea-stone)]">当前还没有 project materials。</p>
             )}
           </div>
         </div>

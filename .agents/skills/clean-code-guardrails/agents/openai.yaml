@@ -1,0 +1,3 @@
+display_name: Clean Code Guardrails
+short_description: Split overweight Xidea files before App, page, endpoint, or graph entrypoints absorb mixed responsibilities.
+default_prompt: Review this Xidea change for single-responsibility drift, then refactor overloaded entry files into smaller modules before continuing implementation.
