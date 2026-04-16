@@ -1,8 +1,32 @@
 # Status
 
-## As Of 2026-04-14
+## As Of 2026-04-16
 
 ### Done
+
+#### 本轮方向确认
+
+- 基于一轮产品讨论，将当前 MVP 方向收敛为 project-centric learning workspace，而不是以单条 thread 为中心的 tutor 界面
+- 明确当前产品主对象收敛为 `Project / Knowledge Point / Session / Learning Profile`
+- 明确创建 Project 时必须先确认学习主题，并允许用户直接提供初始材料；AI 自动找资料不作为第一版主链路前提
+- 明确每个 Project 拥有项目级 memory、项目级 learning profile，以及一组扁平 knowledge points
+- 明确知识点是项目内最小学习单元；学习和复习都围绕知识点组织，不先做知识点层级关系
+- 明确知识点卡片只负责浏览和状态展示，真正作答发生在 `study session / review session`
+- 明确第一版学习 / 复习形式先只做选择题，不先做简答题和开放式多轮对练
+- 明确 project chat 默认继续当前会话，但允许用户手动新建新的 `project session`；系统不自动切分 project session
+- 明确 session 类型显式分为 `project / study / review`
+- 明确 project 页默认优先展示 knowledge points 工作台；session workspace 只在用户明确进入某个 session 后展开
+- 明确 knowledge point 详情页采用独立跳转，而不是在主工作台持续维持四块并列信息
+- 明确学习画像只做 project 级聚合画像，主要服务编排；用户侧只看轻量摘要并提供轻量反馈
+- 明确知识点新增规则：材料导入可批量生成，聊天中新知识点默认先建议、再确认
+- 明确知识点支持 archive；第一版由系统建议、用户确认后执行
+- 明确 project 主题不相关的聊天要被主动提醒，且不更新 project memory、不新增知识点、不触发学习/复习编排
+- 补充 `Project Workspace` 的 UI reference：明确 `App Home / Project Workspace / Knowledge Point Detail` 三层页面、默认浏览态与 session 展开态的布局和关键交互
+- 将并行开发前需要统一的共享边界收成流程文档：冻结核心对象、材料模型、activity/tool-result schema、运行态 `run_id`、提交 contract 和页面信息架构，作为并行开发 source of truth
+- 更新 `pr-description` skill：默认输出更详细的中文 PR 描述，明确要求在 `摘要 / 演示 / 验证 / 风险` 中交代背景、验证范围和共享影响
+- 将 `docs/memory/decision-log.md` 进一步瘦身为少量长期有效的活跃决策；协作流程、阶段性 UI 取舍和实现过程类记录从主 log 主入口移出，并在 archive 留 slimdown 记录
+
+#### 已落地实现基线（部分仍属旧 thread-centric 过渡实现）
 
 - 初始化 repo 并接上 remote
 - 搭了最小可运行的 web demo，并迁移到 `apps/web`
@@ -14,39 +38,39 @@
 - 建立 `apps/agent` Python 骨架，承接后续 LangGraph 编排
 - 将当前比赛 demo 收敛到最小 agent loop
 - 明确 `Review Engine / Agent Memory / Consolidation` 三层边界
-- 明确学习上下文按 `project / thread` 组织
+- 上一轮实现基线按 `project / thread` 组织学习上下文，为当前 project-centric 重构提供了可运行底座
 - 明确技术方向切到"受约束单 agent + LangChain / LangGraph 最小接入"
 - 新增 `branch-workflow` 项目级 skill，把开分支、改分支名和 PR 协作约束变成可触发流程
 - 明确 Vercel AI SDK 属于 web 交互层，Python + LangGraph 继续作为核心编排层
-- 明确 web 与 agent 第一版采用事件流协议，先收敛 `text-delta / diagnosis / plan / state-patch / done`
+- 明确 web 与 agent 当前采用事件流协议，先收敛 `text-delta / diagnosis / plan / state-patch / done`
 - 锁定当前比赛版主案例为"AI 工程师围绕真实项目学习 RAG 系统设计"
 - 明确当前比赛叙事只服务于 project-backed learning，而不是泛化 all-in-one 学习平台
-- 明确第一版 demo 必须让编排过程可见：至少展示输入上下文、学习状态、动作理由、路径输出和状态回写
+- 明确当前 demo 必须让编排过程可见：至少展示输入上下文、学习状态、动作理由、路径输出和状态回写
 - 明确比赛版主案例只是证明路径，不改变长期产品的扩展方向
 - 将 web demo 数据统一收敛到 RAG 主案例，不再并列展示跨学科样例
 - 将主案例映射成更可信的状态来源、诊断信号和回写预览
 - 将编排证据链做成默认可见输出，并把 planner explanation 结构化为主决策与写回预览
-- 完成 web 前端 v0 首页重构，强化"项目线程 -> 诊断 -> 动作选择 -> 学习路径 -> 回写"的默认叙事结构
-- 首页信息架构已进一步改成更克制的 codex-style workspace：左侧 `project / session` 侧栏，中间保留当前 thread 必要内容，右侧放学习画像、复习系统和项目特有 inspector
+- 完成一轮 web 前端首页重构，强化过渡态里的"项目线程 -> 诊断 -> 动作选择 -> 学习路径 -> 回写"叙事结构
+- 上一轮首页信息架构曾收敛为更克制的 codex-style workspace：左侧 `project / session` 侧栏，中间保留当前 thread 必要内容，右侧放学习画像、复习系统和项目特有 inspector
 - 当前 workspace 的视觉规则已收敛为"轻选中态 + 中性色主导 + 侧栏单行排版"，不再使用大面积黑色 active 和多彩状态块
 - `apps/web` 已接入真实 `/runs/v0` 结果，可用本地代理和运行面板把 mock 证据链切到 agent 返回的 `diagnosis / plan / state-patch`
 - `apps/web` 已正式接入 `shadcn/ui` 基础组件，当前 workspace 的按钮、卡片、徽标、滚动区和输入区不再是纯手写 primitive
 - `apps/web` 已正式接入 Vercel AI SDK 的 `useChat + custom transport`，中间 thread 区开始按消息流方式承接 `/runs/v0` 返回，而不是只靠本地面板状态拼接
 - 为本地前后端联调补上 Vite `/agent-api` 代理与 agent CORS 默认配置
-- 前端 v0 已收尾到可提 PR 状态：当前 workspace 支持 `project -> sessions` 导航、`新建 project / 新建 session`、project 展开收起、宽屏三栏稳定布局，以及 agent `500` 时的非崩溃错误态
-- 初版架构讨论已收敛到可开工状态，并明确 SQLite 状态层与启发式 `Review Engine v0`
+- 前端当前已收尾到可提 PR 状态：当前 workspace 支持 `project -> sessions` 导航、`新建 project / 新建 session`、project 展开收起、宽屏三栏稳定布局，以及 agent `500` 时的非崩溃错误态
+- 当前架构讨论已收敛到可开工状态，并明确 SQLite 状态层与启发式 `Review Engine`
 - 完善 `state.py` 数据模型：双轨 LearnerState + 6 个领域模型 + 2 个枚举
 - 定义 agent tool schema：4 个最小必要工具 + mock 实现 + TOOL_REGISTRY
 - 定义 agent guardrail schema：5 条行为约束规则 + 统一检查入口
 - 搭建 LangGraph 最小编排图：5 个节点 + StateGraph + 规则 mock 实现
 - 将 `learn-engine` 分支上的 agent contract 对齐到 `AgentRequest / diagnosis / plan / state-patch / StreamEvent`
-- 在 `apps/agent` 补上 v0 runtime、SQLite repository 与 FastAPI `/runs/v0` / `/schemas` / storage endpoints
+- 在 `apps/agent` 补上当前 runtime、SQLite repository 与 FastAPI `/runs/v0` / `/schemas` / storage endpoints
 - LangGraph 编排图已切到 `load_context -> diagnose -> decide_action -> maybe_tool -> compose_response -> writeback`
 - `load_context` 已可读取 SQLite 中的 recent messages 与 prior learner state 作为本轮基线
 - 为 runtime、graph、API、repository roundtrip 补上 10 个测试，当前全部通过
-- 明确当前 v0 默认按学习引擎 / 前端 / 产品叙事三条主线并行推进，并要求每次新开工先完成 workstream routing
+- 明确当前默认按学习引擎 / 前端 / 产品叙事三条主线并行推进，并要求每次新开工先完成 workstream routing
 - 丰富 `maybe_tool` 的 4 个 tool intent：asset-summary / unit-detail / thread-memory / review-context 全部从 stub 升级为结构化上下文输出
-- 独立化 `Review Engine v0`：从 runtime 内联逻辑拆为独立模块，实现 6 条启发式规则 + 间隔调度 + 回忆成功/失败处理
+- 独立化 `Review Engine`：从 runtime 内联逻辑拆为独立模块，实现 6 条启发式规则 + 间隔调度 + 回忆成功/失败处理
 - `ReviewPatch` 和 `review_state` 表增加 `review_count / lapse_count`
 - 新增 25 个测试（12 tools + 13 review engine），总计 35 个全部通过
 - 将 `diagnose_state()` 从 if-elif 瀑布升级为综合 action scoring 评分模型
@@ -57,8 +81,8 @@
 - 新增 19 个测试（15 决策路径 + 4 SSE），总计 54 个全部通过
 - `apps/web` 请求已按当前 `project / session` 真实绑定到 agent `project_id / thread_id`，不同 session 不再共用后端线程状态
 - `apps/web` 已切到真实 SSE 消费 `/runs/v0/stream`，thread 区改为跟随后端流式事件逐步渲染
-- `apps/web` 已把编排证据链默认展开，当前可直接查看诊断信号、动作依据与完整状态回写预览
-- `apps/web` 的 `material-import` 已升级为真实材料入口面板，支持选择本轮带入材料并约束发送条件
+- `apps/web` 已将中间学习线程里的编排证据收回，只保留右侧 inspector 作为状态与监控面板
+- `apps/web` 的材料入口已收成单线程里的随时加材料 tray，用户不再需要在"问答 / 材料"之间切模式
 - `apps/web` 中栏输入区已收成单一输入框 + 内嵌发送按钮，thread 与 inspector 滚动区默认显示可见滚动条
 - `apps/web` 左栏已收敛为更紧凑的 codex-style workspace 导航：project 用图标行呈现，session 只保留标题级信息
 - `apps/web` 的学习画像已改为根据当前对话与运行态自动生成，不再由用户手动切换
@@ -90,28 +114,83 @@
 - 新增 26 个 LLM + guardrail / provider 兼容测试，当前 agent 全量 97 个全部通过
 - `build_llm_client()` 切到 OpenAI-compatible 兼容层，默认接智谱 `glm-5`，同时保留 OpenAI 旧环境变量兼容
 - 智谱运行时默认关闭 `thinking`，结构化阶段启用更严格的 JSON 输出约束；LLM HTTP client 默认不继承代理环境变量，减少本地代理/证书链导致的空正文和 TLS 问题
-- `/runs/v0/stream` 已切到真实流式执行：API 直接消费 runtime 事件生成器，连接建立后会立即打开 SSE；当前事件顺序为 `diagnosis -> text-delta -> plan -> state-patch -> done`
+- `/runs/v0/stream` 已切到真实流式执行：API 直接消费 runtime 事件生成器，连接建立后会立即打开 SSE；当前事件顺序仍为 `diagnosis -> text-delta -> plan -> state-patch -> done`
 - agent 主路径已将 `signal extraction + diagnosis` 合并为一次 bundled LLM 调用；正常链路从 4 次模型请求降到 3 次，且 reply 已从 plan 依赖里拆开，首屏等待主要收敛在 `bundled diagnosis -> reply`
 - 完成真实 LLM API 端到端验证：使用 OpenAI-compatible 中转站 (gpt-5.4) 跑通 4 个端到端测试（基础问答、混淆场景、材料导入、SSE 流式），全部通过
 - 新增 `XIDEA_LLM_FORCE_STREAM` 环境变量，适配要求所有请求 `stream=true` 的 API 代理
 - 为所有 LLM 调用添加按步骤标记的计时日志（`bundled_diagnose / generate_reply / stream_reply / build_plan`），每条日志包含 model、provider、耗时(s)和输出字符数
 - 当前 agent 全量 118 个测试全部通过（114 mock + 4 real LLM）
+- 已确认当前 `3` 次串行 LLM 调用 + 展示型 `StudyPlan` 属于过渡实现；下一阶段将对齐成熟 agent 方案，收敛为"预取上下文 -> 单次主决策调用 -> tool / activity loop -> 状态回写"
+- `apps/web` 中栏已新增 activity-first 学习动作卡：当前会优先把 agent `diagnosis / plan` 归一化成可执行动作，并支持在对话里直接完成辨析 / 回忆 / 导师追问后，把结果回传给现有 agent 对话流；学习动作卡已从固定底部区块收成跟随最后一条 agent 回复出现的 inline card
+- 已补充共享约束：当前前端的 activity-first 卡片仍是过渡适配；长期形态应由 agent 在消息流中发出结构化 activity / tool result 事件，前端按事件插 card，而不是固定保留整段学习动作 / 路径 / 证据面板
+- 已补充共享约束：当 activity 是当前必须完成的学习动作时，主输入区不应继续开放自由聊天；当前 web 已补上"完成当前动作 / 跳过当前动作"的 gating。tutor agent 的专门 system prompt 仍记录在后续实现项中
+- `apps/web` 现已补充 dev-only tutor fixture 面板：可以本地切换"边界辨析 / 主动回忆 / 导师追问 / 提交报错 / 无卡片回复"等场景，用于打磨 activity 插卡、gating 和失败回滚，不依赖后端联调
+- `apps/web` 用户侧已收掉中间学习线程里的编排证据区，但保留右侧 inspector 作为状态与监控面板；学习动作卡当前默认只保留题干、选项或输入框与提交 / 跳过
+- `apps/web` 的选择题 activity card 已进一步收成"题干 + 选项 + 提交 / 跳过"，不再把 objective / support / evidence 这类内部编排字段直接展示给用户
+- 已整理一版可借鉴的学习模式 feature 清单，当前优先参考 `ChatGPT Study Mode / Claude 教育场景 / Gemini 学习工具` 的轻交互能力：quiz、flashcards、study guide、hint、more questions、作答后短反馈
+- 已澄清：`flashcards`、quiz、study guide、guided QA 都只是候选学习形式，不是产品目标本身；长期主线仍是"多模态输入 + 多类型学习 + 类 Anki 的 SRS 复习系统"
+- `apps/web` 已将"问答 / 材料"互斥入口收敛为单线程里的随时加材料 tray；当前材料以附加上下文方式挂进这一轮，不再要求用户先切模式
+- `apps/web` 已补多张 learning activity 的 deck 视觉和 dev fixture；当前可以本地预览一组连续小卡叠放在最后一条 agent 回复后，并按顺序一张张翻下去
+- 已确认下一步学习体验增强优先项之一是 Duolingo 风格的答对 / 答错 / 跳过 / 翻卡音效与动效，先记入 backlog，后续再实现
+- 已确认前端新增学习交互需要同步反推后端 tutor prompt 和 event contract；否则只会出现 UI 有壳、agent 不会稳定配合的落差
+- 已将这轮前端交互对后端的具体支撑要求补进 reference：包括随时加材料、card deck、作答 verdict / 短反馈、以及 tutor prompt 的回合节奏要求
+- `apps/web` 已将主页面切成 `App Home -> Project Workspace -> Knowledge Point Detail` 三层页面，并把默认进入 project 时的主区改成 knowledge point list，而不是自动展开 session
+- `apps/web` 当前已实现 project-centric workspace 的两种核心态：默认浏览态显示 profile summary + knowledge point grid，只有用户显式进入 `project / study / review` session 后才展开消息工作区
+- `apps/web` 已将 project-centric 的前端共享类型与 seed 数据从 `App.tsx` 抽到独立 `domain/data` 模块，并让 `More` 入口承载 project 级 meta 面板，开始补齐 special rules / materials / session summary 这些二级信息
+- `apps/web` 顶部搜索现已接成真实过滤：首页按 project 过滤，workspace 浏览态按 knowledge point 过滤；knowledge point detail 也已支持本地编辑 title / description 并即时写回
+- `apps/web` 已将 session card、meta panel、metric tile、knowledge point card 等展示原语抽到独立组件模块，`App.tsx` 继续收敛为状态与页面编排层
+- `apps/web` 已把 `新建 Project` 从占位按钮补成正式表单流：现在可以录入 project 名称、主题、描述、special rules 和初始 materials，并同步生成初始 project session
+- `apps/web` 当前已把 project materials 升成 project 级本地状态：`Project Meta` 面板里可以继续编辑主题、描述、special rules 和材料池，不再只能在创建时一次性录入
+- `apps/web` 已将 `study / review` 的启动改成先进入待开始卡，只有用户发出第一条真实消息后才懒创建对应 session，不再点按钮就立即新建空 session
+- `apps/web` 已将待开始卡和 session 内材料 tray 对齐到 project 级材料池：当前 session attachment 只能从当前 project materials 里选择，不再直接从全局 demo assets 任意挂载
+- `apps/web` 的 project-centric 前端共享模型已进一步收口：UI 侧 session 关联字段从 `unitId` 统一改为 `knowledgePointId`，减少旧 thread/unit 心智继续外溢
+- `apps/web` 当前已把浏览态知识点卡片收成整卡可点击，并补回掌握度图形、学习状态/复习时间/更新时间 tag 以及更清晰的 session 类型标签，提升 workspace 可读性
 
 ### In Progress
 
-- 收敛第一版 `Consolidation` 的演示路径，决定是手动触发还是模拟定时入口
+- 收敛 agent 主路径到"预取 project 证据上下文 -> 单次主决策调用 -> tool / session loop -> 状态回写"，优先解决当前回复过慢与首轮等待偏长问题
+- 将当前 operating docs 从"project / thread + activity-first"进一步收敛到"project-centric MVP"叙事
+- 收敛 Project 创建流程：主题、描述、材料输入、special rules 生成和初始化编排
+- 收敛 project memory、project learning profile 与 knowledge point pool 的边界
+- 收敛 `project / study / review` 三类 session 的职责与页面展开方式
+- 收敛知识点生命周期：初始化生成、project chat 建议新增、轻量编辑、archive 建议
+- 收敛学习引擎下一步运行形态：让 project materials、project memory、learning profile、session context、review context 在主决策前完成预取，并进入同一证据上下文
+- 将当前展示型 `StudyPlan` 过渡收敛为 session 内可执行 activity contract，支持 agent 在对话里直接触发学习 / 复习动作
+- 收敛 web-agent contract：从当前 `diagnosis / plan` 过渡适配切到结构化 activity / tool result 事件
+- 收敛前端 activity gating：当前学习动作未完成前，主输入区改成受约束交互
+- 收敛用户侧 activity 节奏：让"作答完成 -> 下一轮简短诊断 / 动作反馈"更自然，避免重新把内部证据摊回中间学习线程
+- 规划后续可借鉴的学习模式扩展项：`hint / more questions / performance feedback / 材料直出 quiz 或 study guide`，但不作为第一版选择题 session 的阻塞项
+- 将"project-level material library + session / turn attachments"收成稳定 contract，替换当前前端先行适配的数据壳
+- 将多 activity / card deck 从前端 fixture 和过渡归一化推进到真实后端事件
+- 将前端已出现的学习交互件整理成后端 prompt / contract 需求清单，供学习引擎 owner 对齐实现
+- 收敛 tutor system prompt：明确何时发起 activity、何时只给短引导、何时禁止继续自由讲解
+- 收敛当前 `Consolidation` 的演示路径，决定是手动触发还是模拟定时入口
 
 ### Next
 
-- 决定第一版 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
-- 决定主案例稳定后优先补哪个次级 demo surface：继续放大“材料导入”，还是转向“导师对练”
+- 压缩主链路 LLM 调用次数，减少当前串行请求带来的首轮回复延迟
+- 定义 Project 创建与初始化编排所需的最小 schema：topic、description、materials、special rules、initial memory
+- 定义 knowledge point 最小 schema：title、description、source materials、origin session、mastery/review/archive state
+- 定义 project learning profile 最小 schema：当前阶段、主要薄弱点、学习偏好、新鲜度
+- 将前端页面信息架构改到 `App Home -> Project Workspace -> Knowledge Point Detail`
+- 将 Project Workspace 改成默认知识点工作台、按需展开 session workspace 的布局
+- 为 `project / study / review` 三类 session 定义明确交互和事件 contract
+- 支持 project chat 中的新增材料、知识点建议新增、知识点轻量编辑和 topic/rules 修改入口
+- 支持知识点 archive 建议与确认流
+- 打通 `exercise-result / review-result` 回传与状态回写闭环，让练习结果和复习表现真正影响下一轮诊断
+- 决定当前 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
+- 决定主案例稳定后优先补哪个次级 demo surface：继续放大"材料导入"，还是转向"导师对练"
 - 补答辩素材与竞品对比摘要，避免 demo 能演示但叙事支撑不足
 - 可选：迭代 LLM prompt 效果（真实 API 测试已通过）
 - 可选：清理 `enrich_plan_steps`（已被 `llm_build_plan` 替代）
 
 ### Risks
 
+- 如果 Project、Knowledge Point、Session 三个对象边界没有尽快在代码里落稳，MVP 会继续带着旧的 thread-centric 结构前进，后续改动成本会放大
+- 如果知识点新增和 archive 规则不够克制，项目内知识点池会快速膨胀，削弱"系统在组织学习"的主感受
+- 如果 project learning profile 做得过重或过拟人，会把 MVP 从"编排系统"拉偏成"画像产品"
 - 如果过早引入复杂 graph 或多 agent，当前 demo 容易被工程结构拖慢
 - 如果 demo 展示很多能力但没有主线，差异点会不明显
 - 如果主案例虽然锁定，但状态来源和动作理由不够可信，评委仍会把它看成概念样机
 - 中转站 API 单次端到端请求约 27-33s（3 次串行 LLM 调用），延迟主要在中转站/模型侧
+- 如果继续沿用"展示型 plan + 串行文本调用"，agent 会更像会解释的脚本，而不是会安排真实学习动作的系统

@@ -1,5 +1,29 @@
 # Decision Log
 
+## 2026-04-16 — Active Log Slimdown
+
+### 记录
+
+`docs/memory/decision-log.md` 在这一天进一步瘦身，主 log 只保留少量长期有效、会持续影响产品或架构边界的活跃决策。
+
+以下内容不再保留在 active log 主入口：
+
+- 协作流程类条目，例如分支、PR 描述、文档治理和 skill 维护规则
+- 阶段性 UI 取舍，例如 inspector 排版、学习卡反馈体感、空态文案等
+- 过渡实现细节，例如 3-call 路径优化、reply/plan 先后顺序、阶段性浏览器验证策略
+- 已在其他文档中有更合适主归属的内容，例如共享边界冻结、project workspace UI、process guides
+
+### 去向
+
+- 当前仍生效的共享边界，以 [docs/process/shared-boundary-freeze.md](../process/shared-boundary-freeze.md) 为主
+- 流程与协作规则，以 `docs/process/*` 和项目级 skills 为主
+- 当前执行状态和近期风险，以 `docs/status.md` 为主
+- 更早期、阶段性或实现过程类信息，继续保留在 archive 与 git 历史中
+
+### 说明
+
+这次 slimdown 的目的不是删除历史，而是避免 `decision-log.md` 重新长成第二份 `status.md`。
+
 ## 2026-04-13 — Review Engine v0 独立化
 
 ### 决策

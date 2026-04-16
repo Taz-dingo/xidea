@@ -19,15 +19,17 @@
 
 ## Project Skills
 
-本项目维护了 7 个项目级 skill：
+本项目当前默认使用 9 个技能入口，其中通用工程 skill 优先采用 vendored 外部 skill，项目内只维护 Xidea 特有的协作与文档 skill：
 
 - `project-onboarding`
 - `branch-workflow`
 - `docs-governance`
-- `frontend-design`
+- `vercel-react-best-practices`
 - `pr-description`
-- `react-xidea`
-- `typescript-xidea`
+- `python-pro`
+- `ai-agent-basics`
+- `langgraph-docs`
+- `langchain-architecture`
 
 这些 skills 位于 `.agents/skills/` 下。
 
@@ -36,12 +38,15 @@
 - 开始接手项目、隔一段时间重新进入、或 agent 需要快速建立上下文时，用 `project-onboarding`
 - 需要拉分支、改分支名、检查分支命名、决定 `type/owner/topic`、或准备符合规范的 PR 时，用 `branch-workflow`
 - 需要理解文档结构、判断该读哪几份、决定信息该写到哪里、或清理重复文档时，用 `docs-governance`
-- 设计或改版页面时，用 `frontend-design`
+- 做前端页面、React 组件、交互性能和实现细节时，用 `vercel-react-best-practices`
 - 需要起 PR、填写 PR 描述、整理 `Summary / Screenshots / Risks` 时，用 `pr-description`
-- 写 React 页面、组件、状态流转时，用 `react-xidea`
-- 设计类型、domain model、planner 逻辑时，用 `typescript-xidea`
+- 写 Python 后端、类型标注、测试、异步逻辑时，用 `python-pro`
+- 设计 agent loop、ReAct / Plan-and-Execute、tool / memory 模式时，用 `ai-agent-basics`
+- 改 LangGraph 节点、状态流和框架用法时，用 `langgraph-docs`
+- 改 LangChain 集成、agent / memory / tool 结构时，用 `langchain-architecture`
 
 如果一个任务同时涉及 UI、React 和类型设计，可以组合使用。
+如果一个任务同时涉及前端交互与后端 agent contract，优先组合 `vercel-react-best-practices`、`ai-agent-basics`、`langgraph-docs`。
 
 默认建议先运行 `project-onboarding`；涉及开分支、重命名分支或 PR 协作时，再加 `branch-workflow`；需要补 PR 描述时，再加 `pr-description`。
 
@@ -60,6 +65,7 @@
 - 所有工作默认走短分支和 PR
 - 一个 PR 只解决一个问题
 - 每次新开工先判断当前任务属于哪个分工，再继续实现
+- 可以提出额外产品能力建议，但未经用户明确确认，不要主动实现新的产品功能
 - 涉及代码改动的任务默认补测试；如果当前阶段不补测试，必须明确说明原因、风险和后续补齐点
 - 会影响团队共识的内容，先更新 `docs/memory/decision-log.md`
 

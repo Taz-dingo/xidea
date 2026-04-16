@@ -112,23 +112,23 @@
 
 ## 当前推荐运行形态
 
-1. 用户在 `apps/web` 发起问题、材料导入或训练请求
+1. 用户在 `apps/web` 发起问题、补充材料或训练请求
 2. `apps/web` 用 Vercel AI SDK 管理会话状态、消息协议和流式渲染
 3. 请求通过 API contract 发到 `apps/agent`
 4. `apps/agent` 读取 `project / thread / learner state`，通过 LangGraph 做路径判断
 5. agent 返回学习动作、解释信息和必要的增量消息
-6. `apps/web` 把这些结果渲染成聊天内容、学习面板和 planner explanation
+6. `apps/web` 把这些结果渲染成聊天内容、学习动作卡组和右侧 inspector
 
 ## 当前边界原则
 
 - Vercel AI SDK 属于 web 交互层，不替代 LangGraph
 - LangGraph 属于核心编排层，不直接负责前端消息展示
 - 如果后续接入 AI Gateway，它是独立网关层，不改变 web / agent 的主边界
-- 第一版先把 web 与 agent 的 streaming contract 讲清楚，再决定是否扩展更多节点和 provider
+- 当前先把 web 与 agent 的 streaming contract 讲清楚，再决定是否扩展更多节点和 provider
 
-## Web-Agent Contract v0
+## Web-Agent Contract
 
-第一版采用事件流，而不是一次性 JSON 返回。
+当前采用事件流，而不是一次性 JSON 返回。
 
 目标：
 
@@ -142,17 +142,26 @@
 
 - `project_id`: 当前项目上下文
 - `thread_id`: 当前会话上下文
-- `entry_mode`: `chat-question | material-import | coach-followup`
+- `entry_mode`: 当前轮意图；仍可保留 `chat-question | material-import | coach-followup`，但它不再对应前端互斥页面模式
 - `topic`: 当前轮聚焦主题
 - `messages`: 当前轮消息列表，至少包含一条用户输入
-- `source_asset_ids`: 可选，本轮相关材料
+- `source_asset_ids`: 兼容字段；当前仍可用来传本轮相关材料
+- `thread_material_ids`: 推荐新增，可选；表示这个线程已挂载过的材料集合
+- `turn_attachment_ids`: 推荐新增，可选；表示这一轮实际带给 agent 的材料子集
 - `target_unit_id`: 可选，本轮聚焦的学习单元
 - `context_hint`: 可选，当前项目或线程的补充说明
-- `response_mode`: 第一版默认 `stream`
+- `response_mode`: 当前默认 `stream`
+
+当前推荐做法是：
+
+- `thread_material_ids` 负责线程级材料库
+- `turn_attachment_ids` 负责这一轮附带给 agent 的材料
+- `source_asset_ids` 暂时作为兼容字段，直到前后端都切到新字段
 
 ### Stream Events
 
-第一版先收敛为 5 类事件：
+当前已经跑通的主事件仍以 `text-delta / diagnosis / plan / state-patch / done` 为主；
+后续为了支持现有前端学习交互，推荐补成以下结构化事件集：
 
 1. `text-delta`
    - 增量文本片段
@@ -160,13 +169,19 @@
 2. `diagnosis`
    - 当前轮的判断结果
    - 包含 `recommendedAction` 和简要原因
-3. `plan`
-   - 当前轮生成的学习路径
-   - 对应 `StudyPlan`
-4. `state-patch`
+3. `activity`
+   - 当前轮触发的 learning activity
+   - 可包含 `activities` 数组；数组第一张视为当前激活卡，其余卡作为 deck 中的后续卡
+4. `activity-feedback`
+   - 当前卡提交或跳过后的短反馈
+   - 用于前端驱动正确 / 错误 / 跳过 / 进入下一张卡的反馈状态
+5. `plan`
+   - 可选执行摘要
+   - 不是前端主渲染轴
+6. `state-patch`
    - 对学习者状态的增量更新
    - 只传本轮变化，不要求整份状态重发
-5. `done`
+7. `done`
    - 流结束信号
    - 表示本轮结构化结果已经完整送达
 
@@ -177,6 +192,8 @@
 ```json
 { "event": "text-delta", "delta": "我先帮你把这个概念边界拉清楚。" }
 { "event": "diagnosis", "diagnosis": { "recommended_action": "clarify", "reason": "当前混淆风险高" } }
+{ "event": "activity", "activities": [{ "id": "a1", "kind": "quiz" }, { "id": "a2", "kind": "recall" }] }
+{ "event": "activity-feedback", "activity_feedback": { "activity_id": "a1", "verdict": "correct", "summary": "这一步判断是对的，继续下一张。", "advance_to_next": true } }
 { "event": "plan", "plan": { "headline": "先辨析再迁移", "summary": "先澄清，再追问，再迁移", "selected_mode": "contrast-drill", "expected_outcome": "建立稳定区分标准", "steps": [] } }
 { "event": "state-patch", "state_patch": { "learner_state_patch": { "confusion_level": 72, "recommended_action": "clarify" } } }
 { "event": "done", "final_message": "这轮我会先帮你把概念边界拉清楚。" }
@@ -186,18 +203,100 @@
 
 - 比纯文本流更适合 Xidea，因为系统不仅要“回答”，还要“判断和编排”
 - 比一次性 JSON 更适合前端 demo，因为用户能看到系统逐步生成内容
-- 前端可以把 `text-delta` 渲染成聊天内容，把 `diagnosis / plan / state-patch` 渲染成学习面板
+- 前端可以把 `text-delta` 渲染成聊天内容，把 `activity / activity-feedback` 渲染成学习动作卡与短反馈，把 `state-patch` 渲染到右侧状态面板
 
-### First-Version Constraint
+## 当前前端已落地、后端需要补齐的支持项
 
-- 第一版不追求通用事件系统
-- 不急着支持复杂 tool-call protocol
+这部分是给学习引擎 owner 的直接实现清单。
+前端已经出现这些交互，如果后端不跟上，体验会停留在壳子阶段。
+
+### 1. 随时加材料
+
+后端需要支持：
+
+- 不再把“材料进入”理解成单独页面模式
+- 同一线程里，任意一轮都可以附带材料
+- 区分线程级材料库与当前轮附件
+- diagnosis 和 activity 选择都必须真正受当前轮附件影响，而不是只做摘要展示
+
+### 2. 多张 card deck
+
+后端需要支持：
+
+- 一轮可以返回 1 到 N 张顺序 learning activity
+- 第一张是当前激活卡，其余卡作为同一卡组中的后续卡
+- card deck 默认围绕一个回合目标组织，例如“先辨析 -> 再回忆 -> 再迁移表达”
+
+### 3. 作答后的短反馈
+
+后端需要支持：
+
+- 对每次提交给出非常短的回合反馈，而不是长篇解释
+- 至少返回：
+  - `verdict`: `correct | incorrect | partial | skipped`
+  - `summary`: 1 到 2 句短反馈
+  - `advance_to_next`: 是否翻到下一张卡
+- 这类信号会直接决定前端后续的音效、动画和翻卡节奏
+
+### 4. `hint / more questions`
+
+后端需要支持：
+
+- 同一 activity 可以衍生出 hint
+- 同一轮完成后，agent 可以继续追加一张追问卡，而不是重开一整轮长回复
+
+### 5. prompt 与交互节奏对齐
+
+后端 tutor prompt 需要明确：
+
+- 当前优先目标是主持学习回合，而不是给完整答案
+- 当需要发卡时，文本回复只保留短引导
+- 当 card 未完成时，不继续展开自由讲解
+- 当用户提交后，优先给 verdict 和下一步动作，而不是先写大段 explanation
+
+### Current Constraint
+
+- 当前不追求通用事件系统
+- 对外不急着暴露复杂 tool-call protocol，但内部运行形态会逐步对齐成熟 agent loop
 - 只要先让 web 稳定接收这 5 类事件并完成展示即可
 - 如果后续 LangGraph 节点变复杂，再扩展事件种类
 
-## LangGraph Minimal Graph v0
+## Mature-Agent Alignment
 
-第一版 graph 先收敛为一条最小可讲、可演示、可扩展的主链路：
+下一阶段的目标不是继续把诊断、回复、计划拆成多个互相独立的文本调用，
+而是对齐成熟单 agent + tools 方案：
+对外保持单次 streaming run，对内允许同一 run 中进行多次 model turn 和 tool / activity turn。
+
+```text
+load_context / prepare_evidence
+  -> agent_turn
+  -> tool_or_activity
+  -> agent_turn (repeat until done)
+  -> writeback
+```
+
+### 核心原则
+
+- 先预取证据：学习资料、thread memory、learner state、review context 在第一次主决策前完成加载
+- 先决定动作，再决定展示：模型主回合直接决定是给最终回复，还是触发 lookup / learning activity
+- `StudyPlan` 变成执行摘要：如果保留 plan，它应来自已决定的 activity，而不是单独再做一次展示型规划调用
+- 一轮 run 内允许多次观察：tool 或 activity 的结果要重新回到 agent，而不是只作为前端说明文本
+- 前端按事件插卡：learning activity 或 tool result 默认作为消息流中的结构化事件出现，前端按事件插入一张或多张 card，而不是固定预留“学习动作 / 路径 / 证据”面板
+- 可以没有 card，也可以同一轮有多张 card：是否展示、展示几张，取决于 agent 本轮触发了哪些结构化结果，而不是页面写死的布局槽位
+- 当前动作优先于自由聊天：如果 agent 已发出必须完成的 learning activity，前端主输入区默认切到受约束交互；除非用户显式跳过，否则不应直接进入下一轮普通问答
+- tutor prompt 要和 contract 一起收敛：system prompt 需要明确“决定并主持学习回合”是第一目标，activity 触发优先级高于长篇解释
+
+### 对 Xidea 的直接含义
+
+- “材料进入”不只是读取摘要，而是让材料证据真正影响 diagnosis 和 activity 选择
+- “导师对练 / 复习 / 练习”需要变成 agent 可触发的对话内 activity，而不是右栏解释或静态步骤
+- `exercise-result / review-result` 需要成为下一轮 learner state 和 review state 的真实输入
+- 对话主轴应保持“agent 文本回复 + 结构化 card 事件”；固定 `plan` 展示只允许作为过渡兼容，不应成为长期 contract
+- 当 activity 未完成时，用户看到的主交互应该是“完成这张卡”而不是“继续自由聊”；这样系统才能真正表现为在安排学习，而不是附带给一张卡
+
+## 当前实现的过渡链路
+
+当前代码仍保留一条较线性的过渡链路，用来支撑现有 demo 与调试：
 
 ```text
 load_context
@@ -208,7 +307,8 @@ load_context
   -> writeback
 ```
 
-这条链路的目标不是做复杂多 agent，而是把“系统先判断，再决定怎么学，再解释并回写”的主逻辑讲清楚。
+这条链路的价值主要是把“系统先判断，再决定怎么学，再解释并回写”的主逻辑讲清楚。
+它描述的是当前已经做出来的实现，不是后续推荐继续扩展的目标链路。
 
 ### Node 1: `load_context`
 
@@ -263,13 +363,11 @@ load_context
 职责：
 
 - 基于诊断结果决定当前轮学习动作
-- 生成一个轻量 `StudyPlan` 草稿
 - 明确当前轮优先做澄清、追问、练习、复习还是迁移
 
 建议输出字段：
 
 - `toolIntent`
-- `plan` 会在 `compose_response` 阶段与 explanation、state-patch 一起整理成最终输出
 
 不负责：
 
@@ -282,9 +380,9 @@ load_context
 
 - 只有在 `needsTool` 或 `toolIntent` 明确时才执行
 - 补充当前轮缺失但必要的上下文
-- 第一版可以只做轻量 lookup，而不是复杂 tool orchestration
+- 当前可以只做轻量 lookup，而不是复杂 tool orchestration
 
-第一版可接受的工具职责：
+当前可接受的工具职责：
 
 - 读取 source asset 摘要
 - 读取 learning unit 详情
@@ -302,7 +400,7 @@ load_context
 
 - 把前面节点的结构化结果整理成前端消费的事件流
 - 生成当前轮 assistant explanation
-- 输出 `text-delta / diagnosis / plan / state-patch / done`
+- 输出当前已存在的 `text-delta / diagnosis / plan / state-patch / done`
 
 不负责：
 
@@ -317,7 +415,7 @@ load_context
 - 产出 `state-patch`
 - 为下一轮保留最小连续性
 
-第一版建议只回写：
+当前建议只回写：
 
 - `LearnerState` 的增量变化
 - 当前轮 `recommendedAction`
@@ -327,19 +425,19 @@ load_context
 不负责：
 
 - 不做复杂 consolidation
-- 不把所有长期记忆系统都塞进第一版
+- 不把所有长期记忆系统都塞进当前链路
 
-## First-Version Graph Principles
+## 当前链路的约束
 
 - 保持单 agent 主链路，不扩成多 agent graph
 - 节点按职责拆分，不按“看起来完整”拆分
-- `diagnose` 和 `decide_action` 分开，确保“判断”和“编排”可以单独讲清楚
-- `maybe_tool` 保持可选和轻量，不把工具系统做成第一版前提
-- `compose_response` 与 `writeback` 分开，避免展示逻辑和状态更新逻辑缠在一起
+- `diagnose` 和 `decide_action` 分开，方便解释当前代码里“判断”和“编排”的边界
+- `maybe_tool` 当前仍是可选和轻量的 lookup 节点
+- `compose_response` 与 `writeback` 当前仍分开，避免展示逻辑和状态更新逻辑缠在一起
 
-## GraphState v0
+## GraphState
 
-第一版 `GraphState` 只承载本轮真正必要的信息，不提前扩成完整长期记忆容器。
+当前 `GraphState` 只承载本轮真正必要的信息，不提前扩成完整长期记忆容器。
 
 建议结构：
 
@@ -379,7 +477,7 @@ type GraphState = {
 
 ### Decision 1: Keep `recentMessages`
 
-第一版保留 `recentMessages`，但只保留最近一小段消息历史。
+当前保留 `recentMessages`，但只保留最近一小段消息历史。
 
 建议：
 
@@ -389,7 +487,7 @@ type GraphState = {
 
 ### Decision 2: Fixed `toolIntent`
 
-第一版 `toolIntent` 采用固定枚举，不使用自由文本。
+当前 `toolIntent` 采用固定枚举，不使用自由文本。
 
 当前允许值：
 
@@ -400,13 +498,13 @@ type GraphState = {
 
 这样做的原因：
 
-- 更容易约束第一版工具边界
+- 更容易约束当前工具边界
 - 更容易联调和测试
 - 避免过早变成开放式 tool routing
 
 ### Decision 3: Patch-Only `writeback`
 
-第一版 `writeback` 只允许小范围 patch，不做整块全量状态重写。
+当前 `writeback` 只允许小范围 patch，不做整块全量状态重写。
 
 建议只回写：
 
@@ -425,11 +523,11 @@ type GraphState = {
 - 不在 `GraphState` 里保存完整长期记忆对象
 - 不把 UI 展示状态直接混进 agent state
 - 不让 `toolResult` 反向重写 `diagnosis`
-- 不让 `writeback` 在第一版承接复杂 consolidation 逻辑
+- 不让 `writeback` 在当前链路承接复杂 consolidation 逻辑
 
-## Diagnosis Schema v0
+## Diagnosis Schema
 
-第一版 `diagnosis` 采用增强版结构，不只返回推荐动作，还要明确问题类型、置信度和是否需要补工具信息。
+当前 `diagnosis` 采用增强版结构，不只返回推荐动作，还要明确问题类型、置信度和是否需要补工具信息。
 
 建议结构：
 
@@ -456,10 +554,10 @@ type Diagnosis = {
   - 必须与 `teach / clarify / practice / review / apply` 保持一致
 - `reason`
   - 对当前判断的简短解释
-  - 第一版建议控制在 `1` 到 `2` 句以内
+  - 当前建议控制在 `1` 到 `2` 句以内
 - `confidence`
   - 当前判断的把握度
-  - 第一版可先使用 `0` 到 `1` 的启发式数值
+  - 当前可先使用 `0` 到 `1` 的启发式数值
 - `focusUnitId`
   - 当前轮主要聚焦的学习单元
   - 如果是开放式聊天且没有明确 unit，可以为空
@@ -483,9 +581,9 @@ type Diagnosis = {
 - `needsTool` 为真时，优先进入 `maybe_tool`，而不是在 `diagnose` 内硬补信息
 - `primaryIssue` 采用固定枚举，不使用自由文本
 
-## Plan Schema v0
+## Plan Schema
 
-第一版 `plan` 保持增强但克制，既能体现“系统在编排”，又不提前扩成复杂课程执行系统。
+当前 `plan` 保持增强但克制，既能体现“系统在编排”，又不提前扩成复杂课程执行系统。
 
 建议结构：
 
@@ -525,7 +623,7 @@ type StudyPlan = {
 
 ### Plan Constraints
 
-- 第一步版默认只允许 `1` 到 `3` 步
+- 当前默认只允许 `1` 到 `3` 步
 - 每一步都必须带 `reason`
 - 每一步都必须带 `outcome`
 - `selectedMode` 是轮级主策略，`step.mode` 是步骤级执行形式
@@ -539,13 +637,13 @@ type StudyPlan = {
 
 ### Plan Guardrails
 
-- 第一版不增加 `priority`、`estimatedTime`、`dependsOn` 等复杂执行字段
+- 当前不增加 `priority`、`estimatedTime`、`dependsOn` 等复杂执行字段
 - `plan` 负责表达教学安排，不替代最终 assistant reply
 - `plan.summary` 解释安排逻辑，`diagnosis.reason` 解释判断逻辑，两者不要混写
 
-## State-Patch Schema v0
+## State-Patch Schema
 
-第一版 `state-patch` 只表达本轮的增量变化，不重发整份状态，也不承接复杂长期记忆同步。
+当前 `state-patch` 只表达本轮的增量变化，不重发整份状态，也不承接复杂长期记忆同步。
 
 建议结构：
 
@@ -586,7 +684,7 @@ type StatePatch = {
   - 用来区分诊断建议和最终执行结果
 - `reviewPatch`
   - 当前轮对 review 调度层产生的最小影响
-  - 第一版只保留轻量接口位置，不扩成完整复习引擎数据结构
+  - 当前只保留轻量接口位置，不扩成完整复习引擎数据结构
 
 ### Why This Shape
 
@@ -598,16 +696,16 @@ type StatePatch = {
 
 - 只回写增量变化，不重发整份 `LearnerState`
 - 如果本轮没有变化，对应字段可以省略
-- 第一版不回写完整 thread memory、完整 learner profile 或 consolidation 结果
+- 当前不回写完整 thread memory、完整 learner profile 或 consolidation 结果
 - `lastAction` 表达执行结果，不替代 `diagnosis`
 
-## Maybe-Tool Boundary v0
+## Maybe-Tool Boundary
 
-第一版 `maybe_tool` 只承担“补上下文”的职责，不承担重新决策、复杂工具路由或开放式能力扩张。
+当前 `maybe_tool` 只承担“补上下文”的职责，不承担重新决策、复杂工具路由或开放式能力扩张。
 
 ### Allowed Tool Intents
 
-第一版只允许以下 4 类固定工具意图：
+当前只允许以下 4 类固定工具意图：
 
 - `asset-summary`
 - `unit-detail`
@@ -623,7 +721,7 @@ type StatePatch = {
 
 边界：
 
-- 第一版只读取已有摘要或结构化提炼结果
+- 当前只读取已有摘要或结构化提炼结果
 - 不在这一层跑完整 PDF / 网页 / 多模态解析流程
 - 不让工具本身直接生成学习计划
 
@@ -648,7 +746,7 @@ type StatePatch = {
 
 边界：
 
-- 第一版只读取最近摘要或最近关键记录
+- 当前只读取最近摘要或最近关键记录
 - 不读取整条 thread 的全量长期历史
 - 不做复杂召回、排序或通用知识库搜索
 
@@ -667,7 +765,7 @@ type StatePatch = {
 
 ### Explicitly Out Of Scope
 
-第一版明确不做：
+当前明确不做：
 
 - 真实多模态解析工具
 - 开放式搜索或浏览器搜索
@@ -679,16 +777,16 @@ type StatePatch = {
 
 - 工具只补上下文，不替代 `diagnose` 和 `decide_action`
 - 工具默认不是主链路，只有 `needsTool` 或 `toolIntent` 明确时才运行
-- 第一版优先做读取型、轻量型、结构化型工具
-- 如果某个能力会让系统滑向“开放式 agent”，第一版先不做
+- 当前优先做读取型、轻量型、结构化型工具
+- 如果某个能力会让系统滑向“开放式 agent”，当前先不做
 
-## Data State v0
+## Data State
 
-第一版不追求完整数据平台，但要有真实持久化状态，确保学习状态、thread 连续性和 review 调度不是一次性假数据。
+当前不追求完整数据平台，但要有真实持久化状态，确保学习状态、thread 连续性和 review 调度不是一次性假数据。
 
 ### Storage Strategy
 
-第一版建议：
+当前建议：
 
 - 使用 `SQLite` 作为轻量持久化层
 - 在 `apps/agent` 中通过很薄的 repository 层访问数据
@@ -697,7 +795,7 @@ type StatePatch = {
 
 ### State Layers
 
-第一版优先持久化这几类状态：
+当前优先持久化这几类状态：
 
 1. `projects`
    - 当前学习任务所属项目
@@ -717,7 +815,7 @@ type StatePatch = {
 
 ### Minimal Tables
 
-第一版建议最小表结构围绕以下对象收敛：
+当前建议最小表结构围绕以下对象收敛：
 
 ```text
 projects
@@ -770,9 +868,9 @@ review_state
 - updated_at
 ```
 
-### What Can Stay Seeded For v0
+### What Can Stay Seeded For Now
 
-第一版可以先不急着做正式持久化的对象：
+当前可以先不急着做正式持久化的对象：
 
 - `source_assets`
 - `learning_units`
@@ -784,13 +882,13 @@ review_state
 
 ### Data Guardrails
 
-- 第一版优先保证状态真实，而不是内容全量建模
+- 当前优先保证状态真实，而不是内容全量建模
 - 不为了“像产品”而提前做复杂数据库 schema
 - 所有持久化对象都要直接服务于 diagnosis、plan、writeback 或 review
 
-## Review Engine v0
+## Review Engine
 
-科学复习系统在第一版采用轻量启发式规则，不追求完整 spaced repetition 算法，但必须作为独立能力层存在。
+科学复习系统当前采用轻量启发式规则，不追求完整 spaced repetition 算法，但必须作为独立能力层存在。
 
 ### Role
 
@@ -800,7 +898,7 @@ review_state
 
 ### Minimal Review State
 
-第一版 review 层至少维护：
+当前 review 层至少维护：
 
 - `memoryStrength`
 - `lastReviewedAt`
@@ -808,9 +906,9 @@ review_state
 - `reviewCount`
 - `lapseCount`
 
-### Heuristic Rules v0
+### Heuristic Rules
 
-第一版先采用简单规则：
+当前先采用简单规则：
 
 1. 如果 `understandingLevel < 60`
    - 不进入 `review`
@@ -831,17 +929,17 @@ review_state
    - `nextReviewAt` 提前
    - `lapseCount + 1`
 
-### Why This Is Enough For v0
+### Why This Is Enough For Now
 
 - 足够表达“系统不会把所有内容都直接变成卡片”
 - 足够表达“理解没建立时不该直接进入复习”
 - 足够支撑 `review-context` 和 `reviewPatch`
-- 不会把第一版拖进复杂 SRS 算法设计
+- 不会把当前实现拖进复杂 SRS 算法设计
 
 ### Review Guardrails
 
-- 第一版不实现完整 Anki / FSRS 级算法
-- 第一版不把 `Review Engine` 和 `Agent Memory` 混成一套状态
+- 当前不实现完整 Anki / FSRS 级算法
+- 当前不把 `Review Engine` 和 `Agent Memory` 混成一套状态
 - review 规则优先服务于编排主线，而不是独立做成记忆产品
 
 ## MVP 建议边界

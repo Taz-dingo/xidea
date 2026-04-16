@@ -13,10 +13,12 @@
 
 - [process/agent-memory.md](process/agent-memory.md): 如何把稳定信息写入长期记忆
 - [process/collaboration-playbook.md](process/collaboration-playbook.md): 三人协作、分支和 PR 的补充流程
+- [process/shared-boundary-freeze.md](process/shared-boundary-freeze.md): 并行开发前冻结共享对象、事件流、提交 contract 和页面边界
 
 ## Reference Docs
 
 - [reference/agent-state-design.md](reference/agent-state-design.md)
+- [reference/project-workspace-ui.md](reference/project-workspace-ui.md)
 - [reference/competition-defense-kit.md](reference/competition-defense-kit.md)
 - [reference/product-brief.md](reference/product-brief.md)
 - [reference/architecture.md](reference/architecture.md)

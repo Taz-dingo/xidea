@@ -126,7 +126,7 @@ START → ingest_input → diagnose_learner → select_training_mode → generat
 | 输出 | `plan` | StudyPlan? | 生成的学习计划 |
 | 追踪 | `rationale` | list[str] | 决策过程说明 |
 
-## Decision Path v1 — 综合诊断评分
+## Decision Path — 综合诊断评分
 
 `runtime.py` 的诊断决策路径已从 if-elif 瀑布升级为综合评分模型。
 
@@ -199,7 +199,7 @@ result = app.invoke(GraphState())  # 全 mock 运行
 ## Tools
 
 `apps/agent/src/xidea_agent/tools.py` 定义了 agent 的 4 类工具意图和对应的上下文补充逻辑。
-第一版使用 seed 数据 + SQLite 持久化相结合，为 `maybe_tool` 节点提供结构化上下文。
+当前使用 seed 数据 + SQLite 持久化相结合，为 `maybe_tool` 节点提供结构化上下文。
 
 ### Tool Intent 概览
 
@@ -317,7 +317,7 @@ results = run_all_guardrails(state)  # 执行全部检查
 violations = get_violations(state)    # 只获取未通过的
 ```
 
-## Review Engine v0
+## Review Engine
 
 `apps/agent/src/xidea_agent/review_engine.py` — 独立启发式复习调度层。
 
@@ -393,7 +393,7 @@ new_state = apply_outcome(review_state, outcome)
   - 测试辅助（不 mock LLM 时可单独测试规则逻辑）
 - Schema（`Signal / Diagnosis / StudyPlan`）不变，前端 contract 不受影响
 
-### 全链路 LLM 参与
+### 当前实现中的 LLM 调用路径
 
 | 环节 | 主路径（LLM） | 软降级 | 硬失败 |
 |------|--------------|--------|--------|
@@ -403,7 +403,7 @@ new_state = apply_outcome(review_state, outcome)
 | 计划生成 | `llm_build_plan()` | `build_plan()` 模板补充 | — |
 | 回复生成 | `generate_assistant_reply()` | `compose_assistant_message()` 模板 | — |
 
-### 模块结构
+### 当前模块结构
 
 `llm.py` 封装所有 OpenAI-compatible 调用：
 
@@ -421,7 +421,7 @@ plan = llm_build_plan(llm, topic, unit_title, candidate_modes, diagnosis, learne
 reply = generate_assistant_reply(llm, diagnosis, plan, learner_state, user_message)
 ```
 
-### 编排层集成
+### 当前编排层集成
 
 `runtime.py` 的 `diagnose_step()` 和 `compose_response_step()` 的 `llm` 参数是 **required**（非可选）：
 
@@ -437,6 +437,29 @@ reply = generate_assistant_reply(llm, diagnosis, plan, learner_state, user_messa
 `run_agent_v0()` 的 `llm` 参数为 keyword-only required。
 `graph.py` 的 `build_graph()` / `compile_graph()` 的 `llm` 参数同样为 keyword-only required。
 
+### Mature-Agent Alignment
+
+当前实现里，主路径仍然是 bundled diagnosis 后再独立生成 reply 和 plan。
+这条 3-call 路径只是现在已经落地的实现；
+后续目标是把它收敛成“单次主决策调用 + tool / activity loop”。
+
+目标形态：
+
+- 第一次主决策前先准备完整 evidence bundle：`source assets + thread memory + learner state + review context`
+- `agent_turn` 直接决定三件事：当前 pedagogical action、是否需要触发 tool / activity、是否已经能给最终回复
+- tool 或 learning activity 的结果回写成 `Observation` 或 `exercise-result / review-result`
+- agent 基于新 observation 继续下一轮 turn，直到给出最终回复并完成 writeback
+- `StudyPlan` 如果保留，应来自已执行或将执行的 activity 摘要，而不是单独的展示型规划调用
+- 前端展示默认跟随结构化事件：activity 或 tool result 进入消息流后，再按事件插入 card；不能把固定“学习动作 / 路径 / 证据”面板写死成长期假设
+- 如果当前 activity 属于必须完成的学习动作，主输入区应被视为受约束交互；普通自由问答要等这轮 activity 完成或被显式跳过
+- tutor system prompt 需要明确：当前首要目标是决定并主持学习回合，而不是先给完整解释；高混淆、记忆走弱、迁移验证场景优先触发 activity
+
+这意味着下一阶段更关注：
+
+- diagnosis 是否真的用上完整上下文
+- activity 是否真正被触发并进入对话
+- exercise / review 的结果是否进入下一轮状态更新
+
 ### System Prompts
 
 | Prompt | 用途 | 关键约束 |
@@ -445,6 +468,62 @@ reply = generate_assistant_reply(llm, diagnosis, plan, learner_state, user_messa
 | `DIAGNOSIS_SYSTEM_PROMPT` | 诊断决策 | 输出 JSON 对象，遵守 G2/G3 教学约束 |
 | `PLAN_GENERATION_SYSTEM_PROMPT` | 计划生成 | 输出完整 StudyPlan JSON |
 | `REPLY_SYSTEM_PROMPT` | 教学回复 | 不改变诊断结论，2-4 句话 |
+
+### Tutor Prompt Requirements For Current Frontend
+
+当前前端已经有一批学习交互件，后端 prompt 需要显式支持这些行为。
+这部分不是“可选优化”，而是前后端节奏对齐要求。
+
+#### 1. 材料在任意回合都可附加
+
+prompt 需要理解：
+
+- 用户不再通过单独模式进入“材料轮”
+- 当前轮可能附带 `turn_attachment_ids`
+- 线程里可能还有更大的 `thread_material_ids`
+
+模型不应把“有材料”简单理解成另一种独立模式，
+而应把它当成当前回合额外可用的证据。
+
+#### 2. 一轮允许输出 card deck
+
+prompt 需要允许：
+
+- 不止触发一张 activity
+- 在同一轮里规划一个轻量顺序卡组
+- 仍然保持一次只让用户做最上面那张
+
+也就是说，prompt 目标不只是“要不要发卡”，
+而是“这轮是否需要发一个顺序动作组”。
+
+#### 3. 作答后先给 verdict，再决定下一步
+
+prompt 需要优先输出：
+
+- 这次作答是 `correct / incorrect / partial / skipped`
+- 一句极短反馈
+- 是否进入下一张卡或回到自由问答
+
+不要默认回到长解释。
+前端后续的音效、动效和翻卡都依赖这个 verdict 信号。
+
+#### 4. 支持 `hint / more questions`
+
+prompt 需要能在当前 activity 上继续派生：
+
+- `hint`
+- `more questions`
+
+而不是把每次补充都写成一整段新的普通回复。
+
+#### 5. 主持学习回合，而不是写学习总结
+
+system prompt 至少需要明确以下节奏：
+
+- 先决定这轮是否该发 activity 或 card deck
+- 发卡后，文本只保留短引导
+- card 未完成时，不继续自由展开
+- 作答后，先给短反馈，再决定是翻下一张还是切换动作
 
 ### 环境变量
 

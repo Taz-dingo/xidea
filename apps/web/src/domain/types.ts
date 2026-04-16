@@ -90,3 +90,42 @@ export interface StudyPlan {
   readonly steps: ReadonlyArray<StudyPlanStep>;
   readonly writeback: ReadonlyArray<WritebackPreview>;
 }
+
+export type LearningActivityKind = "quiz" | "recall" | "coach-followup";
+
+export interface LearningActivityChoice {
+  readonly id: string;
+  readonly label: string;
+  readonly detail: string;
+}
+
+export type LearningActivityInput =
+  | {
+      readonly type: "choice";
+      readonly choices: ReadonlyArray<LearningActivityChoice>;
+    }
+  | {
+      readonly type: "text";
+      readonly placeholder: string;
+      readonly minLength: number;
+    };
+
+export interface LearningActivity {
+  readonly id: string;
+  readonly kind: LearningActivityKind;
+  readonly title: string;
+  readonly objective: string;
+  readonly prompt: string;
+  readonly support: string;
+  readonly mode: LearningMode | null;
+  readonly evidence: ReadonlyArray<string>;
+  readonly submitLabel: string;
+  readonly input: LearningActivityInput;
+}
+
+export interface LearningActivitySubmission {
+  readonly activityId: string;
+  readonly kind: LearningActivityKind;
+  readonly responseText: string;
+  readonly selectedChoiceId: string | null;
+}
