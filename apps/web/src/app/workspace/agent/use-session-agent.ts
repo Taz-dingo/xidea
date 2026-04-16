@@ -1,12 +1,10 @@
 import { useChat } from "@ai-sdk/react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { learningUnits, projectContext, sourceAssets } from "@/data/demo";
 import { getTutorFixtureScenario } from "@/data/tutor-fixtures";
 import {
-  buildDefaultAgentPrompt,
   buildMockRuntimeSnapshot,
   getRequestSourceAssetIds,
-  hydrateRuntimeSnapshotFromLearnerState,
 } from "@/domain/agent-runtime";
 import { getLatestUserDraft } from "@/domain/chat-message";
 import {
@@ -24,17 +22,13 @@ import {
 import type { LearningActivitySubmission, SourceAsset } from "@/domain/types";
 import {
   getAgentBaseUrl,
-  getAgentHealth,
-  getAssetSummary,
-  getInspectorBootstrap,
-  getReviewInspector,
-  getThreadContext,
 } from "@/lib/agent-client";
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
-import {
-  selectFixture,
-} from "@/app/workspace/agent/session-fixture";
 import { createSessionActions } from "@/app/workspace/agent/session-actions";
+import { useAgentHealth } from "@/app/workspace/agent/effects/use-agent-health";
+import { useFixtureSync } from "@/app/workspace/agent/effects/use-fixture-sync";
+import { useSessionDataSync } from "@/app/workspace/agent/effects/use-session-data-sync";
+import { useSessionRuntimeSync } from "@/app/workspace/agent/effects/use-session-runtime-sync";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useSessionAgent({
@@ -213,171 +207,27 @@ export function useSessionAgent({
     : getErrorMessage(error);
   const submitDisabled = hasPendingActivity || isAgentRunning || getAgentBaseUrl() === null;
 
-  useEffect(() => {
-    if (!data.isDevEnvironment) {
-      return;
-    }
-    const fixtureFromUrl = getTutorFixtureScenario(fixtureIdFromUrl);
-    if (fixtureFromUrl !== null && data.devTutorFixtureState?.fixtureId !== fixtureFromUrl.id) {
-      data.setDevTutorFixtureState(selectFixture(fixtureFromUrl));
-    }
-  }, [data, fixtureIdFromUrl]);
-
-  useEffect(() => {
-    const agentBaseUrl = getAgentBaseUrl();
-    if (agentBaseUrl === null) {
-      data.setAgentConnectionState("offline");
-      return;
-    }
-    const abortController = new AbortController();
-    data.setAgentConnectionState("checking");
-    void getAgentHealth({ signal: abortController.signal })
-      .then((healthy) => {
-        if (!abortController.signal.aborted) {
-          data.setAgentConnectionState(healthy ? "ready" : "offline");
-        }
-      })
-      .catch(() => {
-        if (!abortController.signal.aborted) {
-          data.setAgentConnectionState("offline");
-        }
-      });
-    return () => abortController.abort();
-  }, [data]);
-
-  useEffect(() => {
-    data.setDraftPrompt(
-      data.selectedSession?.knowledgePointId === null
-        ? ""
-        : buildDefaultAgentPrompt(runtimeUnit, projectContext),
-    );
-  }, [data, runtimeUnit]);
-
-  useEffect(() => {
-    if (data.selectedSession !== undefined) {
-      data.setSessionMessagesById((current) =>
-        current[data.selectedSession!.id] === messages
-          ? current
-          : { ...current, [data.selectedSession!.id]: messages },
-      );
-    }
-  }, [data, messages]);
-
-  useEffect(() => {
-    if (data.selectedSession === undefined || error === undefined) {
-      return;
-    }
-    if (currentActivityKey !== null) {
-      data.setActivityResolutionsBySession((current) => {
-        const nextSessionResolutions = { ...(current[data.selectedSession!.id] ?? {}) };
-        delete nextSessionResolutions[currentActivityKey];
-        return { ...current, [data.selectedSession!.id]: nextSessionResolutions };
-      });
-    }
-    data.setRunningSessionIds((current) => ({ ...current, [data.selectedSession!.id]: false }));
-    data.setSessions((current) =>
-      current.map((session) =>
-        session.id === data.selectedSession!.id && session.status !== "错误"
-          ? { ...session, status: "错误", updatedAt: "刚刚" }
-          : session,
-      ),
-    );
-  }, [currentActivityKey, data, error]);
-
-  useEffect(() => {
-    if (
-      data.agentConnectionState !== "ready" ||
-      selectedSessionKey === null ||
-      selectedSessionKnowledgePointId === null
-    ) {
-      return;
-    }
-    const bootstrapKey = `${selectedSessionKey}:${selectedSessionKnowledgePointId}`;
-    if (data.bootstrapLoadedKeys[bootstrapKey]) {
-      return;
-    }
-    data.markBootstrapLoaded(bootstrapKey);
-    const abortController = new AbortController();
-    void getInspectorBootstrap(selectedSessionKey, selectedSessionKnowledgePointId, { signal: abortController.signal })
-      .then(({ learner_state, review_inspector, thread_context }) => {
-        if (abortController.signal.aborted) return;
-        if (learner_state !== null) {
-          data.setSessionSnapshots((current) => ({
-            ...current,
-            [selectedSessionKey]: hydrateRuntimeSnapshotFromLearnerState(learner_state, seedRuntime),
-          }));
-        }
-        data.setSessionReviewInspectors((current) => ({ ...current, [selectedSessionKey]: review_inspector }));
-        if (thread_context !== null) {
-          data.sessionEntryModesSetter((current) => ({ ...current, [selectedSessionKey]: thread_context.entry_mode }));
-          data.setSessionSourceAssetIds((current) => ({ ...current, [selectedSessionKey]: thread_context.source_asset_ids }));
-        }
-      })
-      .catch(() => {
-        data.clearBootstrapLoaded(bootstrapKey);
-      });
-    return () => abortController.abort();
-  }, [data, seedRuntime, selectedSessionKey, selectedSessionKnowledgePointId]);
-
-  useEffect(() => {
-    if (data.agentConnectionState !== "ready" || assetSummaryKey === "") return;
-    const abortController = new AbortController();
-    void getAssetSummary(requestSourceAssetIds, { signal: abortController.signal })
-      .then((summary) => {
-        if (!abortController.signal.aborted) {
-          data.setAssetSummaryByKey((current) =>
-            current[assetSummaryKey] !== undefined ? current : { ...current, [assetSummaryKey]: summary },
-          );
-        }
-      })
-      .catch(() => undefined);
-    return () => abortController.abort();
-  }, [assetSummaryKey, data, requestSourceAssetIds]);
-
-  useEffect(() => {
-    if (
-      data.agentConnectionState !== "ready" ||
-      selectedSessionKey === null ||
-      selectedSessionKnowledgePointId === null ||
-      isAgentRunning ||
-      messages.length === 0
-    ) {
-      return;
-    }
-    const abortController = new AbortController();
-    void getReviewInspector(selectedSessionKey, selectedSessionKnowledgePointId, { signal: abortController.signal })
-      .then((reviewInspector) => {
-        if (!abortController.signal.aborted) {
-          data.setSessionReviewInspectors((current) => ({ ...current, [selectedSessionKey]: reviewInspector }));
-        }
-      })
-      .catch(() => undefined);
-    void getThreadContext(selectedSessionKey, { signal: abortController.signal })
-      .then((threadContext) => {
-        if (!abortController.signal.aborted && threadContext !== null) {
-          data.sessionEntryModesSetter((current) => ({ ...current, [selectedSessionKey]: threadContext.entry_mode }));
-          data.setSessionSourceAssetIds((current) => ({ ...current, [selectedSessionKey]: threadContext.source_asset_ids }));
-        }
-      })
-      .catch(() => undefined);
-    return () => abortController.abort();
-  }, [data, isAgentRunning, messages.length, selectedSessionKey, selectedSessionKnowledgePointId]);
-
-  useEffect(() => {
-    if (data.pendingInitialPrompt === null || data.selectedSession?.id !== data.pendingInitialPrompt.sessionId) {
-      return;
-    }
-    data.setSessions((current) =>
-      current.map((session) =>
-        session.id === data.pendingInitialPrompt!.sessionId
-          ? { ...session, summary: data.pendingInitialPrompt!.sessionSummary, updatedAt: "刚刚", status: "运行中" }
-          : session,
-      ),
-    );
-    data.setRunningSessionIds((current) => ({ ...current, [data.pendingInitialPrompt!.sessionId]: true }));
-    void sendMessage({ text: data.pendingInitialPrompt.text });
-    data.setPendingInitialPrompt(null);
-  }, [data, sendMessage]);
+  useFixtureSync({ data, fixtureIdFromUrl });
+  useAgentHealth(data);
+  useSessionRuntimeSync({
+    currentActivityKey,
+    data,
+    error,
+    messages,
+    projectContext,
+    runtimeUnit,
+    sendMessage,
+  });
+  useSessionDataSync({
+    assetSummaryKey,
+    data,
+    isAgentRunning,
+    messagesLength: messages.length,
+    requestSourceAssetIds,
+    seedRuntime,
+    selectedSessionKey,
+    selectedSessionKnowledgePointId,
+  });
 
   const actions = createSessionActions({
     activeRuntime,
