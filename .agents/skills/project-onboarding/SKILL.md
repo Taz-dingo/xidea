@@ -66,6 +66,7 @@ Treat `docs/archive/` as historical context only.
 ## Working Rules
 
 - Default to simplifying scope, not expanding it
+- You may suggest adjacent product ideas, but do not implement new product capabilities unless the user explicitly confirms them
 - Keep `main` buildable and demoable
 - Use short-lived branches
 - Keep changes moving in small stable slices; when one slice is buildable or otherwise coherent, commit it before starting the next one

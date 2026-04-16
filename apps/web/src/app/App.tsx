@@ -21,11 +21,8 @@ import { KnowledgePointDetailScreen } from "@/components/project-workspace-detai
 import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MarkdownContent } from "@/components/markdown-content";
 import {
-  ArchiveConfirmationCard,
-  CreateKnowledgePointPanel,
   CreateProjectPanel,
   EditProjectMetaPanel,
-  KnowledgePointBatchActions,
 } from "@/components/project-workspace-management";
 import {
   HomeScreen,
@@ -120,12 +117,6 @@ interface ProjectDraft {
 interface EditableKnowledgePointDraft {
   readonly title: string;
   readonly description: string;
-}
-
-interface KnowledgePointDraft {
-  readonly title: string;
-  readonly description: string;
-  readonly sourceAssetIds: ReadonlyArray<string>;
 }
 
 interface ProjectMetaDraft {
@@ -490,14 +481,6 @@ export function App(): ReactElement {
     specialRulesText: "",
     initialMaterialIds: [],
   });
-  const [isCreatingKnowledgePoint, setIsCreatingKnowledgePoint] = useState(false);
-  const [newKnowledgePointDraft, setNewKnowledgePointDraft] = useState<KnowledgePointDraft>({
-    title: "",
-    description: "",
-    sourceAssetIds: [],
-  });
-  const [selectedKnowledgePointIds, setSelectedKnowledgePointIds] = useState<ReadonlyArray<string>>([]);
-  const [pendingArchiveKnowledgePointIds, setPendingArchiveKnowledgePointIds] = useState<ReadonlyArray<string>>([]);
   const [isEditingProjectMeta, setIsEditingProjectMeta] = useState(false);
   const [projectMetaDraft, setProjectMetaDraft] = useState<ProjectMetaDraft>({
     topic: initialProject.topic,
@@ -658,16 +641,6 @@ export function App(): ReactElement {
         .includes(normalizedSearchQuery),
     );
   }, [normalizedSearchQuery, visibleKnowledgePoints]);
-  const selectedKnowledgePointSelection = useMemo(
-    () =>
-      selectedProjectKnowledgePoints.filter((point) =>
-        selectedKnowledgePointIds.includes(point.id),
-      ),
-    [selectedKnowledgePointIds, selectedProjectKnowledgePoints],
-  );
-  const hasArchivedSelection =
-    selectedKnowledgePointSelection.length > 0 &&
-    selectedKnowledgePointSelection.every((point) => point.status === "archived");
   const selectedSourceAssetIds = selectedSession
     ? sessionSourceAssetIds[selectedSession.id] ?? getDefaultSourceAssetIds()
     : getDefaultSourceAssetIds();
@@ -1185,10 +1158,7 @@ export function App(): ReactElement {
     setWorkspaceSection("overview");
     setIsProjectMetaOpen(false);
     setIsEditingProjectMeta(false);
-    setIsCreatingKnowledgePoint(false);
     setIsCreatingProject(false);
-    setSelectedKnowledgePointIds([]);
-    setPendingArchiveKnowledgePointIds([]);
     setScreen("workspace");
     startTransition(() => {
       const firstKnowledgePoint = knowledgePoints.find((point) => point.projectId === projectId);
@@ -1361,10 +1331,7 @@ export function App(): ReactElement {
     setSelectedProjectId(targetProject.id);
     setSelectedSessionId(createdSession.id);
     setIsEditingProjectMeta(false);
-    setIsCreatingKnowledgePoint(false);
     setIsProjectMetaOpen(false);
-    setSelectedKnowledgePointIds([]);
-    setPendingArchiveKnowledgePointIds([]);
     setScreen("workspace");
   }
 
@@ -1372,142 +1339,24 @@ export function App(): ReactElement {
     setSelectedKnowledgePointId(pointId);
     setSelectedSessionId("");
     setIsEditingProjectMeta(false);
-    setIsCreatingKnowledgePoint(false);
     setIsProjectMetaOpen(false);
-    setSelectedKnowledgePointIds([]);
-    setPendingArchiveKnowledgePointIds([]);
     setScreen("detail");
   }
 
-  function handleStartCreatingKnowledgePoint(): void {
-    setNewKnowledgePointDraft({
-      title: "",
-      description: "",
-      sourceAssetIds: [],
-    });
-    setIsCreatingKnowledgePoint(true);
-    setIsProjectMetaOpen(false);
-  }
-
-  function handleSaveKnowledgePointDraft(): void {
-    const nextTitle = newKnowledgePointDraft.title.trim();
-    const nextDescription = newKnowledgePointDraft.description.trim();
-
-    if (nextTitle === "" || nextDescription === "") {
-      return;
-    }
-
-    const createdKnowledgePoint: KnowledgePointItem = {
-      id: `kp-${Date.now()}`,
-      projectId: selectedProject.id,
-      title: nextTitle,
-      description: nextDescription,
-      status: "active_unlearned",
-      mastery: 0,
-      stageLabel: "未学",
-      nextReviewLabel: null,
-      updatedAt: "刚刚",
-      sourceAssetIds: newKnowledgePointDraft.sourceAssetIds,
-    };
-
-    setKnowledgePoints((current) => [createdKnowledgePoint, ...current]);
-    setSelectedKnowledgePointId(createdKnowledgePoint.id);
-    setIsCreatingKnowledgePoint(false);
-    setWorkspaceSection("overview");
-    setSearchQuery("");
-  }
-
-  function handleCancelCreatingKnowledgePoint(): void {
-    setIsCreatingKnowledgePoint(false);
-  }
-
-  function applyKnowledgePointArchiveState(
-    pointIds: ReadonlyArray<string>,
-    mode: "archive" | "restore",
-  ): void {
+  function handleArchiveKnowledgePoint(pointId: string): void {
     setKnowledgePoints((current) =>
       current.map((point) =>
-        pointIds.includes(point.id)
+        point.id === pointId
           ? {
               ...point,
-              status: mode === "restore" ? "active_review" : "archived",
-              stageLabel: mode === "restore" ? "待复习" : "已归档",
-              nextReviewLabel: mode === "restore" ? "等待重新安排" : null,
+              status: point.status === "archived" ? "active_review" : "archived",
+              stageLabel: point.status === "archived" ? "待复习" : "已归档",
+              nextReviewLabel: point.status === "archived" ? "等待重新安排" : null,
               updatedAt: "刚刚",
             }
           : point,
       ),
     );
-  }
-
-  function handleArchiveKnowledgePoint(pointId: string): void {
-    const targetPoint = selectedProjectKnowledgePoints.find((point) => point.id === pointId);
-
-    if (targetPoint === undefined) {
-      return;
-    }
-
-    if (targetPoint.status === "archived") {
-      applyKnowledgePointArchiveState([pointId], "restore");
-      setPendingArchiveKnowledgePointIds([]);
-      return;
-    }
-
-    setPendingArchiveKnowledgePointIds([pointId]);
-  }
-
-  function handleConfirmArchiveKnowledgePoints(): void {
-    if (pendingArchiveKnowledgePointIds.length === 0) {
-      return;
-    }
-
-    applyKnowledgePointArchiveState(pendingArchiveKnowledgePointIds, "archive");
-    setSelectedKnowledgePointIds((current) =>
-      current.filter((id) => !pendingArchiveKnowledgePointIds.includes(id)),
-    );
-    setPendingArchiveKnowledgePointIds([]);
-  }
-
-  function handleCancelArchiveKnowledgePoints(): void {
-    setPendingArchiveKnowledgePointIds([]);
-  }
-
-  function handleToggleKnowledgePointSelection(pointId: string): void {
-    setSelectedKnowledgePointIds((current) =>
-      current.includes(pointId)
-        ? current.filter((id) => id !== pointId)
-        : [...current, pointId],
-    );
-  }
-
-  function handleSelectAllVisibleKnowledgePoints(): void {
-    const visibleIds = filteredKnowledgePoints.map((point) => point.id);
-    setSelectedKnowledgePointIds(visibleIds);
-  }
-
-  function handleClearKnowledgePointSelection(): void {
-    setSelectedKnowledgePointIds([]);
-  }
-
-  function handleArchiveSelectedKnowledgePoints(): void {
-    if (selectedKnowledgePointSelection.length === 0) {
-      return;
-    }
-
-    if (hasArchivedSelection) {
-      applyKnowledgePointArchiveState(
-        selectedKnowledgePointSelection.map((point) => point.id),
-        "restore",
-      );
-      setSelectedKnowledgePointIds([]);
-      setPendingArchiveKnowledgePointIds([]);
-      return;
-    }
-
-    const activeSelectionIds = selectedKnowledgePointSelection
-      .filter((point) => point.status !== "archived")
-      .map((point) => point.id);
-    setPendingArchiveKnowledgePointIds(activeSelectionIds);
   }
 
   function handleStartEditingKnowledgePoint(): void {
@@ -1970,46 +1819,13 @@ export function App(): ReactElement {
                 />
               ) : selectedSession === undefined ? (
                 <WorkspaceBrowseScreen
-                  archiveConfirmation={
-                    pendingArchiveKnowledgePointIds.length > 0 ? (
-                      <ArchiveConfirmationCard
-                        count={pendingArchiveKnowledgePointIds.length}
-                        onCancel={handleCancelArchiveKnowledgePoints}
-                        onConfirm={handleConfirmArchiveKnowledgePoints}
-                      />
-                    ) : null
-                  }
-                  batchActions={
-                    <KnowledgePointBatchActions
-                      filteredCount={filteredKnowledgePoints.length}
-                      hasArchivedSelection={hasArchivedSelection}
-                      onArchive={handleArchiveSelectedKnowledgePoints}
-                      onClear={handleClearKnowledgePointSelection}
-                      onSelectAll={handleSelectAllVisibleKnowledgePoints}
-                      selectedCount={selectedKnowledgePointIds.length}
-                    />
-                  }
-                  createKnowledgePointPanel={
-                    isCreatingKnowledgePoint ? (
-                      <CreateKnowledgePointPanel
-                        draft={newKnowledgePointDraft}
-                        materials={selectedProjectMaterials}
-                        onCancel={handleCancelCreatingKnowledgePoint}
-                        onChange={setNewKnowledgePointDraft}
-                        onSave={handleSaveKnowledgePointDraft}
-                      />
-                    ) : null
-                  }
                   filteredKnowledgePoints={filteredKnowledgePoints}
                   normalizedSearchQuery={normalizedSearchQuery}
                   onOpenKnowledgePoint={handleOpenKnowledgePoint}
                   onOpenSession={setSelectedSessionId}
-                  onStartCreatingKnowledgePoint={handleStartCreatingKnowledgePoint}
-                  onToggleKnowledgePointSelection={handleToggleKnowledgePointSelection}
                   onWorkspaceSectionChange={setWorkspaceSection}
                   profileSummary={browseProfileSummary}
                   projectStats={projectStats}
-                  selectedKnowledgePointIds={selectedKnowledgePointIds}
                   selectedProjectSessions={selectedProjectSessions}
                   workspaceSection={workspaceSection}
                 />

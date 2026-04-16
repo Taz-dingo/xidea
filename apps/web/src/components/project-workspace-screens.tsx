@@ -1,5 +1,5 @@
-import type { ReactElement, ReactNode } from "react";
-import { Plus, RefreshCcw, Sparkles } from "lucide-react";
+import type { ReactElement } from "react";
+import { RefreshCcw, Sparkles } from "lucide-react";
 import type {
   KnowledgePointItem,
   ProjectItem,
@@ -9,12 +9,7 @@ import type {
 } from "@/domain/project-workspace";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  KnowledgePointCard,
-  MetricTile,
-  SessionCard,
-  WorkspaceNavButton,
-} from "@/components/project-workspace-primitives";
+import { MetricTile, SessionCard, WorkspaceNavButton } from "@/components/project-workspace-primitives";
 
 interface ProjectCardSummary {
   readonly project: ProjectItem;
@@ -147,37 +142,25 @@ export function HomeScreen({
 }
 
 export function WorkspaceBrowseScreen({
-  archiveConfirmation,
-  batchActions,
-  createKnowledgePointPanel,
   filteredKnowledgePoints,
   normalizedSearchQuery,
   onOpenKnowledgePoint,
   onOpenSession,
-  onStartCreatingKnowledgePoint,
-  onToggleKnowledgePointSelection,
   profileSummary,
   projectStats,
-  selectedKnowledgePointIds,
   selectedProjectSessions,
   workspaceSection,
   onWorkspaceSectionChange,
 }: {
-  archiveConfirmation: ReactNode;
-  batchActions: ReactNode;
-  createKnowledgePointPanel: ReactNode;
   filteredKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
   normalizedSearchQuery: string;
   onOpenKnowledgePoint: (pointId: string) => void;
   onOpenSession: (sessionId: string) => void;
-  onStartCreatingKnowledgePoint: () => void;
-  onToggleKnowledgePointSelection: (pointId: string) => void;
   profileSummary: {
     readonly title: string;
     readonly evidence: string;
   };
   projectStats: ProjectStats;
-  selectedKnowledgePointIds: ReadonlyArray<string>;
   selectedProjectSessions: ReadonlyArray<SessionItem>;
   workspaceSection: WorkspaceSection;
   onWorkspaceSectionChange: (section: WorkspaceSection) => void;
@@ -246,36 +229,37 @@ export function WorkspaceBrowseScreen({
             </div>
           </CardContent>
         </Card>
-
-        <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-          <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-2">
-              <p className="xidea-kicker text-[var(--xidea-selection-text)]">Knowledge Point Pool</p>
-              <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                先把项目里的知识点补齐，再决定哪些进入学习、哪些进入复习。
-              </p>
-            </div>
-            <Button className="rounded-full" onClick={onStartCreatingKnowledgePoint} type="button" variant="outline">
-              <Plus className="h-4 w-4" />
-              新增 Knowledge Point
-            </Button>
-          </CardContent>
-        </Card>
-
-        {createKnowledgePointPanel}
-        {archiveConfirmation}
-        {batchActions}
-
         {filteredKnowledgePoints.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filteredKnowledgePoints.map((point) => (
-              <KnowledgePointCard
+              <button
+                className="flex h-full flex-col rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-4 text-left shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7]"
                 key={point.id}
                 onClick={() => onOpenKnowledgePoint(point.id)}
-                onToggleSelect={() => onToggleKnowledgePointSelection(point.id)}
-                point={point}
-                selected={selectedKnowledgePointIds.includes(point.id)}
-              />
+                type="button"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+                    {point.title}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
+                    {point.description}
+                  </p>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)]">
+                    {point.stageLabel}
+                  </span>
+                  {point.nextReviewLabel ? (
+                    <span className="rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)]">
+                      {point.nextReviewLabel}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-4 text-[12px] text-[var(--xidea-stone)]">
+                  掌握度 {point.mastery}%
+                </p>
+              </button>
             ))}
           </div>
         ) : (
