@@ -30,22 +30,22 @@ import type {
 import {
   getSelectedKnowledgePoint,
   getSelectedKnowledgePointAssets,
+  getKnowledgePointRelatedSessions,
+  getKnowledgePointReviewInspectors,
   getSelectedProject,
   getSelectedProjectKnowledgePoints,
   getSelectedProjectMaterials,
   getSelectedProjectSessions,
-  getKnowledgePointRelatedSessions,
-  getKnowledgePointReviewInspectors,
-} from "@/app/project-workspace-selectors";
+} from "@/app/workspace/selectors";
 import type {
   EditableKnowledgePointDraft,
   PendingInitialPrompt,
   PendingSessionIntent,
   ProjectDraft,
   ProjectMetaDraft,
-} from "@/app/project-workspace-controller-types";
+} from "@/app/workspace/types";
 
-export function useProjectWorkspaceData() {
+export function useWorkspaceData() {
   const initialProfile = learnerProfiles[1] ?? learnerProfiles[0];
   const initialUnit = learningUnits[0];
   const initialProject = initialProjects[0];
@@ -322,4 +322,4 @@ export function useProjectWorkspaceData() {
   };
 }
 
-export type ProjectWorkspaceData = ReturnType<typeof useProjectWorkspaceData>;
+export type WorkspaceData = ReturnType<typeof useWorkspaceData>;

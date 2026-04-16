@@ -3,7 +3,7 @@ import type { UIMessage } from "ai";
 import { FileInput } from "lucide-react";
 import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MarkdownContent } from "@/components/markdown-content";
-import { getAssetKindLabel } from "@/components/project-workspace-core-primitives";
+import { getAssetKindLabel } from "@/components/workspace/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import type { ActivityResolution } from "@/domain/project-session-runtime";
 import type { LearningActivitySubmission, SourceAsset } from "@/domain/types";
 import type { RuntimeSnapshot } from "@/domain/agent-runtime";
 
-export function ProjectSessionThreadPane({
+export function SessionThreadPane({
   activeRuntime,
   activeSourceAssets,
   currentActivities,

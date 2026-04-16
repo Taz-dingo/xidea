@@ -23,30 +23,30 @@ import {
   getReviewTargetPoint,
   getStudyTargetPoint,
   getVisibleKnowledgePoints,
-} from "@/app/project-workspace-selectors";
-import { ProjectWorkspaceHeader } from "@/app/project-workspace-header";
-import { ProjectWorkspaceHero } from "@/app/project-workspace-hero";
-import { useProjectSessionAgent } from "@/app/use-project-session-agent";
-import { useProjectWorkspaceActions } from "@/app/use-project-workspace-actions";
-import { useProjectWorkspaceData } from "@/app/use-project-workspace-data";
-import { KnowledgePointDetailScreen } from "@/components/project-workspace-detail";
-import { ProjectSessionWorkspace } from "@/components/project-session-workspace";
+} from "@/app/workspace/selectors";
+import { WorkspaceHeader } from "@/app/workspace/header";
+import { WorkspaceHero } from "@/app/workspace/hero";
+import { useSessionAgent } from "@/app/workspace/use-session-agent";
+import { useWorkspaceActions } from "@/app/workspace/use-actions";
+import { useWorkspaceData } from "@/app/workspace/use-data";
+import { KnowledgePointDetailScreen } from "@/components/workspace/detail";
+import { SessionWorkspace } from "@/components/session/workspace";
 import {
   CreateProjectPanel,
-  EditProjectMetaPanel,
-} from "@/components/project-workspace-management";
-import { ProjectMetaPanel } from "@/components/project-workspace-core-primitives";
+  EditMetaPanel,
+} from "@/components/workspace/management";
+import { MetaPanel } from "@/components/workspace/core";
 import {
   HomeScreen,
   WorkspaceBrowseScreen,
-} from "@/components/project-workspace-screens";
+} from "@/components/workspace/screens";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-export function ProjectWorkspacePage(): ReactElement {
-  const data = useProjectWorkspaceData();
-  const actions = useProjectWorkspaceActions(data);
-  const session = useProjectSessionAgent({
+export function WorkspacePage(): ReactElement {
+  const data = useWorkspaceData();
+  const actions = useWorkspaceActions(data);
+  const session = useSessionAgent({
     data,
     handleCreateSession: actions.handleCreateSession,
   });
@@ -155,7 +155,7 @@ export function ProjectWorkspacePage(): ReactElement {
     <main className="xidea-shell min-h-screen bg-[var(--xidea-parchment)] text-[var(--xidea-near-black)]">
       <div className="relative mx-auto min-h-screen max-w-[1520px] px-3 py-3 lg:px-4 lg:py-4">
         <div className="space-y-4">
-          <ProjectWorkspaceHeader
+          <WorkspaceHeader
             onCreateProject={actions.handleStartCreatingProject}
             onGoHome={actions.handleGoHome}
             onSearchChange={data.setSearchQuery}
@@ -201,7 +201,7 @@ export function ProjectWorkspacePage(): ReactElement {
             />
           ) : (
             <div className="space-y-4">
-              <ProjectWorkspaceHero
+              <WorkspaceHero
                 description={data.selectedProject.description}
                 isDetailScreen={data.screen === "detail"}
                 onBack={actions.handleBackToWorkspace}
@@ -231,7 +231,7 @@ export function ProjectWorkspacePage(): ReactElement {
 
               {data.isProjectMetaOpen ? (
                 <div className="space-y-4">
-                  <ProjectMetaPanel
+                  <MetaPanel
                     materialCount={projectMaterialCount}
                     materials={data.selectedProjectMaterials}
                     onClose={actions.handleCancelEditingProjectMeta}
@@ -258,7 +258,7 @@ export function ProjectWorkspacePage(): ReactElement {
                   </Card>
 
                   {data.isEditingProjectMeta ? (
-                    <EditProjectMetaPanel
+                    <EditMetaPanel
                       assets={sourceAssets}
                       draft={data.projectMetaDraft}
                       onCancel={actions.handleCancelEditingProjectMeta}
@@ -340,7 +340,7 @@ export function ProjectWorkspacePage(): ReactElement {
                   workspaceSection={data.workspaceSection}
                 />
               ) : (
-                <ProjectSessionWorkspace
+                <SessionWorkspace
                   activeAssetSummary={session.activeAssetSummary}
                   activeReviewInspector={session.activeReviewInspector}
                   activeRuntime={session.activeRuntime}

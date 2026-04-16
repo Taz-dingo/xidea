@@ -8,10 +8,10 @@ import {
   buildSkippedFixtureState,
   selectFixture,
   setDevTutorFixtureQueryParam,
-} from "@/app/project-session-agent-dev-fixture";
-import type { ProjectWorkspaceData } from "@/app/use-project-workspace-data";
+} from "@/app/workspace/session-agent-fixture";
+import type { WorkspaceData } from "@/app/workspace/use-data";
 
-export function createProjectSessionAgentActions({
+export function createSessionActions({
   activeRuntime,
   activeTutorFixture,
   clearError,
@@ -41,7 +41,7 @@ export function createProjectSessionAgentActions({
     | Parameters<typeof formatActivitySubmissionForAgent>[0]["activity"]
     | null;
   currentActivityKey: string | null;
-  data: ProjectWorkspaceData;
+  data: WorkspaceData;
   error: Error | undefined;
   handleCreateSession: (
     projectId: string,

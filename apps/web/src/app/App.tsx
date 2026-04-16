@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
-import { ProjectWorkspacePage } from "@/app/project-workspace-page";
+import { WorkspacePage } from "@/app/workspace/page";
 
 export function App(): ReactElement {
-  return <ProjectWorkspacePage />;
+  return <WorkspacePage />;
 }

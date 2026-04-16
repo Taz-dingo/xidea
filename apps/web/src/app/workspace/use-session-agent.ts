@@ -33,15 +33,15 @@ import {
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
 import {
   selectFixture,
-} from "@/app/project-session-agent-dev-fixture";
-import { createProjectSessionAgentActions } from "@/app/project-session-agent-actions";
-import type { ProjectWorkspaceData } from "@/app/use-project-workspace-data";
+} from "@/app/workspace/session-agent-fixture";
+import { createSessionActions } from "@/app/workspace/session-agent-actions";
+import type { WorkspaceData } from "@/app/workspace/use-data";
 
-export function useProjectSessionAgent({
+export function useSessionAgent({
   data,
   handleCreateSession,
 }: {
-  data: ProjectWorkspaceData;
+  data: WorkspaceData;
   handleCreateSession: (
     projectId: string,
     type?: "project" | "study" | "review",
@@ -377,7 +377,7 @@ export function useProjectSessionAgent({
     data.setPendingInitialPrompt(null);
   }, [data, sendMessage]);
 
-  const actions = createProjectSessionAgentActions({
+  const actions = createSessionActions({
     activeRuntime,
     activeTutorFixture,
     clearError,

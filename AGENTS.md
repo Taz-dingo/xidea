@@ -63,6 +63,8 @@
 - 不允许把过多职责和逻辑持续堆进单个文件；这条约束同时适用于前端、后端和 agent 实现
 - 页面编排、领域逻辑、数据转换、网络交互、持久化访问、graph/node 逻辑和展示组件都必须按职责拆分
 - `App`、page / screen / route、FastAPI endpoint、LangGraph graph/runtime 入口文件默认只负责编排与组装，不承担大段 domain helper、adapter、repository、prompt 构造或可独立复用的实现细节
+- 同一 feature 或组件的相关文件优先收在同一目录内；不要把同一块 UI 的 page、hook、types、section 长期散落在多个顶层文件
+- 命名优先短而具体；在 feature folder 内避免重复 `project-workspace-` 这类冗长前缀。`apps/web/src/app` 和 `apps/web/src/components` 下单文件默认不超过 500 行，除非确实无法继续拆分
 
 ## Collaboration Rules
 

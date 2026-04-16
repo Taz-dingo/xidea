@@ -19,8 +19,8 @@ import {
   SessionCard,
   SessionTypeBadge,
   getAssetKindLabel,
-} from "@/components/project-workspace-core-primitives";
-import { WorkspaceNavButton } from "@/components/project-workspace-monitor-primitives";
+} from "@/components/workspace/core";
+import { WorkspaceNavButton } from "@/components/workspace/monitor";
 
 interface ProjectCardSummary {
   readonly project: ProjectItem;

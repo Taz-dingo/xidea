@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { getAssetKindLabel } from "@/components/project-workspace-core-primitives";
+import { getAssetKindLabel } from "@/components/workspace/core";
 
 interface AssetPickerProps {
   readonly assets: ReadonlyArray<SourceAsset>;
@@ -192,7 +192,7 @@ export function CreateProjectPanel({
   );
 }
 
-export function EditProjectMetaPanel({
+export function EditMetaPanel({
   assets,
   draft,
   onCancel,

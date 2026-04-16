@@ -1,12 +1,12 @@
 import type { ReactElement } from "react";
 import { FileInput } from "lucide-react";
-import { ProjectSessionThreadPane } from "@/components/project-session-thread-pane";
-import { ProjectSessionInspector } from "@/components/project-session-inspector";
+import { SessionThreadPane } from "@/components/session/thread-pane";
+import { SessionInspector } from "@/components/session/inspector";
 import {
   SessionCard,
   SessionTypeBadge,
-} from "@/components/project-workspace-core-primitives";
-import { WorkspaceNavButton } from "@/components/project-workspace-monitor-primitives";
+} from "@/components/workspace/core";
+import { WorkspaceNavButton } from "@/components/workspace/monitor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +28,7 @@ import type { LearningActivitySubmission, SourceAsset } from "@/domain/types";
 import type { TutorFixtureScenario } from "@/data/tutor-fixtures";
 import type { UIMessage } from "ai";
 
-export function ProjectSessionWorkspace({
+export function SessionWorkspace({
   activeAssetSummary,
   activeReviewInspector,
   activeRuntime,
@@ -210,7 +210,7 @@ export function ProjectSessionWorkspace({
           </div>
         </CardHeader>
 
-        <ProjectSessionThreadPane
+        <SessionThreadPane
           activeRuntime={activeRuntime}
           activeSourceAssets={activeSourceAssets}
           currentActivities={currentActivities}
@@ -239,7 +239,7 @@ export function ProjectSessionWorkspace({
         />
       </Card>
 
-      <ProjectSessionInspector
+      <SessionInspector
         activeAssetSummary={activeAssetSummary}
         activeReviewInspector={activeReviewInspector}
         activeRuntime={activeRuntime}

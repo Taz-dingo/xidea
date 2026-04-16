@@ -3,7 +3,7 @@ import { ArrowLeft, MessageSquareText, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-export function ProjectWorkspaceHero({
+export function WorkspaceHero({
   description,
   isDetailScreen,
   onBack,

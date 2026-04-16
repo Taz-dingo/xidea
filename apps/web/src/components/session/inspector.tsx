@@ -1,12 +1,12 @@
 import type { ReactElement } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getKnowledgePointAccent } from "@/components/project-workspace-core-primitives";
+import { getKnowledgePointAccent } from "@/components/workspace/core";
 import {
   CompactNote,
   MonitorSection,
   ReviewHeatmap,
-} from "@/components/project-workspace-monitor-primitives";
+} from "@/components/workspace/monitor";
 import type {
   AgentAssetSummary,
   AgentReviewInspector,
@@ -19,7 +19,7 @@ import type {
 } from "@/domain/project-workspace";
 import type { TutorFixtureScenario } from "@/data/tutor-fixtures";
 
-export function ProjectSessionInspector({
+export function SessionInspector({
   activeAssetSummary,
   activeReviewInspector,
   activeRuntime,

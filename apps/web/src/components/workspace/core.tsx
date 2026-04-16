@@ -239,7 +239,7 @@ export function KnowledgePointCard({
   );
 }
 
-export function ProjectMetaPanel({
+export function MetaPanel({
   project,
   materialCount,
   materials,

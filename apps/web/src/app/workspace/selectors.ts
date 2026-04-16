@@ -8,7 +8,7 @@ import type {
   KnowledgeReviewSummaryParams,
   ProjectSummaryItem,
   RelatedKnowledgeParams,
-} from "@/app/project-workspace-controller-types";
+} from "@/app/workspace/types";
 
 export function getSelectedProject(
   projects: ReadonlyArray<ProjectItem>,

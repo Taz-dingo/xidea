@@ -9,6 +9,7 @@
 - 明确新增一条团队级实现约束：不允许把过多逻辑持续堆进单个文件；这条规则同时适用于前端、后端和 agent，`App` / page / screen / endpoint / graph 入口默认只负责编排，领域逻辑、adapter、repository、prompt 和可复用实现细节必须按职责拆分
 - 已新增 repo-local `clean-code-guardrails` skill，并接入项目技能清单，用来在前端、后端和 agent 里显式检查单文件职责漂移与入口文件过载
 - `apps/web` 本轮继续把 session 工作区从 `App.tsx` 中拆开：session 视图已独立成 workspace/thread/inspector 组件，复习热力图与 session runtime helper 也已移到独立 domain 模块，`App.tsx` 进一步收敛为页面编排与状态 wiring
+- `apps/web` 已进一步把 `workspace` 和 `session` 相关文件按 feature folder 收进 `app/workspace`、`components/workspace`、`components/session`，同时去掉一批冗长的 `project-workspace-*` / `project-session-*` 命名；当前 `apps/web/src/app` 与 `apps/web/src/components` 下文件均控制在 500 行以内
 
 - 基于一轮产品讨论，将当前 MVP 方向收敛为 project-centric learning workspace，而不是以单条 thread 为中心的 tutor 界面
 - 明确当前产品主对象收敛为 `Project / Knowledge Point / Session / Learning Profile`

@@ -1,9 +1,9 @@
 import { startTransition } from "react";
 import type { SessionItem, SessionType, WorkspaceSection } from "@/domain/project-workspace";
 import { getDefaultSourceAssetIds } from "@/domain/project-session-runtime";
-import type { ProjectWorkspaceData } from "@/app/use-project-workspace-data";
+import type { WorkspaceData } from "@/app/workspace/use-data";
 
-export function useProjectWorkspaceActions(data: ProjectWorkspaceData) {
+export function useWorkspaceActions(data: WorkspaceData) {
   function handleSelectProject(projectId: string): void {
     data.setSelectedProjectId(projectId);
     data.setSelectedSessionId("");

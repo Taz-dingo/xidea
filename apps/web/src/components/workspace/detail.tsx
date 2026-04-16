@@ -7,11 +7,11 @@ import {
   getKnowledgePointAccent,
   MetricTile,
   SessionCard,
-} from "@/components/project-workspace-core-primitives";
+} from "@/components/workspace/core";
 import {
   InspectorCard,
   ReviewHeatmap,
-} from "@/components/project-workspace-monitor-primitives";
+} from "@/components/workspace/monitor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
