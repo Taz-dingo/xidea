@@ -14,13 +14,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  getAssetKindLabel,
-  KnowledgePointCard,
   MetricTile,
+  KnowledgePointCard,
   SessionCard,
   SessionTypeBadge,
-  WorkspaceNavButton,
-} from "@/components/project-workspace-primitives";
+  getAssetKindLabel,
+} from "@/components/project-workspace-core-primitives";
+import { WorkspaceNavButton } from "@/components/project-workspace-monitor-primitives";
 
 interface ProjectCardSummary {
   readonly project: ProjectItem;

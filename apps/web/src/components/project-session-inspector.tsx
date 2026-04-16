@@ -1,12 +1,12 @@
 import type { ReactElement } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getKnowledgePointAccent } from "@/components/project-workspace-core-primitives";
 import {
   CompactNote,
-  getKnowledgePointAccent,
   MonitorSection,
   ReviewHeatmap,
-} from "@/components/project-workspace-primitives";
+} from "@/components/project-workspace-monitor-primitives";
 import type {
   AgentAssetSummary,
   AgentReviewInspector,

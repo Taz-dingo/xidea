@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { getAssetKindLabel } from "@/components/project-workspace-primitives";
+import { getAssetKindLabel } from "@/components/project-workspace-core-primitives";
 
 interface AssetPickerProps {
   readonly assets: ReadonlyArray<SourceAsset>;

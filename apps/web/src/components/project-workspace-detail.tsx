@@ -5,11 +5,13 @@ import type { SourceAsset } from "@/domain/types";
 import {
   getAssetKindLabel,
   getKnowledgePointAccent,
-  InspectorCard,
   MetricTile,
-  ReviewHeatmap,
   SessionCard,
-} from "@/components/project-workspace-primitives";
+} from "@/components/project-workspace-core-primitives";
+import {
+  InspectorCard,
+  ReviewHeatmap,
+} from "@/components/project-workspace-monitor-primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

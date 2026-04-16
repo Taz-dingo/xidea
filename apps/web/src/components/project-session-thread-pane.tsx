@@ -3,7 +3,7 @@ import type { UIMessage } from "ai";
 import { FileInput } from "lucide-react";
 import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MarkdownContent } from "@/components/markdown-content";
-import { getAssetKindLabel } from "@/components/project-workspace-primitives";
+import { getAssetKindLabel } from "@/components/project-workspace-core-primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";

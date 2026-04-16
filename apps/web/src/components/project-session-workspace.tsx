@@ -5,8 +5,8 @@ import { ProjectSessionInspector } from "@/components/project-session-inspector"
 import {
   SessionCard,
   SessionTypeBadge,
-  WorkspaceNavButton,
-} from "@/components/project-workspace-primitives";
+} from "@/components/project-workspace-core-primitives";
+import { WorkspaceNavButton } from "@/components/project-workspace-monitor-primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
