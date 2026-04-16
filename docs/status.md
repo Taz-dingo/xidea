@@ -24,6 +24,7 @@
 - 补充 `Project Workspace` 的 UI reference：明确 `App Home / Project Workspace / Knowledge Point Detail` 三层页面、默认浏览态与 session 展开态的布局和关键交互
 - 将并行开发前需要统一的共享边界收成流程文档：冻结核心对象、材料模型、activity/tool-result schema、运行态 `run_id`、提交 contract 和页面信息架构，作为并行开发 source of truth
 - 更新 `pr-description` skill：默认输出更详细的中文 PR 描述，明确要求在 `摘要 / 演示 / 验证 / 风险` 中交代背景、验证范围和共享影响
+- 将 `docs/memory/decision-log.md` 进一步瘦身为少量长期有效的活跃决策；协作流程、阶段性 UI 取舍和实现过程类记录从主 log 主入口移出，并在 archive 留 slimdown 记录
 
 #### 已落地实现基线（部分仍属旧 thread-centric 过渡实现）
 
