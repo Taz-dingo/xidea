@@ -22,6 +22,13 @@ import {
 import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MarkdownContent } from "@/components/markdown-content";
 import {
+  ArchiveConfirmationCard,
+  CreateKnowledgePointPanel,
+  CreateProjectPanel,
+  EditProjectMetaPanel,
+  KnowledgePointBatchActions,
+} from "@/components/project-workspace-management";
+import {
   CompactNote,
   getAssetKindLabel,
   InspectorCard,
@@ -99,6 +106,32 @@ interface DevTutorFixtureState {
   readonly messages: ReadonlyArray<UIMessage>;
   readonly snapshot: RuntimeSnapshot;
   readonly errorMessage: string | null;
+}
+
+interface ProjectDraft {
+  readonly name: string;
+  readonly topic: string;
+  readonly description: string;
+  readonly specialRulesText: string;
+  readonly initialMaterialIds: ReadonlyArray<string>;
+}
+
+interface EditableKnowledgePointDraft {
+  readonly title: string;
+  readonly description: string;
+}
+
+interface KnowledgePointDraft {
+  readonly title: string;
+  readonly description: string;
+  readonly sourceAssetIds: ReadonlyArray<string>;
+}
+
+interface ProjectMetaDraft {
+  readonly topic: string;
+  readonly description: string;
+  readonly specialRulesText: string;
+  readonly materialIds: ReadonlyArray<string>;
 }
 
 function setDevTutorFixtureQueryParam(fixtureId: string | null): void {
@@ -448,14 +481,53 @@ export function App(): ReactElement {
   const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("overview");
   const [isProjectMetaOpen, setIsProjectMetaOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [projectDraft, setProjectDraft] = useState<ProjectDraft>({
+    name: "",
+    topic: "",
+    description: "",
+    specialRulesText: "",
+    initialMaterialIds: [],
+  });
+  const [isCreatingKnowledgePoint, setIsCreatingKnowledgePoint] = useState(false);
+  const [newKnowledgePointDraft, setNewKnowledgePointDraft] = useState<KnowledgePointDraft>({
+    title: "",
+    description: "",
+    sourceAssetIds: [],
+  });
+  const [selectedKnowledgePointIds, setSelectedKnowledgePointIds] = useState<ReadonlyArray<string>>([]);
+  const [pendingArchiveKnowledgePointIds, setPendingArchiveKnowledgePointIds] = useState<ReadonlyArray<string>>([]);
+  const [isEditingProjectMeta, setIsEditingProjectMeta] = useState(false);
+  const [projectMetaDraft, setProjectMetaDraft] = useState<ProjectMetaDraft>({
+    topic: initialProject.topic,
+    description: initialProject.description,
+    specialRulesText: initialProject.specialRules.join("\n"),
+    materialIds: initialKnowledgePoints.flatMap((point) => point.sourceAssetIds),
+  });
   const [isEditingKnowledgePoint, setIsEditingKnowledgePoint] = useState(false);
-  const [knowledgePointDraft, setKnowledgePointDraft] = useState({
+  const [knowledgePointDraft, setKnowledgePointDraft] = useState<EditableKnowledgePointDraft>({
     title: initialKnowledgePoint.title,
     description: initialKnowledgePoint.description,
   });
   const [selectedProjectId, setSelectedProjectId] = useState(initialProject.id);
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [selectedKnowledgePointId, setSelectedKnowledgePointId] = useState(initialKnowledgePoint.id);
+  const [projectMaterialIdsByProject, setProjectMaterialIdsByProject] = useState<
+    Record<string, ReadonlyArray<string>>
+  >(() =>
+    Object.fromEntries(
+      initialProjects.map((project) => [
+        project.id,
+        Array.from(
+          new Set(
+            initialKnowledgePoints
+              .filter((point) => point.projectId === project.id)
+              .flatMap((point) => point.sourceAssetIds),
+          ),
+        ),
+      ]),
+    ),
+  );
   const [, setSessionEntryModes] = useState<Record<string, AgentEntryMode>>(
     () => Object.fromEntries(initialSessions.map((session) => [session.id, "chat-question"])),
   );
@@ -503,9 +575,9 @@ export function App(): ReactElement {
 
   const selectedSession = sessions.find((session) => session.id === selectedSessionId);
   const selectedSessionKey = selectedSession?.id ?? null;
-  const selectedUnitId = selectedSession?.unitId ?? null;
-  const selectedUnit = selectedSession?.unitId
-    ? learningUnits.find((unit) => unit.id === selectedSession.unitId)
+  const selectedSessionKnowledgePointId = selectedSession?.knowledgePointId ?? null;
+  const selectedUnit = selectedSession?.knowledgePointId
+    ? learningUnits.find((unit) => unit.id === selectedSession.knowledgePointId)
     : undefined;
   const runtimeUnit = selectedUnit ?? initialUnit;
   const seedProfile = initialProfile;
@@ -529,22 +601,17 @@ export function App(): ReactElement {
   const selectedProjectMaterials = useMemo(
     () =>
       sourceAssets.filter((asset) =>
-        selectedProjectKnowledgePoints.some((point) =>
-          point.sourceAssetIds.includes(asset.id),
-        ),
+        (projectMaterialIdsByProject[selectedProject.id] ?? []).includes(asset.id),
       ),
-    [selectedProjectKnowledgePoints],
+    [projectMaterialIdsByProject, selectedProject.id],
   );
   const projectStats = useMemo(
     () => getProjectStats(selectedProjectKnowledgePoints),
     [selectedProjectKnowledgePoints],
   );
   const projectMaterialCount = useMemo(
-    () =>
-      new Set(
-        selectedProjectKnowledgePoints.flatMap((point) => point.sourceAssetIds),
-      ).size,
-    [selectedProjectKnowledgePoints],
+    () => selectedProjectMaterials.length,
+    [selectedProjectMaterials],
   );
   const visibleKnowledgePoints = useMemo(() => {
     switch (workspaceSection) {
@@ -581,6 +648,16 @@ export function App(): ReactElement {
         .includes(normalizedSearchQuery),
     );
   }, [normalizedSearchQuery, visibleKnowledgePoints]);
+  const selectedKnowledgePointSelection = useMemo(
+    () =>
+      selectedProjectKnowledgePoints.filter((point) =>
+        selectedKnowledgePointIds.includes(point.id),
+      ),
+    [selectedKnowledgePointIds, selectedProjectKnowledgePoints],
+  );
+  const hasArchivedSelection =
+    selectedKnowledgePointSelection.length > 0 &&
+    selectedKnowledgePointSelection.every((point) => point.status === "archived");
   const selectedSourceAssetIds = selectedSession
     ? sessionSourceAssetIds[selectedSession.id] ?? getDefaultSourceAssetIds()
     : getDefaultSourceAssetIds();
@@ -630,7 +707,7 @@ export function App(): ReactElement {
     : 0;
   const isBlankSession =
     selectedSession !== undefined &&
-    selectedSession.unitId === null &&
+    selectedSession.knowledgePointId === null &&
     sessionMessageCount === 0 &&
     sessionSnapshots[selectedSession.id] === undefined &&
     draftPrompt.trim() === "";
@@ -690,8 +767,13 @@ export function App(): ReactElement {
       : selectedProjectKnowledgePoints.find((point) => point.status === "active_review") ??
         selectedKnowledgePoint;
   const relatedKnowledgePoints = useMemo(() => {
-    if (selectedSession?.unitId !== null && selectedSession?.unitId !== undefined) {
-      return selectedProjectKnowledgePoints.filter((point) => point.id === selectedSession.unitId);
+    if (
+      selectedSession?.knowledgePointId !== null &&
+      selectedSession?.knowledgePointId !== undefined
+    ) {
+      return selectedProjectKnowledgePoints.filter(
+        (point) => point.id === selectedSession.knowledgePointId,
+      );
     }
 
     if (selectedKnowledgePoint !== null) {
@@ -699,7 +781,7 @@ export function App(): ReactElement {
     }
 
     return selectedProjectKnowledgePoints.slice(0, 3);
-  }, [selectedKnowledgePoint, selectedProjectKnowledgePoints, selectedSession?.unitId]);
+  }, [selectedKnowledgePoint, selectedProjectKnowledgePoints, selectedSession?.knowledgePointId]);
 
   useEffect(() => {
     if (selectedKnowledgePoint === null) {
@@ -712,6 +794,16 @@ export function App(): ReactElement {
     });
     setIsEditingKnowledgePoint(false);
   }, [selectedKnowledgePoint?.id]);
+
+  useEffect(() => {
+    setProjectMetaDraft({
+      topic: selectedProject.topic,
+      description: selectedProject.description,
+      specialRulesText: selectedProject.specialRules.join("\n"),
+      materialIds: projectMaterialIdsByProject[selectedProject.id] ?? [],
+    });
+    setIsEditingProjectMeta(false);
+  }, [projectMaterialIdsByProject, selectedProject.description, selectedProject.id, selectedProject.specialRules, selectedProject.topic]);
 
   const handleTransportSnapshot = useCallback((sessionId: string, snapshot: RuntimeSnapshot) => {
     setSessionSnapshots((current) => ({
@@ -830,11 +922,11 @@ export function App(): ReactElement {
 
   useEffect(() => {
     setDraftPrompt(
-      selectedSession?.unitId === null
+      selectedSession?.knowledgePointId === null
         ? ""
         : buildDefaultAgentPrompt(runtimeUnit, projectContext),
     );
-  }, [runtimeUnit, selectedSession?.id, selectedSession?.unitId]);
+  }, [runtimeUnit, selectedSession?.id, selectedSession?.knowledgePointId]);
 
   useEffect(() => {
     if (selectedSession === undefined) {
@@ -900,12 +992,12 @@ export function App(): ReactElement {
     if (
       agentConnectionState !== "ready" ||
       selectedSessionKey === null ||
-      selectedUnitId === null
+      selectedSessionKnowledgePointId === null
     ) {
       return;
     }
 
-    const bootstrapKey = `${selectedSessionKey}:${selectedUnitId}`;
+    const bootstrapKey = `${selectedSessionKey}:${selectedSessionKnowledgePointId}`;
     if (bootstrapLoadedKeysRef.current[bootstrapKey]) {
       return;
     }
@@ -913,7 +1005,7 @@ export function App(): ReactElement {
     bootstrapLoadedKeysRef.current[bootstrapKey] = true;
     const abortController = new AbortController();
 
-    void getInspectorBootstrap(selectedSessionKey, selectedUnitId, {
+    void getInspectorBootstrap(selectedSessionKey, selectedSessionKnowledgePointId, {
       signal: abortController.signal,
     })
       .then(({ learner_state: learnerState, review_inspector: reviewInspector, thread_context: threadContext }) => {
@@ -962,7 +1054,7 @@ export function App(): ReactElement {
   }, [
     agentConnectionState,
     selectedSessionKey,
-    selectedUnitId,
+    selectedSessionKnowledgePointId,
   ]);
 
   useEffect(() => {
@@ -1002,7 +1094,7 @@ export function App(): ReactElement {
     if (
       agentConnectionState !== "ready" ||
       selectedSessionKey === null ||
-      selectedUnitId === null ||
+      selectedSessionKnowledgePointId === null ||
       isAgentRunning ||
       messages.length === 0
     ) {
@@ -1011,7 +1103,7 @@ export function App(): ReactElement {
 
     const abortController = new AbortController();
 
-    void getReviewInspector(selectedSessionKey, selectedUnitId, {
+    void getReviewInspector(selectedSessionKey, selectedSessionKnowledgePointId, {
       signal: abortController.signal,
     })
       .then((reviewInspector) => {
@@ -1052,13 +1144,24 @@ export function App(): ReactElement {
     return () => {
       abortController.abort();
     };
-  }, [agentConnectionState, isAgentRunning, messages.length, selectedSessionKey, selectedUnitId]);
+  }, [
+    agentConnectionState,
+    isAgentRunning,
+    messages.length,
+    selectedSessionKey,
+    selectedSessionKnowledgePointId,
+  ]);
 
   function handleSelectProject(projectId: string): void {
     setSelectedProjectId(projectId);
     setSelectedSessionId("");
     setWorkspaceSection("overview");
     setIsProjectMetaOpen(false);
+    setIsEditingProjectMeta(false);
+    setIsCreatingKnowledgePoint(false);
+    setIsCreatingProject(false);
+    setSelectedKnowledgePointIds([]);
+    setPendingArchiveKnowledgePointIds([]);
     setScreen("workspace");
     startTransition(() => {
       const firstKnowledgePoint = knowledgePoints.find((point) => point.projectId === projectId);
@@ -1068,28 +1171,133 @@ export function App(): ReactElement {
     });
   }
 
-  function handleCreateProject(): void {
-    const nextIndex = projects.length + 1;
+  function handleStartCreatingProject(): void {
+    setProjectDraft({
+      name: "",
+      topic: "",
+      description: "",
+      specialRulesText: "",
+      initialMaterialIds: [],
+    });
+    setIsCreatingProject(true);
+    setIsProjectMetaOpen(false);
+  }
+
+  function handleSaveProject(): void {
+    const nextName = projectDraft.name.trim();
+    const nextTopic = projectDraft.topic.trim();
+    const nextDescription = projectDraft.description.trim();
+    const specialRules = projectDraft.specialRulesText
+      .split("\n")
+      .map((rule) => rule.trim())
+      .filter((rule) => rule !== "");
+
+    if (nextName === "" || nextTopic === "" || nextDescription === "") {
+      return;
+    }
+
     const createdProject: ProjectItem = {
       id: `project-${Date.now()}`,
-      name: `新项目 ${nextIndex}`,
-      topic: "新的项目型学习主题",
-      description: "围绕一个新的答辩主题组织知识点、材料和 session。",
-      specialRules: ["先收敛主题和材料，再开始学习编排。"],
+      name: nextName,
+      topic: nextTopic,
+      description: nextDescription,
+      specialRules:
+        specialRules.length > 0
+          ? specialRules
+          : ["先收敛主题和材料，再开始学习编排。"],
       updatedAt: "刚刚",
+    };
+    const createdSession: SessionItem = {
+      id: `session-${Date.now()}-project`,
+      projectId: createdProject.id,
+      type: "project",
+      knowledgePointId: null,
+      title: "初始 project session",
+      summary: "围绕项目目标、材料边界和知识点池初始化这轮工作区。",
+      updatedAt: "刚刚",
+      status: "空白",
     };
 
     setProjects((current) => [createdProject, ...current]);
+    setProjectMaterialIdsByProject((current) => ({
+      ...current,
+      [createdProject.id]: projectDraft.initialMaterialIds,
+    }));
+    setSessions((current) => [createdSession, ...current]);
+    setSessionMessagesById((current) => ({ ...current, [createdSession.id]: [] }));
+    setSessionSourceAssetIds((current) => ({ ...current, [createdSession.id]: getDefaultSourceAssetIds() }));
+    setSelectedKnowledgePointId("");
     setSelectedProjectId(createdProject.id);
     setSelectedSessionId("");
     setIsProjectMetaOpen(true);
+    setIsCreatingProject(false);
+    setSearchQuery("");
     setScreen("workspace");
+  }
+
+  function handleCancelCreatingProject(): void {
+    setIsCreatingProject(false);
+  }
+
+  function handleStartEditingProjectMeta(): void {
+    setProjectMetaDraft({
+      topic: selectedProject.topic,
+      description: selectedProject.description,
+      specialRulesText: selectedProject.specialRules.join("\n"),
+      materialIds: projectMaterialIdsByProject[selectedProject.id] ?? [],
+    });
+    setIsEditingProjectMeta(true);
+  }
+
+  function handleSaveProjectMeta(): void {
+    const nextTopic = projectMetaDraft.topic.trim();
+    const nextDescription = projectMetaDraft.description.trim();
+    const nextSpecialRules = projectMetaDraft.specialRulesText
+      .split("\n")
+      .map((rule) => rule.trim())
+      .filter((rule) => rule !== "");
+
+    if (nextTopic === "" || nextDescription === "") {
+      return;
+    }
+
+    setProjects((current) =>
+      current.map((project) =>
+        project.id === selectedProject.id
+          ? {
+              ...project,
+              topic: nextTopic,
+              description: nextDescription,
+              specialRules:
+                nextSpecialRules.length > 0
+                  ? nextSpecialRules
+                  : ["先收敛主题和材料，再开始学习编排。"],
+              updatedAt: "刚刚",
+            }
+          : project,
+      ),
+    );
+    setProjectMaterialIdsByProject((current) => ({
+      ...current,
+      [selectedProject.id]: projectMetaDraft.materialIds,
+    }));
+    setIsEditingProjectMeta(false);
+  }
+
+  function handleCancelEditingProjectMeta(): void {
+    setProjectMetaDraft({
+      topic: selectedProject.topic,
+      description: selectedProject.description,
+      specialRulesText: selectedProject.specialRules.join("\n"),
+      materialIds: projectMaterialIdsByProject[selectedProject.id] ?? [],
+    });
+    setIsEditingProjectMeta(false);
   }
 
   function handleCreateSession(
     projectId: string,
     type: SessionType = "project",
-    unitId: string | null = null,
+    knowledgePointId: string | null = null,
   ): void {
     const targetProject =
       projects.find((project) => project.id === projectId) ?? selectedProject ?? projects[0];
@@ -1111,7 +1319,7 @@ export function App(): ReactElement {
       id: `session-${Date.now()}`,
       projectId: targetProject.id,
       type,
-      unitId,
+      knowledgePointId,
       title: `${titlePrefix} session ${nextIndex}`,
       summary,
       updatedAt: "刚刚",
@@ -1125,30 +1333,154 @@ export function App(): ReactElement {
     setSessionSourceAssetIds((current) => ({ ...current, [createdSession.id]: getDefaultSourceAssetIds() }));
     setSelectedProjectId(targetProject.id);
     setSelectedSessionId(createdSession.id);
+    setIsEditingProjectMeta(false);
+    setIsCreatingKnowledgePoint(false);
     setIsProjectMetaOpen(false);
+    setSelectedKnowledgePointIds([]);
+    setPendingArchiveKnowledgePointIds([]);
     setScreen("workspace");
   }
 
   function handleOpenKnowledgePoint(pointId: string): void {
     setSelectedKnowledgePointId(pointId);
     setSelectedSessionId("");
+    setIsEditingProjectMeta(false);
+    setIsCreatingKnowledgePoint(false);
     setIsProjectMetaOpen(false);
+    setSelectedKnowledgePointIds([]);
+    setPendingArchiveKnowledgePointIds([]);
     setScreen("detail");
   }
 
-  function handleArchiveKnowledgePoint(pointId: string): void {
+  function handleStartCreatingKnowledgePoint(): void {
+    setNewKnowledgePointDraft({
+      title: "",
+      description: "",
+      sourceAssetIds: [],
+    });
+    setIsCreatingKnowledgePoint(true);
+    setIsProjectMetaOpen(false);
+  }
+
+  function handleSaveKnowledgePointDraft(): void {
+    const nextTitle = newKnowledgePointDraft.title.trim();
+    const nextDescription = newKnowledgePointDraft.description.trim();
+
+    if (nextTitle === "" || nextDescription === "") {
+      return;
+    }
+
+    const createdKnowledgePoint: KnowledgePointItem = {
+      id: `kp-${Date.now()}`,
+      projectId: selectedProject.id,
+      title: nextTitle,
+      description: nextDescription,
+      status: "active_unlearned",
+      mastery: 0,
+      stageLabel: "未学",
+      nextReviewLabel: null,
+      updatedAt: "刚刚",
+      sourceAssetIds: newKnowledgePointDraft.sourceAssetIds,
+    };
+
+    setKnowledgePoints((current) => [createdKnowledgePoint, ...current]);
+    setSelectedKnowledgePointId(createdKnowledgePoint.id);
+    setIsCreatingKnowledgePoint(false);
+    setWorkspaceSection("overview");
+    setSearchQuery("");
+  }
+
+  function handleCancelCreatingKnowledgePoint(): void {
+    setIsCreatingKnowledgePoint(false);
+  }
+
+  function applyKnowledgePointArchiveState(
+    pointIds: ReadonlyArray<string>,
+    mode: "archive" | "restore",
+  ): void {
     setKnowledgePoints((current) =>
       current.map((point) =>
-        point.id === pointId
+        pointIds.includes(point.id)
           ? {
               ...point,
-              status: point.status === "archived" ? "active_review" : "archived",
-              stageLabel: point.status === "archived" ? "待复习" : "已归档",
-              nextReviewLabel: point.status === "archived" ? "等待重新安排" : null,
+              status: mode === "restore" ? "active_review" : "archived",
+              stageLabel: mode === "restore" ? "待复习" : "已归档",
+              nextReviewLabel: mode === "restore" ? "等待重新安排" : null,
+              updatedAt: "刚刚",
             }
           : point,
       ),
     );
+  }
+
+  function handleArchiveKnowledgePoint(pointId: string): void {
+    const targetPoint = selectedProjectKnowledgePoints.find((point) => point.id === pointId);
+
+    if (targetPoint === undefined) {
+      return;
+    }
+
+    if (targetPoint.status === "archived") {
+      applyKnowledgePointArchiveState([pointId], "restore");
+      setPendingArchiveKnowledgePointIds([]);
+      return;
+    }
+
+    setPendingArchiveKnowledgePointIds([pointId]);
+  }
+
+  function handleConfirmArchiveKnowledgePoints(): void {
+    if (pendingArchiveKnowledgePointIds.length === 0) {
+      return;
+    }
+
+    applyKnowledgePointArchiveState(pendingArchiveKnowledgePointIds, "archive");
+    setSelectedKnowledgePointIds((current) =>
+      current.filter((id) => !pendingArchiveKnowledgePointIds.includes(id)),
+    );
+    setPendingArchiveKnowledgePointIds([]);
+  }
+
+  function handleCancelArchiveKnowledgePoints(): void {
+    setPendingArchiveKnowledgePointIds([]);
+  }
+
+  function handleToggleKnowledgePointSelection(pointId: string): void {
+    setSelectedKnowledgePointIds((current) =>
+      current.includes(pointId)
+        ? current.filter((id) => id !== pointId)
+        : [...current, pointId],
+    );
+  }
+
+  function handleSelectAllVisibleKnowledgePoints(): void {
+    const visibleIds = filteredKnowledgePoints.map((point) => point.id);
+    setSelectedKnowledgePointIds(visibleIds);
+  }
+
+  function handleClearKnowledgePointSelection(): void {
+    setSelectedKnowledgePointIds([]);
+  }
+
+  function handleArchiveSelectedKnowledgePoints(): void {
+    if (selectedKnowledgePointSelection.length === 0) {
+      return;
+    }
+
+    if (hasArchivedSelection) {
+      applyKnowledgePointArchiveState(
+        selectedKnowledgePointSelection.map((point) => point.id),
+        "restore",
+      );
+      setSelectedKnowledgePointIds([]);
+      setPendingArchiveKnowledgePointIds([]);
+      return;
+    }
+
+    const activeSelectionIds = selectedKnowledgePointSelection
+      .filter((point) => point.status !== "archived")
+      .map((point) => point.id);
+    setPendingArchiveKnowledgePointIds(activeSelectionIds);
   }
 
   function handleStartEditingKnowledgePoint(): void {
@@ -1420,7 +1752,7 @@ export function App(): ReactElement {
                 </label>
                 <Button
                   className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                  onClick={handleCreateProject}
+                  onClick={handleStartCreatingProject}
                   type="button"
                 >
                   <Plus className="h-4 w-4" />
@@ -1429,6 +1761,16 @@ export function App(): ReactElement {
               </div>
             </CardContent>
           </Card>
+
+          {isCreatingProject ? (
+            <CreateProjectPanel
+              assets={sourceAssets}
+              draft={projectDraft}
+              onCancel={handleCancelCreatingProject}
+              onChange={setProjectDraft}
+              onSave={handleSaveProject}
+            />
+          ) : null}
 
           {screen === "home" ? (
             <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
@@ -1600,13 +1942,46 @@ export function App(): ReactElement {
               </Card>
 
               {isProjectMetaOpen ? (
-                <ProjectMetaPanel
-                  materialCount={projectMaterialCount}
-                  materials={selectedProjectMaterials}
-                  onClose={() => setIsProjectMetaOpen(false)}
-                  project={selectedProject}
-                  sessionCount={selectedProjectSessions.length}
-                />
+                <div className="space-y-4">
+                  <ProjectMetaPanel
+                    materialCount={projectMaterialCount}
+                    materials={selectedProjectMaterials}
+                    onClose={() => {
+                      setIsProjectMetaOpen(false);
+                      setIsEditingProjectMeta(false);
+                    }}
+                    project={selectedProject}
+                    sessionCount={selectedProjectSessions.length}
+                  />
+                  <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                    <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+                      <div className="space-y-2">
+                        <p className="xidea-kicker text-[var(--xidea-selection-text)]">Project Settings</p>
+                        <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                          继续调整当前 project 的主题、规则和材料池，不需要回到首页重建。
+                        </p>
+                      </div>
+                      <Button
+                        className="rounded-full"
+                        onClick={handleStartEditingProjectMeta}
+                        type="button"
+                        variant="outline"
+                      >
+                        编辑 Project Meta
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {isEditingProjectMeta ? (
+                    <EditProjectMetaPanel
+                      assets={sourceAssets}
+                      draft={projectMetaDraft}
+                      onCancel={handleCancelEditingProjectMeta}
+                      onChange={setProjectMetaDraft}
+                      onSave={handleSaveProjectMeta}
+                    />
+                  ) : null}
+                </div>
               ) : null}
 
               {screen === "detail" && selectedKnowledgePoint !== null ? (
@@ -1746,9 +2121,9 @@ export function App(): ReactElement {
 
                   <div className="space-y-4">
                     <InspectorCard description="这个知识点在项目内如何被继续组织。" title="相关 Sessions">
-                      {selectedProjectSessions.filter((session) => session.unitId === selectedKnowledgePoint.id).length > 0 ? (
+                      {selectedProjectSessions.filter((session) => session.knowledgePointId === selectedKnowledgePoint.id).length > 0 ? (
                         selectedProjectSessions
-                          .filter((session) => session.unitId === selectedKnowledgePoint.id)
+                          .filter((session) => session.knowledgePointId === selectedKnowledgePoint.id)
                           .map((session) => (
                             <SessionCard
                               active={session.id === selectedSessionId}
@@ -1816,17 +2191,70 @@ export function App(): ReactElement {
                       </CardContent>
                     </Card>
 
+                    <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                      <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+                        <div className="space-y-2">
+                          <p className="xidea-kicker text-[var(--xidea-selection-text)]">Knowledge Point Pool</p>
+                          <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                            先把项目里的知识点补齐，再决定哪些进入学习、哪些进入复习。
+                          </p>
+                        </div>
+                        <Button
+                          className="rounded-full"
+                          onClick={handleStartCreatingKnowledgePoint}
+                          type="button"
+                          variant="outline"
+                        >
+                          <Plus className="h-4 w-4" />
+                          新增 Knowledge Point
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    {isCreatingKnowledgePoint ? (
+                      <CreateKnowledgePointPanel
+                        draft={newKnowledgePointDraft}
+                        materials={selectedProjectMaterials}
+                        onCancel={handleCancelCreatingKnowledgePoint}
+                        onChange={setNewKnowledgePointDraft}
+                        onSave={handleSaveKnowledgePointDraft}
+                      />
+                    ) : null}
+
+                    {pendingArchiveKnowledgePointIds.length > 0 ? (
+                      <ArchiveConfirmationCard
+                        count={pendingArchiveKnowledgePointIds.length}
+                        onCancel={handleCancelArchiveKnowledgePoints}
+                        onConfirm={handleConfirmArchiveKnowledgePoints}
+                      />
+                    ) : null}
+
+                    <KnowledgePointBatchActions
+                      filteredCount={filteredKnowledgePoints.length}
+                      hasArchivedSelection={hasArchivedSelection}
+                      onArchive={handleArchiveSelectedKnowledgePoints}
+                      onClear={handleClearKnowledgePointSelection}
+                      onSelectAll={handleSelectAllVisibleKnowledgePoints}
+                      selectedCount={selectedKnowledgePointIds.length}
+                    />
+
                     {filteredKnowledgePoints.length > 0 ? (
                       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                         {filteredKnowledgePoints.map((point) => (
-                          <KnowledgePointCard key={point.id} onClick={() => handleOpenKnowledgePoint(point.id)} point={point} />
+                          <KnowledgePointCard
+                            key={point.id}
+                            onClick={() => handleOpenKnowledgePoint(point.id)}
+                            onToggleSelect={() => handleToggleKnowledgePointSelection(point.id)}
+                            point={point}
+                            selected={selectedKnowledgePointIds.includes(point.id)}
+                          />
                         ))}
                       </div>
                     ) : (
                       <Card className="rounded-[1.3rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                         <CardContent className="px-5 py-6 text-sm text-[var(--xidea-stone)]">
                           {normalizedSearchQuery === ""
-                            ? "当前筛选下还没有知识点，可以先切回 Overview 或开始一个新的 project session。"
+                            ? "当前筛选下还没有知识点，可以先新增一个 Knowledge Point，或直接开始新的 project session。"
                             : "没找到匹配的 knowledge point，可以换个关键词再试。"}
                         </CardContent>
                       </Card>

@@ -23,7 +23,7 @@ export interface SessionItem {
   readonly id: string;
   readonly projectId: string;
   readonly type: SessionType;
-  readonly unitId: string | null;
+  readonly knowledgePointId: string | null;
   readonly title: string;
   readonly summary: string;
   readonly updatedAt: string;

@@ -244,17 +244,23 @@ export function WorkspaceNavButton({
 export function KnowledgePointCard({
   point,
   onClick,
+  selected = false,
+  onToggleSelect,
 }: {
   point: KnowledgePointItem;
   onClick: () => void;
+  selected?: boolean;
+  onToggleSelect?: (() => void) | undefined;
 }): ReactElement {
   const filledDots = Math.max(1, Math.round(point.mastery / 34));
 
   return (
-    <button
-      className="flex h-full flex-col rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-4 text-left shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7]"
-      onClick={onClick}
-      type="button"
+    <div
+      className={
+        selected
+          ? "flex h-full flex-col rounded-[1.2rem] border border-[var(--xidea-selection-border)] bg-[#fcf6f1] p-4 text-left shadow-none"
+          : "flex h-full flex-col rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-4 text-left shadow-none"
+      }
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -265,7 +271,28 @@ export function KnowledgePointCard({
             {point.description}
           </p>
         </div>
-        <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-[var(--xidea-stone)]" />
+        <div className="flex items-start gap-2">
+          {onToggleSelect ? (
+            <button
+              className={
+                selected
+                  ? "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[10px] text-[var(--xidea-selection-text)]"
+                  : "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] text-[10px] text-[var(--xidea-stone)]"
+              }
+              onClick={onToggleSelect}
+              type="button"
+            >
+              {selected ? "✓" : ""}
+            </button>
+          ) : null}
+          <button
+            className="rounded-full p-1 text-[var(--xidea-stone)] transition-colors hover:bg-[var(--xidea-parchment)]"
+            onClick={onClick}
+            type="button"
+          >
+            <ChevronRight className="h-4 w-4 shrink-0" />
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -302,7 +329,7 @@ export function KnowledgePointCard({
           掌握度 {point.mastery}%
         </span>
       </div>
-    </button>
+    </div>
   );
 }
 
