@@ -8,10 +8,12 @@ import type {
   SessionType,
   WorkspaceSection,
 } from "@/domain/project-workspace";
+import type { SourceAsset } from "@/domain/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  getAssetKindLabel,
   MetricTile,
   SessionCard,
   SessionTypeBadge,
@@ -156,8 +158,11 @@ export function WorkspaceBrowseScreen({
   onOpenKnowledgePoint,
   onOpenSession,
   onSubmitPendingPrompt,
+  onTogglePendingMaterial,
   pendingPrompt,
   pendingSessionIntent,
+  projectMaterialCount,
+  projectMaterials,
   profileSummary,
   projectStats,
   selectedProjectSessions,
@@ -171,11 +176,15 @@ export function WorkspaceBrowseScreen({
   onOpenKnowledgePoint: (pointId: string) => void;
   onOpenSession: (sessionId: string) => void;
   onSubmitPendingPrompt: () => void;
+  onTogglePendingMaterial: (assetId: string) => void;
   pendingPrompt: string;
   pendingSessionIntent: {
     readonly type: Extract<SessionType, "review" | "study">;
     readonly knowledgePointTitle: string | null;
+    readonly sourceAssetIds: ReadonlyArray<string>;
   } | null;
+  projectMaterialCount: number;
+  projectMaterials: ReadonlyArray<SourceAsset>;
   profileSummary: {
     readonly title: string;
     readonly evidence: string;
@@ -270,6 +279,62 @@ export function WorkspaceBrowseScreen({
                 <Button className="rounded-full" onClick={onCancelPendingSession} type="button" variant="outline">
                   取消
                 </Button>
+              </div>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                    本轮附带材料
+                  </p>
+                  <span className="text-[12px] text-[var(--xidea-stone)]">
+                    Project 池里共 {projectMaterialCount} 份，本轮已选 {pendingSessionIntent.sourceAssetIds.length} 份
+                  </span>
+                </div>
+                {projectMaterialCount > 0 ? (
+                  projectMaterials.length > 0 ? (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {projectMaterials.map((asset) => {
+                        const selected = pendingSessionIntent.sourceAssetIds.includes(asset.id);
+
+                        return (
+                        <button
+                          className={
+                            selected
+                              ? "rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-4 py-4 text-left"
+                              : "rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-4 py-4 text-left hover:border-[var(--xidea-selection-border)]"
+                          }
+                          key={asset.id}
+                          onClick={() => onTogglePendingMaterial(asset.id)}
+                          type="button"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                              {asset.title}
+                            </p>
+                            <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+                              {getAssetKindLabel(asset.kind)}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
+                            {asset.topic}
+                          </p>
+                        </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                      <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
+                        当前没有默认附带材料。你可以先直接发问题，或去 Project Meta 里补充项目材料。
+                      </CardContent>
+                    </Card>
+                  )
+                ) : (
+                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                    <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
+                      当前 project 还没有材料池，所以这轮会以纯对话方式开始。
+                    </CardContent>
+                  </Card>
+                )}
               </div>
               <div className="relative">
                 <Textarea

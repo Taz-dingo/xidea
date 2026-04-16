@@ -131,6 +131,7 @@ interface PendingSessionIntent {
   readonly type: Extract<SessionType, "review" | "study">;
   readonly knowledgePointId: string | null;
   readonly knowledgePointTitle: string | null;
+  readonly sourceAssetIds: ReadonlyArray<string>;
 }
 
 interface PendingInitialPrompt {
@@ -1332,6 +1333,11 @@ export function App(): ReactElement {
       knowledgePointId === null
         ? null
         : knowledgePoints.find((point) => point.id === knowledgePointId) ?? null;
+    const projectMaterialIds = projectMaterialIdsByProject[targetProject.id] ?? [];
+    const suggestedSourceAssetIds =
+      targetPoint === null
+        ? []
+        : targetPoint.sourceAssetIds.filter((assetId) => projectMaterialIds.includes(assetId));
 
     setSelectedProjectId(targetProject.id);
     setSelectedSessionId("");
@@ -1347,6 +1353,7 @@ export function App(): ReactElement {
       type,
       knowledgePointId: targetPoint?.id ?? knowledgePointId,
       knowledgePointTitle: targetPoint?.title ?? null,
+      sourceAssetIds: suggestedSourceAssetIds,
     });
     setScreen("workspace");
   }
@@ -1355,6 +1362,7 @@ export function App(): ReactElement {
     projectId: string,
     type: SessionType = "project",
     knowledgePointId: string | null = null,
+    initialSourceAssetIds: ReadonlyArray<string> = getDefaultSourceAssetIds(),
   ): SessionItem | null {
     const targetProject =
       projects.find((project) => project.id === projectId) ?? selectedProject ?? projects[0];
@@ -1387,7 +1395,10 @@ export function App(): ReactElement {
     setSessionMessagesById((current) => ({ ...current, [createdSession.id]: [] }));
     setDraftPrompt("");
     setSessionEntryModes((current) => ({ ...current, [createdSession.id]: "chat-question" }));
-    setSessionSourceAssetIds((current) => ({ ...current, [createdSession.id]: getDefaultSourceAssetIds() }));
+    setSessionSourceAssetIds((current) => ({
+      ...current,
+      [createdSession.id]: initialSourceAssetIds,
+    }));
     setSelectedProjectId(targetProject.id);
     setSelectedSessionId(createdSession.id);
     setIsEditingProjectMeta(false);
@@ -1475,6 +1486,7 @@ export function App(): ReactElement {
         pendingSessionIntent.projectId,
         pendingSessionIntent.type,
         pendingSessionIntent.knowledgePointId,
+        pendingSessionIntent.sourceAssetIds,
       );
 
       if (createdSession === null) {
@@ -1952,10 +1964,24 @@ export function App(): ReactElement {
                   onSubmitPendingPrompt={handleSubmitPrompt}
                   pendingPrompt={draftPrompt}
                   pendingSessionIntent={pendingSessionIntent}
+                  projectMaterialCount={projectMaterialCount}
+                  projectMaterials={selectedProjectMaterials}
                   onWorkspaceSectionChange={setWorkspaceSection}
                   profileSummary={browseProfileSummary}
                   projectStats={projectStats}
                   selectedProjectSessions={selectedProjectSessions}
+                  onTogglePendingMaterial={(assetId) => {
+                    setPendingSessionIntent((current) =>
+                      current === null
+                        ? current
+                        : {
+                            ...current,
+                            sourceAssetIds: current.sourceAssetIds.includes(assetId)
+                              ? current.sourceAssetIds.filter((id) => id !== assetId)
+                              : [...current.sourceAssetIds, assetId],
+                          },
+                    );
+                  }}
                   workspaceSection={workspaceSection}
                 />
               ) : (
@@ -2111,7 +2137,7 @@ export function App(): ReactElement {
                                   </div>
                                 </div>
                                 <div className="grid gap-3 lg:grid-cols-2">
-                                  {sourceAssets.map((asset) => {
+                                  {selectedProjectMaterials.map((asset) => {
                                     const selected = selectedSourceAssetIds.includes(asset.id);
 
                                     return (
@@ -2151,6 +2177,13 @@ export function App(): ReactElement {
                                     );
                                   })}
                                 </div>
+                                {selectedProjectMaterials.length === 0 ? (
+                                    <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                                      <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
+                                      当前 project 还没有材料。先到 More 里的“编辑 Project Meta”把材料加入项目池，再挂进 session。
+                                      </CardContent>
+                                    </Card>
+                                  ) : null}
                               </section>
                             ) : null}
 
