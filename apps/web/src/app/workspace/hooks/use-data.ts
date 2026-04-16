@@ -40,6 +40,7 @@ import type {
   ProjectMetaDraft,
 } from "@/app/workspace/model/types";
 import { useWorkspaceEntitiesStore } from "@/app/workspace/store/entities-store";
+import { useWorkspaceRuntimeStore } from "@/app/workspace/store/runtime-store";
 import { useWorkspaceUiStore } from "@/app/workspace/store/ui-store";
 
 export function useWorkspaceData() {
@@ -164,49 +165,61 @@ export function useWorkspaceData() {
       title: initialKnowledgePoint.title,
       description: initialKnowledgePoint.description,
     });
-  const [, setSessionEntryModes] = useState<Record<string, AgentEntryMode>>(() =>
-    Object.fromEntries(initialSessions.map((session) => [session.id, "chat-question"])),
+  const {
+    activityResolutionsBySession,
+    agentConnectionState,
+    assetSummaryByKey,
+    bootstrapLoadedKeys,
+    clearBootstrapLoaded,
+    devTutorFixtureState,
+    markBootstrapLoaded,
+    runningSessionIds,
+    sessionEntryModes,
+    sessionMaterialTrayOpen,
+    sessionMessagesById,
+    sessionReviewInspectors,
+    sessionSnapshots,
+    sessionSourceAssetIds,
+    setActivityResolutionsBySession,
+    setAgentConnectionState,
+    setAssetSummaryByKey,
+    setDevTutorFixtureState,
+    setRunningSessionIds,
+    setSessionEntryModes,
+    setSessionMaterialTrayOpen,
+    setSessionMessagesById,
+    setSessionReviewInspectors,
+    setSessionSnapshots,
+    setSessionSourceAssetIds,
+  } = useWorkspaceRuntimeStore(
+    useShallow((state) => ({
+      activityResolutionsBySession: state.activityResolutionsBySession,
+      agentConnectionState: state.agentConnectionState,
+      assetSummaryByKey: state.assetSummaryByKey,
+      bootstrapLoadedKeys: state.bootstrapLoadedKeys,
+      clearBootstrapLoaded: state.clearBootstrapLoaded,
+      devTutorFixtureState: state.devTutorFixtureState,
+      markBootstrapLoaded: state.markBootstrapLoaded,
+      runningSessionIds: state.runningSessionIds,
+      sessionEntryModes: state.sessionEntryModes,
+      sessionMaterialTrayOpen: state.sessionMaterialTrayOpen,
+      sessionMessagesById: state.sessionMessagesById,
+      sessionReviewInspectors: state.sessionReviewInspectors,
+      sessionSnapshots: state.sessionSnapshots,
+      sessionSourceAssetIds: state.sessionSourceAssetIds,
+      setActivityResolutionsBySession: state.setActivityResolutionsBySession,
+      setAgentConnectionState: state.setAgentConnectionState,
+      setAssetSummaryByKey: state.setAssetSummaryByKey,
+      setDevTutorFixtureState: state.setDevTutorFixtureState,
+      setRunningSessionIds: state.setRunningSessionIds,
+      setSessionEntryModes: state.setSessionEntryModes,
+      setSessionMaterialTrayOpen: state.setSessionMaterialTrayOpen,
+      setSessionMessagesById: state.setSessionMessagesById,
+      setSessionReviewInspectors: state.setSessionReviewInspectors,
+      setSessionSnapshots: state.setSessionSnapshots,
+      setSessionSourceAssetIds: state.setSessionSourceAssetIds,
+    })),
   );
-  const [sessionSourceAssetIds, setSessionSourceAssetIds] = useState<
-    Record<string, ReadonlyArray<string>>
-  >(() =>
-    Object.fromEntries(
-      initialSessions.map((session) => [session.id, getDefaultSourceAssetIds()]),
-    ),
-  );
-  const [sessionMaterialTrayOpen, setSessionMaterialTrayOpen] = useState<
-    Record<string, boolean>
-  >({});
-  const [devTutorFixtureState, setDevTutorFixtureState] =
-    useState<DevTutorFixtureState | null>(() => {
-      if (!isDevEnvironment || typeof window === "undefined") {
-        return null;
-      }
-
-      const fixtureId = new URLSearchParams(window.location.search).get("mockTutor");
-      const fixture = getTutorFixtureScenario(fixtureId);
-      return fixture ? buildDevTutorFixtureState(fixture) : null;
-    });
-  const [sessionSnapshots, setSessionSnapshots] = useState<Record<string, RuntimeSnapshot>>({});
-  const [sessionReviewInspectors, setSessionReviewInspectors] = useState<
-    Record<string, AgentReviewInspector | null>
-  >({});
-  const [assetSummaryByKey, setAssetSummaryByKey] = useState<
-    Record<string, AgentAssetSummary>
-  >({});
-  const [agentConnectionState, setAgentConnectionState] = useState<
-    "checking" | "ready" | "offline"
-  >("checking");
-  const [sessionMessagesById, setSessionMessagesById] = useState<Record<string, UIMessage[]>>(
-    () => Object.fromEntries(initialSessions.map((session) => [session.id, []])),
-  );
-  const [activityResolutionsBySession, setActivityResolutionsBySession] = useState<
-    Record<string, Record<string, ActivityResolution>>
-  >({});
-  const [runningSessionIds, setRunningSessionIds] = useState<Record<string, boolean>>({});
-  const bootstrapLoadedKeysRef = useRef<Record<string, boolean>>({});
-  const sessionSnapshotsRef = useRef<Record<string, RuntimeSnapshot>>(sessionSnapshots);
-  sessionSnapshotsRef.current = sessionSnapshots;
 
   const selectedSession = sessions.find((session) => session.id === selectedSessionId);
   const selectedProject = getSelectedProject(projects, selectedProjectId, initialProject);
@@ -284,7 +297,6 @@ export function useWorkspaceData() {
     agentConnectionState,
     archiveConfirmationPointId,
     assetSummaryByKey,
-    bootstrapLoadedKeysRef,
     devTutorFixtureState,
     draftPrompt,
     initialKnowledgePoint,
@@ -320,12 +332,15 @@ export function useWorkspaceData() {
     selectedProjectSessions,
     selectedSession,
     selectedSessionId,
+    bootstrapLoadedKeys,
+    clearBootstrapLoaded,
+    markBootstrapLoaded,
+    sessionEntryModes,
     sessionEntryModesSetter: setSessionEntryModes,
     sessionMaterialTrayOpen,
     sessionMessagesById,
     sessionReviewInspectors,
     sessionSnapshots,
-    sessionSnapshotsRef,
     sessionSourceAssetIds,
     sessions,
     setActivityResolutionsBySession,

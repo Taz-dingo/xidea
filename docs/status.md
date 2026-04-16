@@ -11,6 +11,7 @@
 - `apps/web` 本轮继续把 session 工作区从 `App.tsx` 中拆开：session 视图已独立成 workspace/thread/inspector 组件，复习热力图与 session runtime helper 也已移到独立 domain 模块，`App.tsx` 进一步收敛为页面编排与状态 wiring
 - `apps/web` 已进一步把 `workspace` 和 `session` 相关文件按 feature folder 收进 `app/workspace`、`components/workspace`、`components/session`，同时去掉一批冗长的 `project-workspace-*` / `project-session-*` 命名；当前 `apps/web/src/app` 与 `apps/web/src/components` 下文件均控制在 500 行以内
 - 团队实现约束继续补齐：开发前默认先匹配对应的 best-practice / framework / project skill，再按 skill 落代码；前端跨组件共享的客户端状态默认使用 Zustand，组件内临时状态继续用 React state
+- 团队协作规则补齐为全局显式约束：改动默认按小步、稳定、可验证的切片推进，每完成一段可构建、可 review 的改动就尽快单独 commit
 
 - 基于一轮产品讨论，将当前 MVP 方向收敛为 project-centric learning workspace，而不是以单条 thread 为中心的 tutor 界面
 - 明确当前产品主对象收敛为 `Project / Knowledge Point / Session / Learning Profile`

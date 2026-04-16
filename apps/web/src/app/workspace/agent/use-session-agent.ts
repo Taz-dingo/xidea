@@ -51,6 +51,8 @@ export function useSessionAgent({
 }) {
   const selectedSessionKey = data.selectedSession?.id ?? null;
   const selectedSessionKnowledgePointId = data.selectedSession?.knowledgePointId ?? null;
+  const sessionSnapshotsRef = useRef(data.sessionSnapshots);
+  sessionSnapshotsRef.current = data.sessionSnapshots;
   const selectedUnit = selectedSessionKnowledgePointId
     ? learningUnits.find((unit) => unit.id === selectedSessionKnowledgePointId)
     : undefined;
@@ -191,12 +193,12 @@ export function useSessionAgent({
         getSourceAssets: () => activeSourceAssetsRef.current,
         unit: runtimeUnit,
         getFallbackSnapshot: () =>
-          data.sessionSnapshotsRef.current[transportSessionId] ?? activeRuntime,
+          sessionSnapshotsRef.current[transportSessionId] ?? activeRuntime,
         onSnapshot: (snapshot) => handleTransportSnapshot(transportSessionId, snapshot),
         onRunStateChange: (nextIsRunning) =>
           handleTransportRunStateChange(transportSessionId, nextIsRunning),
       }),
-    [activeRuntime, data.selectedProject.id, data.sessionSnapshotsRef, effectiveEntryMode, handleTransportRunStateChange, handleTransportSnapshot, runtimeUnit, transportSessionId],
+    [activeRuntime, data.selectedProject.id, effectiveEntryMode, handleTransportRunStateChange, handleTransportSnapshot, runtimeUnit, transportSessionId],
   );
   const { clearError, error, messages, sendMessage } = useChat({
     id: data.selectedSession?.id ?? data.selectedProject.id ?? "project",
@@ -291,10 +293,10 @@ export function useSessionAgent({
       return;
     }
     const bootstrapKey = `${selectedSessionKey}:${selectedSessionKnowledgePointId}`;
-    if (data.bootstrapLoadedKeysRef.current[bootstrapKey]) {
+    if (data.bootstrapLoadedKeys[bootstrapKey]) {
       return;
     }
-    data.bootstrapLoadedKeysRef.current[bootstrapKey] = true;
+    data.markBootstrapLoaded(bootstrapKey);
     const abortController = new AbortController();
     void getInspectorBootstrap(selectedSessionKey, selectedSessionKnowledgePointId, { signal: abortController.signal })
       .then(({ learner_state, review_inspector, thread_context }) => {
@@ -312,7 +314,7 @@ export function useSessionAgent({
         }
       })
       .catch(() => {
-        delete data.bootstrapLoadedKeysRef.current[bootstrapKey];
+        data.clearBootstrapLoaded(bootstrapKey);
       });
     return () => abortController.abort();
   }, [data, seedRuntime, selectedSessionKey, selectedSessionKnowledgePointId]);
