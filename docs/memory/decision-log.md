@@ -3,6 +3,42 @@
 只保留“当前仍生效、后续会反复影响协作或实现”的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-16 — 并行开发前冻结共享边界
+
+### 决策
+
+为了让学习引擎、前端和产品叙事可以并行推进，当前先冻结一版共享边界，不再在实现中继续摇摆。
+这版冻结覆盖：
+
+- `Project / Session / KnowledgePoint / ProjectLearningProfile` 四个主对象
+- `KnowledgePointState / ProjectMaterial / SessionAttachment / ProjectMemory` 四个关键配套对象
+- `text-delta / activity / tool-result / state-patch / done` 的目标事件流
+- activity 提交 contract、`run_id` 运行态概念和 `App Home -> Project Workspace -> Knowledge Point Detail` 页面结构
+
+同时明确：
+
+- `Session` 正式替代 `thread`
+- `KnowledgePoint` 正式替代 `LearningUnit`
+- `ProjectLearningProfile` 只保留 project 级聚合信息
+- `KnowledgePointState` 承担点级动态学习状态
+- `ProjectMaterial` 与 `SessionAttachment` 分别承接 project 级材料池与 session 级挂载关系
+
+冻结详情见 [docs/process/shared-boundary-freeze.md](../process/shared-boundary-freeze.md)。
+
+### 原因
+
+- 之前对象名已经基本收敛，但真正会卡住并行开发的 payload、storage 和页面边界还没有统一定形
+- 如果继续带着 `thread / LearningUnit / plan` 过渡语义往前做，前后端会在材料模型、activity 协议和运行态收尾上持续返工
+- 当前 MVP 最需要的是稳定共享边界，而不是继续扩实现细节
+
+### 影响
+
+- 后续 schema、repository、API contract 和前端类型统一向 `Session / KnowledgePoint / ProjectMaterial / run_id` 迁移
+- `plan` 只保留过渡兼容，不再作为长期正式事件
+- 前端默认围绕 knowledge point list、session 按需展开和独立 detail 页实现，不再摇摆页面主结构
+- 新的并行开发任务默认以这份冻结文档作为 source of truth
+- 如果后续要改共享边界，优先更新冻结文档和决策日志，而不是只在实现里偷偷漂移
+
 ## 2026-04-16 — MVP 收敛为 project-centric learning workspace
 
 ### 决策
