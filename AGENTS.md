@@ -16,6 +16,8 @@
 - 文档与 demo 一起推进，避免只有代码没有叙事
 - 新功能优先围绕比赛故事线展开，避免偏题式扩展
 - 默认优先简化，而不是扩展
+- 开始实现前先检查当前任务是否已有对应的 project skill、framework skill 或 best-practice skill；默认先按 skill 的工作流和约束来写代码
+- 只有在没有合适 skill，或 skill 与当前仓库边界明确冲突时，才跳过 skill；跳过时需要在说明里讲清楚原因
 
 ## Project Skills
 
@@ -52,6 +54,13 @@
 
 默认建议先运行 `project-onboarding`；遇到超重入口文件或职责漂移时，再加 `clean-code-guardrails`；涉及开分支、重命名分支或 PR 协作时，再加 `branch-workflow`；需要补 PR 描述时，再加 `pr-description`。
 
+### Implementation Default
+
+- 开发前先匹配这次任务最相关的 skill，再决定代码落点和实现方式
+- 默认认为 skill 是当前任务的第一参考约束，而不是“写完以后再对照检查”
+- 前端任务优先匹配 `vercel-react-best-practices`；入口文件变重时同时使用 `clean-code-guardrails`
+- 后端、agent 或框架任务同理优先找对应 skill，再继续实现
+
 ## Repo Conventions
 
 - Web 页面编排层放在 `apps/web/src/app`
@@ -65,6 +74,8 @@
 - `App`、page / screen / route、FastAPI endpoint、LangGraph graph/runtime 入口文件默认只负责编排与组装，不承担大段 domain helper、adapter、repository、prompt 构造或可独立复用的实现细节
 - 同一 feature 或组件的相关文件优先收在同一目录内；不要把同一块 UI 的 page、hook、types、section 长期散落在多个顶层文件
 - 命名优先短而具体；在 feature folder 内避免重复 `project-workspace-` 这类冗长前缀。`apps/web/src/app` 和 `apps/web/src/components` 下单文件默认不超过 500 行，除非确实无法继续拆分
+- 前端跨组件、跨页面、跨 feature 共享的客户端状态默认使用 `zustand`；组件内部的临时交互状态、表单草稿和局部 UI 开合仍优先使用 React state
+- 不要把需要跨组件复用的前端全局状态继续堆在 page hook、controller hook 或逐层透传的 props 包里
 
 ## Collaboration Rules
 

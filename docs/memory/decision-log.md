@@ -3,6 +3,30 @@
 只保留"当前仍生效、后续会反复影响协作或实现"的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-16 — 开发前先匹配对应 skill，前端全局状态默认 Zustand
+
+### 决策
+
+仓库默认把“先找对应 skill，再开始实现”作为开发前置步骤。
+稳定约束为：
+
+- 开始实现前先检查当前任务是否已有对应的 project skill、framework skill 或 best-practice skill
+- 默认先按 skill 的工作流、约束和落点建议来写代码，而不是写完后再补对照
+- 只有在没有合适 skill，或 skill 与当前仓库边界明确冲突时，才跳过 skill，并需要说明原因
+- 前端跨组件、跨页面、跨 feature 共享的客户端状态默认使用 Zustand
+- 组件内部的临时交互状态、局部草稿和单组件 UI 状态继续优先使用 React state
+
+### 原因
+
+- 当前仓库已经把一部分稳定实践沉淀成 skill，如果开发时不先匹配 skill，很容易重新走回各写各的、风格漂移和重复返工
+- 前端当前已经出现 workspace 级共享状态，如果继续把这类状态堆在 page hook 或层层 props 透传里，后续拆分成本和 review 成本都会继续放大
+
+### 影响
+
+- 后续实现默认把“这次该用哪个 skill”作为开工前的显式检查项
+- 前端新增全局共享状态时，优先建 Zustand store 或 slice，而不是继续扩大单个 page hook 的状态面
+- review 时要把“这次有没有先匹配对应 skill”和“共享状态是否放在合适边界”作为显式检查项
+
 ## 2026-04-16 — 单文件禁止持续堆职责，前后端与 agent 入口默认只做编排
 
 ### 决策
