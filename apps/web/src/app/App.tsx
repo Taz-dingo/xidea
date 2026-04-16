@@ -1985,7 +1985,7 @@ export function App(): ReactElement {
                   workspaceSection={workspaceSection}
                 />
               ) : (
-                <div className="grid items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)_320px]">
+                <div className="grid items-start gap-4 lg:grid-cols-[292px_minmax(0,1fr)_320px]">
                   <Card className="rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none">
                     <CardContent className="space-y-4 p-3">
                       <div className="space-y-2">

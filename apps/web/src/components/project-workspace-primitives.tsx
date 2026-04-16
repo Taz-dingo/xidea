@@ -74,6 +74,46 @@ export function getSessionTypeAccent(type: SessionType): string {
   }
 }
 
+function getReviewTimingAccent(label: string): string {
+  if (label.includes("今日") || label.includes("到期")) {
+    return "border-[#e1c5bb] bg-[#f8ece7] text-[#9d5b43]";
+  }
+
+  if (label.includes("明天")) {
+    return "border-[#e7d8a6] bg-[#fbf5df] text-[#98711c]";
+  }
+
+  return "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)]";
+}
+
+function getUpdatedAtAccent(label: string): string {
+  if (label.includes("刚刚") || label.includes("今天") || label.includes("1h")) {
+    return "border-[#cadecf] bg-[#eef5ef] text-[#56795e]";
+  }
+
+  if (label.includes("昨天") || label.includes("2d") || label.includes("天前")) {
+    return "border-[#d9d4c8] bg-[#f3f0e7] text-[#786c57]";
+  }
+
+  return "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)]";
+}
+
+function getMasteryFillCount(mastery: number): number {
+  if (mastery >= 80) {
+    return 4;
+  }
+
+  if (mastery >= 55) {
+    return 3;
+  }
+
+  if (mastery >= 30) {
+    return 2;
+  }
+
+  return 1;
+}
+
 export function SessionTypeBadge({
   type,
 }: {
@@ -113,20 +153,17 @@ export function SessionCard({
       type="button"
     >
       <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <p className="truncate text-sm font-medium">{title}</p>
+        <p className="truncate text-sm font-medium">{title}</p>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <SessionTypeBadge type={type} />
+          <Badge
+            className={`border px-2 py-1 text-[11px] shadow-none ${getUpdatedAtAccent(updatedAt)}`}
+            variant="outline"
+          >
+            {updatedAt}
+          </Badge>
         </div>
       </div>
-      <span
-        className={
-          active
-            ? "shrink-0 text-[11px] text-[var(--xidea-selection-text)]"
-            : "shrink-0 text-[11px] text-[var(--xidea-stone)]"
-        }
-      >
-        {updatedAt}
-      </span>
     </button>
   );
 }
@@ -272,7 +309,7 @@ export function KnowledgePointCard({
   selected?: boolean;
   onToggleSelect?: (() => void) | undefined;
 }): ReactElement {
-  const filledDots = Math.max(1, Math.round(point.mastery / 34));
+  const filledDots = getMasteryFillCount(point.mastery);
 
   return (
     <div
@@ -324,22 +361,28 @@ export function KnowledgePointCard({
         </Badge>
         {point.nextReviewLabel ? (
           <Badge
-            className="border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
+            className={`border px-2 py-1 text-[12px] shadow-none ${getReviewTimingAccent(point.nextReviewLabel)}`}
             variant="outline"
           >
             {point.nextReviewLabel}
           </Badge>
         ) : null}
+        <Badge
+          className={`border px-2 py-1 text-[12px] shadow-none ${getUpdatedAtAccent(point.updatedAt)}`}
+          variant="outline"
+        >
+          {point.updatedAt}
+        </Badge>
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
-          {Array.from({ length: 3 }, (_, index) => (
+          {Array.from({ length: 4 }, (_, index) => (
             <span
               className={
                 index < filledDots
                   ? "inline-block h-2.5 w-2.5 rounded-full bg-[var(--xidea-terracotta)]"
-                  : "inline-block h-2.5 w-2.5 rounded-full bg-[var(--xidea-border)]"
+                  : "inline-block h-2.5 w-2.5 rounded-full bg-[#e6e1d6]"
               }
               key={`${point.id}-dot-${index}`}
             />

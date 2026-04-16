@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
   getAssetKindLabel,
+  KnowledgePointCard,
   MetricTile,
   SessionCard,
   SessionTypeBadge,
@@ -195,7 +196,7 @@ export function WorkspaceBrowseScreen({
   onWorkspaceSectionChange: (section: WorkspaceSection) => void;
 }): ReactElement {
   return (
-    <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+    <div className="grid gap-4 lg:grid-cols-[292px_minmax(0,1fr)]">
       <Card className="rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none">
         <CardContent className="space-y-4 p-3">
           <div className="space-y-2">
@@ -362,34 +363,11 @@ export function WorkspaceBrowseScreen({
         {filteredKnowledgePoints.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filteredKnowledgePoints.map((point) => (
-              <button
-                className="flex h-full flex-col rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-4 text-left shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7]"
+              <KnowledgePointCard
                 key={point.id}
                 onClick={() => onOpenKnowledgePoint(point.id)}
-                type="button"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
-                    {point.title}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                    {point.description}
-                  </p>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)]">
-                    {point.stageLabel}
-                  </span>
-                  {point.nextReviewLabel ? (
-                    <span className="rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)]">
-                      {point.nextReviewLabel}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-4 text-[12px] text-[var(--xidea-stone)]">
-                  掌握度 {point.mastery}%
-                </p>
-              </button>
+                point={point}
+              />
             ))}
           </div>
         ) : (
