@@ -156,12 +156,15 @@ export function SessionCard({
         <p className="truncate text-sm font-medium">{title}</p>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <SessionTypeBadge type={type} />
-          <Badge
-            className={`border px-2 py-1 text-[11px] shadow-none ${getUpdatedAtAccent(updatedAt)}`}
-            variant="outline"
+          <span
+            className={
+              active
+                ? "shrink-0 text-[11px] text-[var(--xidea-selection-text)]"
+                : "shrink-0 text-[11px] text-[var(--xidea-stone)]"
+            }
           >
             {updatedAt}
-          </Badge>
+          </span>
         </div>
       </div>
     </button>
