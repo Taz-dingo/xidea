@@ -35,6 +35,7 @@ import {
   MonitorSection,
   ProjectMetaPanel,
   SessionCard,
+  SessionTypeBadge,
   WorkspaceNavButton,
   getKnowledgePointAccent,
 } from "@/components/project-workspace-primitives";
@@ -77,7 +78,6 @@ import {
 import {
   getNextSuggestedAction,
   getProjectStats,
-  getSessionTypeLabel,
   type AppScreen,
   type KnowledgePointItem,
   type KnowledgePointStatus,
@@ -124,6 +124,19 @@ interface ProjectMetaDraft {
   readonly description: string;
   readonly specialRulesText: string;
   readonly materialIds: ReadonlyArray<string>;
+}
+
+interface PendingSessionIntent {
+  readonly projectId: string;
+  readonly type: Extract<SessionType, "review" | "study">;
+  readonly knowledgePointId: string | null;
+  readonly knowledgePointTitle: string | null;
+}
+
+interface PendingInitialPrompt {
+  readonly sessionId: string;
+  readonly text: string;
+  readonly sessionSummary: string;
 }
 
 function setDevTutorFixtureQueryParam(fixtureId: string | null): void {
@@ -493,6 +506,12 @@ export function App(): ReactElement {
     title: initialKnowledgePoint.title,
     description: initialKnowledgePoint.description,
   });
+  const [pendingSessionIntent, setPendingSessionIntent] = useState<PendingSessionIntent | null>(
+    null,
+  );
+  const [pendingInitialPrompt, setPendingInitialPrompt] = useState<PendingInitialPrompt | null>(
+    null,
+  );
   const [selectedProjectId, setSelectedProjectId] = useState(initialProject.id);
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [selectedKnowledgePointId, setSelectedKnowledgePointId] = useState(initialKnowledgePoint.id);
@@ -740,6 +759,8 @@ export function App(): ReactElement {
   const continueProjectPoints = knowledgePoints.filter((point) => point.projectId === continueProject.id);
   const continueProjectStats = getProjectStats(continueProjectPoints);
   const continueActionLabel = getNextSuggestedAction(continueProjectPoints);
+  const continueReviewTargetPoint =
+    continueProjectPoints.find((point) => point.status === "active_review") ?? null;
   const filteredProjectSummaries = useMemo(
     () =>
       filteredProjects.map((project) => ({
@@ -1159,6 +1180,8 @@ export function App(): ReactElement {
     setIsProjectMetaOpen(false);
     setIsEditingProjectMeta(false);
     setIsCreatingProject(false);
+    setPendingSessionIntent(null);
+    setPendingInitialPrompt(null);
     setScreen("workspace");
     startTransition(() => {
       const firstKnowledgePoint = knowledgePoints.find((point) => point.projectId === projectId);
@@ -1178,6 +1201,7 @@ export function App(): ReactElement {
     });
     setIsCreatingProject(true);
     setIsProjectMetaOpen(false);
+    setPendingSessionIntent(null);
   }
 
   function handleSaveProject(): void {
@@ -1228,6 +1252,7 @@ export function App(): ReactElement {
     setSelectedSessionId("");
     setIsProjectMetaOpen(true);
     setIsCreatingProject(false);
+    setPendingSessionIntent(null);
     setSearchQuery("");
     setScreen("workspace");
   }
@@ -1291,9 +1316,9 @@ export function App(): ReactElement {
     setIsEditingProjectMeta(false);
   }
 
-  function handleCreateSession(
+  function handlePrepareSessionStart(
     projectId: string,
-    type: SessionType = "project",
+    type: Extract<SessionType, "review" | "study">,
     knowledgePointId: string | null = null,
   ): void {
     const targetProject =
@@ -1301,6 +1326,41 @@ export function App(): ReactElement {
 
     if (targetProject === undefined) {
       return;
+    }
+
+    const targetPoint =
+      knowledgePointId === null
+        ? null
+        : knowledgePoints.find((point) => point.id === knowledgePointId) ?? null;
+
+    setSelectedProjectId(targetProject.id);
+    setSelectedSessionId("");
+    setSelectedKnowledgePointId(targetPoint?.id ?? selectedKnowledgePointId);
+    setWorkspaceSection(type === "review" ? "due-review" : "overview");
+    setIsEditingProjectMeta(false);
+    setIsProjectMetaOpen(false);
+    setPendingInitialPrompt(null);
+    setDraftPrompt("");
+    setSearchQuery("");
+    setPendingSessionIntent({
+      projectId: targetProject.id,
+      type,
+      knowledgePointId: targetPoint?.id ?? knowledgePointId,
+      knowledgePointTitle: targetPoint?.title ?? null,
+    });
+    setScreen("workspace");
+  }
+
+  function handleCreateSession(
+    projectId: string,
+    type: SessionType = "project",
+    knowledgePointId: string | null = null,
+  ): SessionItem | null {
+    const targetProject =
+      projects.find((project) => project.id === projectId) ?? selectedProject ?? projects[0];
+
+    if (targetProject === undefined) {
+      return null;
     }
 
     const nextIndex = sessions.filter((session) => session.projectId === targetProject.id).length + 1;
@@ -1332,7 +1392,9 @@ export function App(): ReactElement {
     setSelectedSessionId(createdSession.id);
     setIsEditingProjectMeta(false);
     setIsProjectMetaOpen(false);
+    setPendingSessionIntent(null);
     setScreen("workspace");
+    return createdSession;
   }
 
   function handleOpenKnowledgePoint(pointId: string): void {
@@ -1340,6 +1402,7 @@ export function App(): ReactElement {
     setSelectedSessionId("");
     setIsEditingProjectMeta(false);
     setIsProjectMetaOpen(false);
+    setPendingSessionIntent(null);
     setScreen("detail");
   }
 
@@ -1398,12 +1461,32 @@ export function App(): ReactElement {
   }
 
   function handleSubmitPrompt(): void {
-    if (selectedSession === undefined) {
+    const text = draftPrompt.trim();
+    if (text === "") {
       return;
     }
 
-    const text = draftPrompt.trim();
-    if (text === "") {
+    if (selectedSession === undefined) {
+      if (pendingSessionIntent === null) {
+        return;
+      }
+
+      const createdSession = handleCreateSession(
+        pendingSessionIntent.projectId,
+        pendingSessionIntent.type,
+        pendingSessionIntent.knowledgePointId,
+      );
+
+      if (createdSession === null) {
+        return;
+      }
+
+      setPendingInitialPrompt({
+        sessionId: createdSession.id,
+        text,
+        sessionSummary: text,
+      });
+      setDraftPrompt("");
       return;
     }
 
@@ -1470,6 +1553,34 @@ export function App(): ReactElement {
 
     void sendMessage({ text: input.text });
   }
+
+  useEffect(() => {
+    if (
+      pendingInitialPrompt === null ||
+      selectedSession?.id !== pendingInitialPrompt.sessionId
+    ) {
+      return;
+    }
+
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === pendingInitialPrompt.sessionId
+          ? {
+              ...session,
+              summary: pendingInitialPrompt.sessionSummary,
+              updatedAt: "刚刚",
+              status: "运行中",
+            }
+          : session,
+      ),
+    );
+    setRunningSessionIds((current) => ({
+      ...current,
+      [pendingInitialPrompt.sessionId]: true,
+    }));
+    void sendMessage({ text: pendingInitialPrompt.text });
+    setPendingInitialPrompt(null);
+  }, [pendingInitialPrompt, selectedSession?.id, sendMessage]);
 
   function handleSubmitActivity(submission: LearningActivitySubmission): void {
     if (selectedSession === undefined || currentActivity === null || currentActivityKey === null) {
@@ -1657,11 +1768,10 @@ export function App(): ReactElement {
               onContinueProject={() => handleSelectProject(continueProject.id)}
               onOpenProject={handleSelectProject}
               onStartReview={() => {
-                handleSelectProject(continueProject.id);
-                handleCreateSession(
+                handlePrepareSessionStart(
                   continueProject.id,
                   "review",
-                  reviewTargetPoint?.id ?? null,
+                  continueReviewTargetPoint?.id ?? null,
                 );
               }}
               totalProjects={projects.length}
@@ -1694,7 +1804,7 @@ export function App(): ReactElement {
                           className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
                           disabled={studyTargetPoint === undefined}
                           onClick={() =>
-                            handleCreateSession(
+                            handlePrepareSessionStart(
                               selectedProject.id,
                               "study",
                               studyTargetPoint?.id ?? null,
@@ -1708,7 +1818,7 @@ export function App(): ReactElement {
                           className="rounded-full"
                           disabled={reviewTargetPoint === undefined}
                           onClick={() =>
-                            handleCreateSession(
+                            handlePrepareSessionStart(
                               selectedProject.id,
                               "review",
                               reviewTargetPoint?.id ?? null,
@@ -1793,7 +1903,6 @@ export function App(): ReactElement {
                   knowledgePoint={selectedKnowledgePoint}
                   knowledgePointAssets={selectedKnowledgePointAssets}
                   onArchive={() => handleArchiveKnowledgePoint(selectedKnowledgePoint.id)}
-                  onBack={() => setScreen("workspace")}
                   onCancelEditing={() => {
                     setKnowledgePointDraft({
                       title: selectedKnowledgePoint.title,
@@ -1803,16 +1912,25 @@ export function App(): ReactElement {
                   }}
                   onChangeDraft={setKnowledgePointDraft}
                   onOpenSession={(sessionId) => {
+                    setPendingSessionIntent(null);
                     setSelectedSessionId(sessionId);
                     setScreen("workspace");
                   }}
                   onSave={handleSaveKnowledgePoint}
                   onStartEditing={handleStartEditingKnowledgePoint}
                   onStartReview={() =>
-                    handleCreateSession(selectedProject.id, "review", selectedKnowledgePoint.id)
+                    handlePrepareSessionStart(
+                      selectedProject.id,
+                      "review",
+                      selectedKnowledgePoint.id,
+                    )
                   }
                   onStartStudy={() =>
-                    handleCreateSession(selectedProject.id, "study", selectedKnowledgePoint.id)
+                    handlePrepareSessionStart(
+                      selectedProject.id,
+                      "study",
+                      selectedKnowledgePoint.id,
+                    )
                   }
                   relatedSessions={knowledgePointRelatedSessions}
                   selectedSessionId={selectedSessionId}
@@ -1822,7 +1940,18 @@ export function App(): ReactElement {
                   filteredKnowledgePoints={filteredKnowledgePoints}
                   normalizedSearchQuery={normalizedSearchQuery}
                   onOpenKnowledgePoint={handleOpenKnowledgePoint}
-                  onOpenSession={setSelectedSessionId}
+                  onOpenSession={(sessionId) => {
+                    setPendingSessionIntent(null);
+                    setSelectedSessionId(sessionId);
+                  }}
+                  onCancelPendingSession={() => {
+                    setPendingSessionIntent(null);
+                    setDraftPrompt("");
+                  }}
+                  onChangePendingPrompt={setDraftPrompt}
+                  onSubmitPendingPrompt={handleSubmitPrompt}
+                  pendingPrompt={draftPrompt}
+                  pendingSessionIntent={pendingSessionIntent}
                   onWorkspaceSectionChange={setWorkspaceSection}
                   profileSummary={browseProfileSummary}
                   projectStats={projectStats}
@@ -1854,7 +1983,10 @@ export function App(): ReactElement {
                           <SessionCard
                             active={session.id === selectedSession.id}
                             key={session.id}
-                            onClick={() => setSelectedSessionId(session.id)}
+                            onClick={() => {
+                              setPendingSessionIntent(null);
+                              setSelectedSessionId(session.id);
+                            }}
                             title={session.title}
                             type={session.type}
                             updatedAt={session.updatedAt}
@@ -1871,8 +2003,9 @@ export function App(): ReactElement {
                           <CardTitle className="truncate text-sm font-medium text-[var(--xidea-near-black)]">
                             {selectedSession.title}
                           </CardTitle>
-                          <CardDescription className="mt-1 text-sm text-[var(--xidea-stone)]">
-                            {getSessionTypeLabel(selectedSession.type)} / {selectedSession.status}
+                          <CardDescription className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--xidea-stone)]">
+                            <SessionTypeBadge type={selectedSession.type} />
+                            <span>{selectedSession.status}</span>
                           </CardDescription>
                         </div>
                         <div className="flex items-center gap-2">

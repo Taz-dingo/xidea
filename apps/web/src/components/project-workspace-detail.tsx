@@ -1,5 +1,4 @@
 import type { ReactElement } from "react";
-import { ArrowLeft } from "lucide-react";
 import type { KnowledgePointItem, SessionItem } from "@/domain/project-workspace";
 import type { SourceAsset } from "@/domain/types";
 import {
@@ -31,7 +30,6 @@ export function KnowledgePointDetailScreen({
   knowledgePoint,
   knowledgePointAssets,
   onArchive,
-  onBack,
   onCancelEditing,
   onChangeDraft,
   onOpenSession,
@@ -47,7 +45,6 @@ export function KnowledgePointDetailScreen({
   knowledgePoint: KnowledgePointItem;
   knowledgePointAssets: ReadonlyArray<SourceAsset>;
   onArchive: () => void;
-  onBack: () => void;
   onCancelEditing: () => void;
   onChangeDraft: (draft: EditableKnowledgePointDraftValue) => void;
   onOpenSession: (sessionId: string) => void;
@@ -63,15 +60,6 @@ export function KnowledgePointDetailScreen({
       <div className="space-y-4">
         <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
           <CardContent className="space-y-5 p-6">
-            <button
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-1.5 text-sm text-[var(--xidea-charcoal)]"
-              onClick={onBack}
-              type="button"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              返回 Project Workspace
-            </button>
-
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0 flex-1 space-y-3">
                 {isEditing ? (

@@ -63,6 +63,32 @@ export function getKnowledgePointAccent(status: KnowledgePointStatus): string {
   }
 }
 
+export function getSessionTypeAccent(type: SessionType): string {
+  switch (type) {
+    case "project":
+      return "border-[#ddc1b4] bg-[#f5eae3] text-[#8f5b47]";
+    case "study":
+      return "border-[#e3ce96] bg-[#fbf2dd] text-[#9a6a15]";
+    case "review":
+      return "border-[#bfd1e1] bg-[#eaf2f8] text-[#567b96]";
+  }
+}
+
+export function SessionTypeBadge({
+  type,
+}: {
+  type: SessionType;
+}): ReactElement {
+  return (
+    <Badge
+      className={`border px-2 py-1 text-[11px] uppercase tracking-[0.12em] shadow-none ${getSessionTypeAccent(type)}`}
+      variant="outline"
+    >
+      {getSessionTypeLabel(type)}
+    </Badge>
+  );
+}
+
 export function SessionCard({
   active,
   title,
@@ -87,16 +113,10 @@ export function SessionCard({
       type="button"
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{title}</p>
-        <p
-          className={
-            active
-              ? "mt-1 text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-selection-text)]/80"
-              : "mt-1 text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]"
-          }
-        >
-          {getSessionTypeLabel(type)}
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <p className="truncate text-sm font-medium">{title}</p>
+          <SessionTypeBadge type={type} />
+        </div>
       </div>
       <span
         className={
