@@ -136,11 +136,11 @@
 - `apps/web` 顶部搜索现已接成真实过滤：首页按 project 过滤，workspace 浏览态按 knowledge point 过滤；knowledge point detail 也已支持本地编辑 title / description 并即时写回
 - `apps/web` 已将 session card、meta panel、metric tile、knowledge point card 等展示原语抽到独立组件模块，`App.tsx` 继续收敛为状态与页面编排层
 - `apps/web` 已把 `新建 Project` 从占位按钮补成正式表单流：现在可以录入 project 名称、主题、描述、special rules 和初始 materials，并同步生成初始 project session
-- `apps/web` 已在 Project Workspace 浏览态补上手动新增 knowledge point 表单，支持直接挂接当前 project materials，在空项目里先补知识点池，再继续进入学习或复习 session
 - `apps/web` 当前已把 project materials 升成 project 级本地状态：`Project Meta` 面板里可以继续编辑主题、描述、special rules 和材料池，不再只能在创建时一次性录入
+- `apps/web` 已将 `study / review` 的启动改成先进入待开始卡，只有用户发出第一条真实消息后才懒创建对应 session，不再点按钮就立即新建空 session
+- `apps/web` 已将待开始卡和 session 内材料 tray 对齐到 project 级材料池：当前 session attachment 只能从当前 project materials 里选择，不再直接从全局 demo assets 任意挂载
 - `apps/web` 的 project-centric 前端共享模型已进一步收口：UI 侧 session 关联字段从 `unitId` 统一改为 `knowledgePointId`，减少旧 thread/unit 心智继续外溢
-- `apps/web` 已在 Project Workspace 浏览态补上 knowledge point 批量选择与批量归档/恢复操作，workspace 开始具备最小“池化管理”能力，而不只是逐个点开详情
-- `apps/web` 的 knowledge point archive 已从一键切状态改成确认流：单点归档和批量归档都会先出现确认卡，再真正写回 Archived 状态
+- `apps/web` 当前已把浏览态知识点卡片收成整卡可点击，并补回掌握度图形、学习状态/复习时间/更新时间 tag 以及更清晰的 session 类型标签，提升 workspace 可读性
 
 ### In Progress
 
