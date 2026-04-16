@@ -17,6 +17,7 @@ import {
   Plus,
   Search,
 } from "lucide-react";
+import { KnowledgePointDetailScreen } from "@/components/project-workspace-detail";
 import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MarkdownContent } from "@/components/markdown-content";
 import {
@@ -33,7 +34,6 @@ import {
 import {
   CompactNote,
   getAssetKindLabel,
-  InspectorCard,
   MetricTile,
   MonitorSection,
   ProjectMetaPanel,
@@ -598,6 +598,15 @@ export function App(): ReactElement {
   const selectedProjectSessions = useMemo(
     () => sessions.filter((session) => session.projectId === selectedProject.id),
     [selectedProject.id, sessions],
+  );
+  const knowledgePointRelatedSessions = useMemo(
+    () =>
+      selectedKnowledgePoint === null
+        ? []
+        : selectedProjectSessions.filter(
+            (session) => session.knowledgePointId === selectedKnowledgePoint.id,
+          ),
+    [selectedKnowledgePoint, selectedProjectSessions],
   );
   const selectedProjectMaterials = useMemo(
     () =>
@@ -1929,164 +1938,36 @@ export function App(): ReactElement {
               ) : null}
 
               {screen === "detail" && selectedKnowledgePoint !== null ? (
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-                  <div className="space-y-4">
-                    <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                      <CardContent className="space-y-5 p-6">
-                        <div className="flex flex-wrap items-start justify-between gap-4">
-                          <div className="min-w-0 flex-1 space-y-3">
-                            {isEditingKnowledgePoint ? (
-                              <>
-                                <input
-                                  className="w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-3 py-2 text-lg font-medium text-[var(--xidea-near-black)] outline-none focus:border-[var(--xidea-selection-border)]"
-                                  onChange={(event) =>
-                                    setKnowledgePointDraft((current) => ({
-                                      ...current,
-                                      title: event.target.value,
-                                    }))
-                                  }
-                                  value={knowledgePointDraft.title}
-                                />
-                                <Textarea
-                                  className="min-h-28 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
-                                  onChange={(event) =>
-                                    setKnowledgePointDraft((current) => ({
-                                      ...current,
-                                      description: event.target.value,
-                                    }))
-                                  }
-                                  value={knowledgePointDraft.description}
-                                />
-                              </>
-                            ) : (
-                              <>
-                                <p className="text-xl font-medium text-[var(--xidea-near-black)]">{selectedKnowledgePoint.title}</p>
-                                <p className="max-w-3xl text-sm leading-7 text-[var(--xidea-charcoal)]">{selectedKnowledgePoint.description}</p>
-                              </>
-                            )}
-                          </div>
-                          <Badge className={`border px-3 py-1.5 text-[12px] shadow-none ${getKnowledgePointAccent(selectedKnowledgePoint.status)}`} variant="outline">
-                            {selectedKnowledgePoint.stageLabel}
-                          </Badge>
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-3">
-                          <MetricTile label="掌握度" tone="emerald" value={`${selectedKnowledgePoint.mastery}%`} />
-                          <MetricTile label="下次复习" tone="sky" value={selectedKnowledgePoint.nextReviewLabel ?? "待安排"} />
-                          <MetricTile label="最近更新" tone="amber" value={selectedKnowledgePoint.updatedAt} />
-                        </div>
-                        <div className="flex flex-wrap gap-3">
-                          {isEditingKnowledgePoint ? (
-                            <>
-                              <Button
-                                className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                                disabled={
-                                  knowledgePointDraft.title.trim() === "" ||
-                                  knowledgePointDraft.description.trim() === ""
-                                }
-                                onClick={handleSaveKnowledgePoint}
-                                type="button"
-                              >
-                                保存
-                              </Button>
-                              <Button
-                                className="rounded-full"
-                                onClick={() => {
-                                  setKnowledgePointDraft({
-                                    title: selectedKnowledgePoint.title,
-                                    description: selectedKnowledgePoint.description,
-                                  });
-                                  setIsEditingKnowledgePoint(false);
-                                }}
-                                type="button"
-                                variant="outline"
-                              >
-                                取消
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <Button
-                                className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                                onClick={() => handleCreateSession(selectedProject.id, "study", selectedKnowledgePoint.id)}
-                                type="button"
-                              >
-                                加入学习
-                              </Button>
-                              <Button
-                                className="rounded-full"
-                                onClick={() => handleCreateSession(selectedProject.id, "review", selectedKnowledgePoint.id)}
-                                type="button"
-                                variant="outline"
-                              >
-                                加入复习
-                              </Button>
-                              <Button
-                                className="rounded-full"
-                                onClick={handleStartEditingKnowledgePoint}
-                                type="button"
-                                variant="outline"
-                              >
-                                编辑
-                              </Button>
-                              <Button
-                                className="rounded-full"
-                                onClick={() => handleArchiveKnowledgePoint(selectedKnowledgePoint.id)}
-                                type="button"
-                                variant="outline"
-                              >
-                                {selectedKnowledgePoint.status === "archived" ? "恢复" : "Archive"}
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                      <CardHeader>
-                        <CardTitle className="text-base font-medium text-[var(--xidea-near-black)]">来源材料</CardTitle>
-                        <CardDescription>当前知识点关联的 project materials。</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {selectedKnowledgePointAssets.length > 0 ? selectedKnowledgePointAssets.map((asset) => (
-                          <div className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-4 py-3" key={asset.id}>
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-medium text-[var(--xidea-near-black)]">{asset.title}</p>
-                              <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">{getAssetKindLabel(asset.kind)}</span>
-                            </div>
-                            <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">{asset.topic}</p>
-                          </div>
-                        )) : (
-                          <p className="text-sm text-[var(--xidea-stone)]">当前还没有挂接材料。</p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  <div className="space-y-4">
-                    <InspectorCard description="这个知识点在项目内如何被继续组织。" title="相关 Sessions">
-                      {selectedProjectSessions.filter((session) => session.knowledgePointId === selectedKnowledgePoint.id).length > 0 ? (
-                        selectedProjectSessions
-                          .filter((session) => session.knowledgePointId === selectedKnowledgePoint.id)
-                          .map((session) => (
-                            <SessionCard
-                              active={session.id === selectedSessionId}
-                              key={session.id}
-                              onClick={() => {
-                                setSelectedSessionId(session.id);
-                                setScreen("workspace");
-                              }}
-                              title={session.title}
-                              type={session.type}
-                              updatedAt={session.updatedAt}
-                            />
-                          ))
-                      ) : (
-                        <p className="text-sm text-[var(--xidea-stone)]">还没有围绕这个知识点展开过独立 session。</p>
-                      )}
-                    </InspectorCard>
-                  </div>
-                </div>
+                <KnowledgePointDetailScreen
+                  draft={knowledgePointDraft}
+                  isEditing={isEditingKnowledgePoint}
+                  knowledgePoint={selectedKnowledgePoint}
+                  knowledgePointAssets={selectedKnowledgePointAssets}
+                  onArchive={() => handleArchiveKnowledgePoint(selectedKnowledgePoint.id)}
+                  onBack={() => setScreen("workspace")}
+                  onCancelEditing={() => {
+                    setKnowledgePointDraft({
+                      title: selectedKnowledgePoint.title,
+                      description: selectedKnowledgePoint.description,
+                    });
+                    setIsEditingKnowledgePoint(false);
+                  }}
+                  onChangeDraft={setKnowledgePointDraft}
+                  onOpenSession={(sessionId) => {
+                    setSelectedSessionId(sessionId);
+                    setScreen("workspace");
+                  }}
+                  onSave={handleSaveKnowledgePoint}
+                  onStartEditing={handleStartEditingKnowledgePoint}
+                  onStartReview={() =>
+                    handleCreateSession(selectedProject.id, "review", selectedKnowledgePoint.id)
+                  }
+                  onStartStudy={() =>
+                    handleCreateSession(selectedProject.id, "study", selectedKnowledgePoint.id)
+                  }
+                  relatedSessions={knowledgePointRelatedSessions}
+                  selectedSessionId={selectedSessionId}
+                />
               ) : selectedSession === undefined ? (
                 <WorkspaceBrowseScreen
                   archiveConfirmation={
