@@ -1,34 +1,12 @@
 import type { ReactElement } from "react";
-import { useMemo } from "react";
 import { tutorFixtureScenarios } from "@/data/tutor-fixtures";
 import { sourceAssets } from "@/data/demo";
-import { getNextSuggestedAction, getProjectStats } from "@/domain/project-workspace";
-import {
-  buildEmptyReviewHeatmap,
-  buildReviewHeatmap,
-  formatDateLabel,
-  getLatestIsoDate,
-} from "@/domain/review-heatmap";
-import { getLatestReviewEvent, getRelativeTimeRank } from "@/domain/project-session-runtime";
-import {
-  filterKnowledgePoints,
-  filterProjectSummaries,
-  getBrowseProfileSummary,
-  getHomeSectionCounts,
-  getHomeSectionProjectSummaries,
-  getKnowledgePointReviewHistorySummary,
-  getProjectSummaries,
-  getRecentProjectSummaries,
-  getRelatedKnowledgePoints,
-  getReviewTargetPoint,
-  getStudyTargetPoint,
-  getVisibleKnowledgePoints,
-} from "@/app/workspace/model/selectors";
 import { WorkspaceHeader } from "@/app/workspace/ui/header";
 import { WorkspaceHero } from "@/app/workspace/ui/hero";
 import { useSessionAgent } from "@/app/workspace/agent/use-session-agent";
 import { useWorkspaceActions } from "@/app/workspace/hooks/use-actions";
 import { useWorkspaceData } from "@/app/workspace/hooks/use-data";
+import { useWorkspacePageModel } from "@/app/workspace/hooks/use-page-model";
 import { KnowledgePointDetailScreen } from "@/components/workspace/detail";
 import { SessionWorkspace } from "@/components/session/workspace";
 import {
@@ -48,105 +26,9 @@ export function WorkspacePage(): ReactElement {
     data,
     handleCreateSession: actions.handleCreateSession,
   });
-
-  const projectStats = useMemo(
-    () => getProjectStats(data.selectedProjectKnowledgePoints),
-    [data.selectedProjectKnowledgePoints],
-  );
-  const projectMaterialCount = data.selectedProjectMaterials.length;
-  const normalizedSearchQuery = data.searchQuery.trim().toLowerCase();
-  const projectSummaries = useMemo(
-    () => getProjectSummaries(data.projects, data.knowledgePoints),
-    [data.knowledgePoints, data.projects],
-  );
-  const recentProjectSummaries = useMemo(
-    () => getRecentProjectSummaries(projectSummaries, getRelativeTimeRank),
-    [projectSummaries],
-  );
-  const homeSectionCounts = useMemo(
-    () => getHomeSectionCounts(projectSummaries, recentProjectSummaries),
-    [projectSummaries, recentProjectSummaries],
-  );
-  const homeSectionProjectSummaries = useMemo(
-    () =>
-      getHomeSectionProjectSummaries({
-        homeSection: data.homeSection,
-        projectSummaries,
-        recentProjectSummaries,
-      }),
-    [data.homeSection, projectSummaries, recentProjectSummaries],
-  );
-  const filteredProjectSummaries = useMemo(
-    () => filterProjectSummaries(homeSectionProjectSummaries, normalizedSearchQuery),
-    [homeSectionProjectSummaries, normalizedSearchQuery],
-  );
-  const visibleKnowledgePoints = useMemo(
-    () => getVisibleKnowledgePoints(data.selectedProjectKnowledgePoints, data.workspaceSection),
-    [data.selectedProjectKnowledgePoints, data.workspaceSection],
-  );
-  const filteredKnowledgePoints = useMemo(
-    () => filterKnowledgePoints(visibleKnowledgePoints, normalizedSearchQuery),
-    [normalizedSearchQuery, visibleKnowledgePoints],
-  );
-  const continueProjectSummary = filteredProjectSummaries[0] ?? null;
-  const continueProjectPoints = useMemo(
-    () =>
-      continueProjectSummary === null
-        ? []
-        : data.knowledgePoints.filter(
-            (point) => point.projectId === continueProjectSummary.project.id,
-          ),
-    [continueProjectSummary, data.knowledgePoints],
-  );
-  const continueActionLabel =
-    continueProjectSummary === null ? null : getNextSuggestedAction(continueProjectPoints);
-  const continueReviewTargetPoint =
-    continueProjectSummary === null
-      ? null
-      : continueProjectPoints.find((point) => point.status === "active_review") ?? null;
-  const browseProfileSummary = getBrowseProfileSummary(
-    session.activeRuntime.stateSource === ""
-      ? "系统当前把这个 session 视为「待生成」"
-      : session.activeRuntime.stateSource,
-    session.activeRuntime.state.weakSignals[0] ?? "",
-  );
-  const studyTargetPoint = getStudyTargetPoint(
-    data.selectedKnowledgePoint,
-    data.selectedProjectKnowledgePoints,
-  );
-  const reviewTargetPoint = getReviewTargetPoint(
-    data.selectedKnowledgePoint,
-    data.selectedProjectKnowledgePoints,
-  );
-  const relatedKnowledgePoints = useMemo(
-    () =>
-      getRelatedKnowledgePoints({
-        selectedKnowledgePoint: data.selectedKnowledgePoint,
-        selectedProjectKnowledgePoints: data.selectedProjectKnowledgePoints,
-        selectedSession: data.selectedSession,
-      }),
-    [data.selectedKnowledgePoint, data.selectedProjectKnowledgePoints, data.selectedSession],
-  );
-  const latestKnowledgePointReviewedEvent = getLatestReviewEvent(
-    data.knowledgePointReviewInspectors.flatMap((inspector) => inspector.events),
-    "reviewed",
-  );
-  const knowledgePointReviewHeatmap =
-    data.selectedKnowledgePoint === null
-      ? buildEmptyReviewHeatmap()
-      : buildReviewHeatmap(
-          data.knowledgePointReviewInspectors.flatMap((inspector) => inspector.events),
-          latestKnowledgePointReviewedEvent?.event_at
-            ? formatDateLabel(latestKnowledgePointReviewedEvent.event_at)
-            : null,
-          formatDateLabel(
-            getLatestIsoDate(
-              data.knowledgePointReviewInspectors.map((inspector) => inspector.scheduledAt),
-            ),
-          ),
-        );
-  const knowledgePointReviewHistorySummary = getKnowledgePointReviewHistorySummary({
-    knowledgePointReviewInspectors: data.knowledgePointReviewInspectors,
+  const model = useWorkspacePageModel({
+    activeRuntime: session.activeRuntime,
+    data,
   });
 
   return (
@@ -174,24 +56,24 @@ export function WorkspacePage(): ReactElement {
 
           {data.screen === "home" ? (
             <HomeScreen
-              continueProjectSummary={continueProjectSummary}
-              continueActionLabel={continueActionLabel}
-              filteredProjects={filteredProjectSummaries}
+              continueProjectSummary={model.continueProjectSummary}
+              continueActionLabel={model.continueActionLabel}
+              filteredProjects={model.filteredProjectSummaries}
               homeSection={data.homeSection}
-              homeSectionCounts={homeSectionCounts}
+              homeSectionCounts={model.homeSectionCounts}
               onContinueProject={() => {
-                if (continueProjectSummary !== null) {
-                  actions.handleSelectProject(continueProjectSummary.project.id);
+                if (model.continueProjectSummary !== null) {
+                  actions.handleSelectProject(model.continueProjectSummary.project.id);
                 }
               }}
               onHomeSectionChange={data.setHomeSection}
               onOpenProject={actions.handleSelectProject}
               onStartReview={() => {
-                if (continueProjectSummary !== null) {
+                if (model.continueProjectSummary !== null) {
                   actions.handlePrepareSessionStart(
-                    continueProjectSummary.project.id,
+                    model.continueProjectSummary.project.id,
                     "review",
-                    continueReviewTargetPoint?.id ?? null,
+                    model.continueReviewTargetPoint?.id ?? null,
                   );
                 }
               }}
@@ -210,27 +92,27 @@ export function WorkspacePage(): ReactElement {
                   actions.handlePrepareSessionStart(
                     data.selectedProject.id,
                     "review",
-                    reviewTargetPoint?.id ?? null,
+                    model.reviewTargetPoint?.id ?? null,
                   )
                 }
                 onStartStudy={() =>
                   actions.handlePrepareSessionStart(
                     data.selectedProject.id,
                     "study",
-                    studyTargetPoint?.id ?? null,
+                    model.studyTargetPoint?.id ?? null,
                   )
                 }
                 onToggleProjectMeta={actions.handleToggleProjectMeta}
                 projectName={data.selectedProject.name}
                 projectTopic={data.selectedProject.topic}
-                reviewDisabled={reviewTargetPoint === null}
-                studyDisabled={studyTargetPoint === null}
+                reviewDisabled={model.reviewTargetPoint === null}
+                studyDisabled={model.studyTargetPoint === null}
               />
 
               {data.isProjectMetaOpen ? (
                 <div className="space-y-4">
                   <MetaPanel
-                    materialCount={projectMaterialCount}
+                    materialCount={model.projectMaterialCount}
                     materials={data.selectedProjectMaterials}
                     onClose={actions.handleCancelEditingProjectMeta}
                     project={data.selectedProject}
@@ -307,14 +189,14 @@ export function WorkspacePage(): ReactElement {
                     )
                   }
                   relatedSessions={data.knowledgePointRelatedSessions}
-                  reviewHeatmap={knowledgePointReviewHeatmap}
-                  reviewHistorySummary={knowledgePointReviewHistorySummary}
+                  reviewHeatmap={model.knowledgePointReviewHeatmap}
+                  reviewHistorySummary={model.knowledgePointReviewHistorySummary}
                   selectedSessionId={data.selectedSessionId}
                 />
               ) : data.selectedSession === undefined ? (
                 <WorkspaceBrowseScreen
-                  filteredKnowledgePoints={filteredKnowledgePoints}
-                  normalizedSearchQuery={normalizedSearchQuery}
+                  filteredKnowledgePoints={model.filteredKnowledgePoints}
+                  normalizedSearchQuery={model.normalizedSearchQuery}
                   onCancelPendingSession={() => {
                     data.setPendingSessionIntent(null);
                     data.setDraftPrompt("");
@@ -330,10 +212,10 @@ export function WorkspacePage(): ReactElement {
                   onWorkspaceSectionChange={data.setWorkspaceSection}
                   pendingPrompt={data.draftPrompt}
                   pendingSessionIntent={data.pendingSessionIntent}
-                  profileSummary={browseProfileSummary}
-                  projectMaterialCount={projectMaterialCount}
+                  profileSummary={model.browseProfileSummary}
+                  projectMaterialCount={model.projectMaterialCount}
                   projectMaterials={data.selectedProjectMaterials}
-                  projectStats={projectStats}
+                  projectStats={model.projectStats}
                   selectedProjectSessions={data.selectedProjectSessions}
                   workspaceSection={data.workspaceSection}
                 />
@@ -380,8 +262,8 @@ export function WorkspacePage(): ReactElement {
                   onToggleProjectMaterial={session.handleToggleProjectMaterial}
                   onUnsetSourceAsset={session.handleUnsetSourceAsset}
                   onWorkspaceSectionChange={actions.handleSessionWorkspaceSectionChange}
-                  projectStats={projectStats}
-                  relatedKnowledgePoints={relatedKnowledgePoints}
+                  projectStats={model.projectStats}
+                  relatedKnowledgePoints={model.relatedKnowledgePoints}
                   requestSourceAssetIds={session.requestSourceAssetIds}
                   reviewHeatmap={session.reviewHeatmap}
                   selectedProject={data.selectedProject}
