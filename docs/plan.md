@@ -59,8 +59,10 @@
   - owner: 产品 owner / 学习引擎 owner / 前端 owner
 - [ ] 将 Project Workspace 改成默认知识点工作台，只有进入 session 时才展开 session workspace
   - owner: 前端 owner
+  - 参考：`docs/reference/project-workspace-ui.md`
 - [ ] 将 knowledge point 详情做成独立页面，并承载来源材料、相关 sessions、热力图和编辑入口
   - owner: 前端 owner
+  - 参考：`docs/reference/project-workspace-ui.md`
 - [ ] 收敛 project chat 行为：默认继续当前会话，支持手动新建 `project session`，不自动切分
   - owner: 前端 owner / 学习引擎 owner
 - [ ] 支持 project chat 中的新增材料、知识点建议新增、知识点轻量编辑、topic/rules 修改入口

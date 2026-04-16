@@ -21,6 +21,7 @@
 - 明确知识点新增规则：材料导入可批量生成，聊天中新知识点默认先建议、再确认
 - 明确知识点支持 archive；第一版由系统建议、用户确认后执行
 - 明确 project 主题不相关的聊天要被主动提醒，且不更新 project memory、不新增知识点、不触发学习/复习编排
+- 补充 `Project Workspace` 的 UI reference：明确 `App Home / Project Workspace / Knowledge Point Detail` 三层页面、默认浏览态与 session 展开态的布局和关键交互
 
 #### 已落地实现基线（部分仍属旧 thread-centric 过渡实现）
 
