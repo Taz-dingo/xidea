@@ -1,4 +1,3 @@
-import { ChevronRight } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import type { SourceAsset } from "@/domain/types";
 import type {
@@ -116,12 +115,14 @@ function getMasteryFillCount(mastery: number): number {
 
 export function SessionTypeBadge({
   type,
+  compact = false,
 }: {
   type: SessionType;
+  compact?: boolean;
 }): ReactElement {
   return (
     <Badge
-      className={`border px-2 py-1 text-[11px] uppercase tracking-[0.12em] shadow-none ${getSessionTypeAccent(type)}`}
+      className={`border uppercase tracking-[0.12em] shadow-none ${compact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-1 text-[11px]"} ${getSessionTypeAccent(type)}`}
       variant="outline"
     >
       {getSessionTypeLabel(type)}
@@ -155,7 +156,7 @@ export function SessionCard({
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{title}</p>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <SessionTypeBadge type={type} />
+          <SessionTypeBadge compact type={type} />
           <span
             className={
               active
@@ -304,55 +305,25 @@ export function WorkspaceNavButton({
 export function KnowledgePointCard({
   point,
   onClick,
-  selected = false,
-  onToggleSelect,
 }: {
   point: KnowledgePointItem;
   onClick: () => void;
-  selected?: boolean;
-  onToggleSelect?: (() => void) | undefined;
 }): ReactElement {
   const filledDots = getMasteryFillCount(point.mastery);
 
   return (
-    <div
-      className={
-        selected
-          ? "flex h-full flex-col rounded-[1.2rem] border border-[var(--xidea-selection-border)] bg-[#fcf6f1] p-4 text-left shadow-none"
-          : "flex h-full flex-col rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-4 text-left shadow-none"
-      }
+    <button
+      className="flex h-full w-full flex-col rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-4 text-left shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
+      onClick={onClick}
+      type="button"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
-            {point.title}
-          </p>
-          <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
-            {point.description}
-          </p>
-        </div>
-        <div className="flex items-start gap-2">
-          {onToggleSelect ? (
-            <button
-              className={
-                selected
-                  ? "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[10px] text-[var(--xidea-selection-text)]"
-                  : "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] text-[10px] text-[var(--xidea-stone)]"
-              }
-              onClick={onToggleSelect}
-              type="button"
-            >
-              {selected ? "✓" : ""}
-            </button>
-          ) : null}
-          <button
-            className="rounded-full p-1 text-[var(--xidea-stone)] transition-colors hover:bg-[var(--xidea-parchment)]"
-            onClick={onClick}
-            type="button"
-          >
-            <ChevronRight className="h-4 w-4 shrink-0" />
-          </button>
-        </div>
+      <div className="min-w-0">
+        <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+          {point.title}
+        </p>
+        <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
+          {point.description}
+        </p>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -395,7 +366,7 @@ export function KnowledgePointCard({
           掌握度 {point.mastery}%
         </span>
       </div>
-    </div>
+    </button>
   );
 }
 
