@@ -18,6 +18,7 @@ import type {
 import type { ActivityResolution } from "@/domain/project-session-runtime";
 import type {
   KnowledgePointItem,
+  KnowledgePointSuggestion,
   ProjectItem,
   ProjectStats,
   SessionItem,
@@ -29,6 +30,7 @@ import type { UIMessage } from "ai";
 
 export function SessionWorkspace({
   activeAssetSummary,
+  activeKnowledgePointSuggestion,
   activeReviewInspector,
   activeRuntime,
   activeSourceAssets,
@@ -54,8 +56,10 @@ export function SessionWorkspace({
   latestReviewedLabel,
   nextReviewLabel,
   onChangeDraftPrompt,
+  onDismissKnowledgePointSuggestion,
   onCloseSession,
   onDisableTutorFixture,
+  onAcceptKnowledgePointSuggestion,
   onOpenKnowledgePoint,
   onOpenSession,
   onSelectTutorFixture,
@@ -80,6 +84,7 @@ export function SessionWorkspace({
   workspaceSection,
 }: {
   activeAssetSummary: AgentAssetSummary | null;
+  activeKnowledgePointSuggestion: KnowledgePointSuggestion | null;
   activeReviewInspector: AgentReviewInspector | null;
   activeRuntime: RuntimeSnapshot;
   activeSourceAssets: ReadonlyArray<SourceAsset>;
@@ -105,8 +110,10 @@ export function SessionWorkspace({
   latestReviewedLabel: string;
   nextReviewLabel: string;
   onChangeDraftPrompt: (value: string) => void;
+  onDismissKnowledgePointSuggestion: () => void;
   onCloseSession: () => void;
   onDisableTutorFixture: () => void;
+  onAcceptKnowledgePointSuggestion: () => void;
   onOpenKnowledgePoint: (pointId: string) => void;
   onOpenSession: (sessionId: string) => void;
   onSelectTutorFixture: (fixture: TutorFixtureScenario) => void;
@@ -209,6 +216,7 @@ export function SessionWorkspace({
 
         <SessionThreadPane
           activeRuntime={activeRuntime}
+          activeKnowledgePointSuggestion={activeKnowledgePointSuggestion}
           activeSourceAssets={activeSourceAssets}
           currentActivities={currentActivities}
           currentActivity={currentActivity}
@@ -223,9 +231,12 @@ export function SessionWorkspace({
           isMaterialsTrayOpen={isMaterialsTrayOpen}
           latestAssistantMessageId={latestAssistantMessageId}
           onChangeDraftPrompt={onChangeDraftPrompt}
+          onDismissKnowledgePointSuggestion={onDismissKnowledgePointSuggestion}
+          onOpenKnowledgePoint={onOpenKnowledgePoint}
           onSkipActivity={onSkipActivity}
           onSubmitActivity={onSubmitActivity}
           onSubmitPrompt={onSubmitPrompt}
+          onAcceptKnowledgePointSuggestion={onAcceptKnowledgePointSuggestion}
           onToggleMaterialsTray={onToggleMaterialsTray}
           onToggleProjectMaterial={onToggleProjectMaterial}
           onUnsetSourceAsset={onUnsetSourceAsset}

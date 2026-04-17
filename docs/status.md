@@ -21,7 +21,7 @@
 - 明确知识点是项目内最小学习单元；学习和复习都围绕知识点组织，不先做知识点层级关系
 - 明确知识点卡片只负责浏览和状态展示，真正作答发生在 `study session / review session`
 - 明确第一版学习 / 复习形式先只做选择题，不先做简答题和开放式多轮对练
-- 明确 project chat 默认继续当前会话，但允许用户手动新建新的 `project session`；系统不自动切分 project session
+- 明确 `project session` 通过显式新建进入；系统不自动切分 project session
 - 明确 session 类型显式分为 `project / study / review`
 - 明确 project 页默认优先展示 knowledge points 工作台；session workspace 只在用户明确进入某个 session 后展开
 - 明确 knowledge point 详情页采用独立跳转，而不是在主工作台持续维持四块并列信息
@@ -158,6 +158,7 @@
 - `apps/web` 的 `Knowledge Point Detail` 已补复习热力图，并把 archive 从一键切状态收成确认后执行的交互，先让知识点生命周期更接近正式产品心智
 - `apps/web` 已将 session 右栏从监控式 inspector 收成更轻的 knowledge-point context rail，主叙事改为“当前相关知识点 / 本轮上下文 / 复习提示 / 材料上下文”，避免正式 demo 继续被监控面板抢走注意力
 - `apps/web` 已将 knowledge point archive 从“通用手动按钮”收口为“系统建议归档 -> 用户确认接受建议”，浏览卡与详情页都会显式展示归档建议；未收到建议前不再默认给出归档入口
+- `apps/web` 已在 `project session` 中补上“知识点建议新增 -> 用户确认新增”的前端 demo 流：project chat 发送后会生成候选知识点卡片，用户确认后再正式加入当前 project 的 knowledge point 池
 
 ### In Progress
 

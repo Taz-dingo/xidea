@@ -20,6 +20,17 @@ export interface KnowledgePointArchiveSuggestion {
   readonly reason: string;
 }
 
+export interface KnowledgePointSuggestion {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly projectId: string;
+  readonly title: string;
+  readonly description: string;
+  readonly reason: string;
+  readonly sourceAssetIds: ReadonlyArray<string>;
+  readonly acceptedKnowledgePointId: string | null;
+}
+
 export interface ProjectItem {
   readonly id: string;
   readonly name: string;

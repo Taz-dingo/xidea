@@ -222,6 +222,11 @@ export function WorkspacePage(): ReactElement {
               ) : (
                 <SessionWorkspace
                   activeAssetSummary={session.activeAssetSummary}
+                  activeKnowledgePointSuggestion={
+                    data.selectedSession?.type === "project"
+                      ? data.selectedSessionKnowledgePointSuggestion
+                      : null
+                  }
                   activeReviewInspector={session.activeReviewInspector}
                   activeRuntime={session.activeRuntime}
                   activeSourceAssets={session.activeSourceAssets}
@@ -247,8 +252,14 @@ export function WorkspacePage(): ReactElement {
                   latestReviewedLabel={session.latestReviewedLabel}
                   nextReviewLabel={session.nextReviewLabel}
                   onChangeDraftPrompt={session.handleChangeDraftPrompt}
+                  onDismissKnowledgePointSuggestion={() =>
+                    actions.handleDismissKnowledgePointSuggestion(data.selectedSession!.id)
+                  }
                   onCloseSession={() => data.setSelectedSessionId("")}
                   onDisableTutorFixture={session.handleDisableTutorFixture}
+                  onAcceptKnowledgePointSuggestion={() =>
+                    actions.handleAcceptKnowledgePointSuggestion(data.selectedSession!.id)
+                  }
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
                   onOpenSession={(sessionId) => {
                     data.setPendingSessionIntent(null);
