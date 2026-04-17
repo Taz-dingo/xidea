@@ -1,11 +1,12 @@
 # Status
 
-## As Of 2026-04-16
+## As Of 2026-04-17
 
 ### Done
 
 #### 本轮方向确认
 
+- `apps/web` 已修复 agent `/health` 探测的重复请求问题：`useAgentHealth` 不再依赖每次 render 都变化的整块 workspace data，避免页面渲染与连接状态写回形成循环请求
 - 明确新增一条团队级实现约束：不允许把过多逻辑持续堆进单个文件；这条规则同时适用于前端、后端和 agent，`App` / page / screen / endpoint / graph 入口默认只负责编排，领域逻辑、adapter、repository、prompt 和可复用实现细节必须按职责拆分
 - 已新增 repo-local `clean-code-guardrails` skill，并接入项目技能清单，用来在前端、后端和 agent 里显式检查单文件职责漂移与入口文件过载
 - `apps/web` 本轮继续把 session 工作区从 `App.tsx` 中拆开：session 视图已独立成 workspace/thread/inspector 组件，复习热力图与 session runtime helper 也已移到独立 domain 模块，`App.tsx` 进一步收敛为页面编排与状态 wiring
