@@ -8,6 +8,17 @@ import {
 import { hydrateRuntimeSnapshotFromLearnerState } from "@/domain/agent-runtime";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function hasSameIds(
+  left: ReadonlyArray<string>,
+  right: ReadonlyArray<string>,
+): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 export function useSessionDataSync({
   assetSummaryKey,
   data,
@@ -27,59 +38,106 @@ export function useSessionDataSync({
   selectedSessionKey: string | null;
   selectedSessionKnowledgePointId: string | null;
 }): void {
+  const {
+    agentConnectionState,
+    assetSummaryByKey,
+    bootstrapLoadedKeys,
+    clearBootstrapLoaded,
+    markBootstrapLoaded,
+    sessionEntryModes,
+    sessionEntryModesSetter,
+    sessionSourceAssetIds,
+    setAssetSummaryByKey,
+    setSessionReviewInspectors,
+    setSessionSnapshots,
+    setSessionSourceAssetIds,
+  } = data;
+
   useEffect(() => {
     if (
-      data.agentConnectionState !== "ready" ||
+      agentConnectionState !== "ready" ||
       selectedSessionKey === null ||
       selectedSessionKnowledgePointId === null
     ) {
       return;
     }
     const bootstrapKey = `${selectedSessionKey}:${selectedSessionKnowledgePointId}`;
-    if (data.bootstrapLoadedKeys[bootstrapKey]) {
+    if (bootstrapLoadedKeys[bootstrapKey]) {
       return;
     }
-    data.markBootstrapLoaded(bootstrapKey);
+    markBootstrapLoaded(bootstrapKey);
     const abortController = new AbortController();
     void getInspectorBootstrap(selectedSessionKey, selectedSessionKnowledgePointId, { signal: abortController.signal })
       .then(({ learner_state, review_inspector, thread_context }) => {
         if (abortController.signal.aborted) return;
         if (learner_state !== null) {
-          data.setSessionSnapshots((current) => ({
+          setSessionSnapshots((current) => ({
             ...current,
             [selectedSessionKey]: hydrateRuntimeSnapshotFromLearnerState(learner_state, seedRuntime),
           }));
         }
-        data.setSessionReviewInspectors((current) => ({ ...current, [selectedSessionKey]: review_inspector }));
+        setSessionReviewInspectors((current) =>
+          current[selectedSessionKey] === review_inspector
+            ? current
+            : { ...current, [selectedSessionKey]: review_inspector },
+        );
         if (thread_context !== null) {
-          data.sessionEntryModesSetter((current) => ({ ...current, [selectedSessionKey]: thread_context.entry_mode }));
-          data.setSessionSourceAssetIds((current) => ({ ...current, [selectedSessionKey]: thread_context.source_asset_ids }));
+          if (sessionEntryModes[selectedSessionKey] !== thread_context.entry_mode) {
+            sessionEntryModesSetter((current) => ({
+              ...current,
+              [selectedSessionKey]: thread_context.entry_mode,
+            }));
+          }
+          if (!hasSameIds(sessionSourceAssetIds[selectedSessionKey] ?? [], thread_context.source_asset_ids)) {
+            setSessionSourceAssetIds((current) => ({
+              ...current,
+              [selectedSessionKey]: thread_context.source_asset_ids,
+            }));
+          }
         }
       })
-      .catch(() => {
-        data.clearBootstrapLoaded(bootstrapKey);
+      .catch((error) => {
+        if (!isAbortError(error)) {
+          clearBootstrapLoaded(bootstrapKey);
+        }
       });
     return () => abortController.abort();
-  }, [data, seedRuntime, selectedSessionKey, selectedSessionKnowledgePointId]);
+  }, [
+    agentConnectionState,
+    bootstrapLoadedKeys,
+    clearBootstrapLoaded,
+    markBootstrapLoaded,
+    seedRuntime,
+    selectedSessionKey,
+    selectedSessionKnowledgePointId,
+    sessionEntryModes,
+    sessionSourceAssetIds,
+    sessionEntryModesSetter,
+    setSessionReviewInspectors,
+    setSessionSnapshots,
+    setSessionSourceAssetIds,
+  ]);
 
   useEffect(() => {
-    if (data.agentConnectionState !== "ready" || assetSummaryKey === "") return;
+    if (agentConnectionState !== "ready" || assetSummaryKey === "" || assetSummaryByKey[assetSummaryKey] !== undefined) {
+      return;
+    }
     const abortController = new AbortController();
     void getAssetSummary(requestSourceAssetIds, { signal: abortController.signal })
       .then((summary) => {
         if (!abortController.signal.aborted) {
-          data.setAssetSummaryByKey((current) =>
+          setAssetSummaryByKey((current) =>
             current[assetSummaryKey] !== undefined ? current : { ...current, [assetSummaryKey]: summary },
           );
         }
       })
       .catch(() => undefined);
     return () => abortController.abort();
-  }, [assetSummaryKey, data, requestSourceAssetIds]);
+  }, [agentConnectionState, assetSummaryByKey, assetSummaryKey, requestSourceAssetIds, setAssetSummaryByKey]);
 
   useEffect(() => {
     if (
-      data.agentConnectionState !== "ready" ||
+      agentConnectionState !== "ready" ||
       selectedSessionKey === null ||
       selectedSessionKnowledgePointId === null ||
       isAgentRunning ||
@@ -91,18 +149,43 @@ export function useSessionDataSync({
     void getReviewInspector(selectedSessionKey, selectedSessionKnowledgePointId, { signal: abortController.signal })
       .then((reviewInspector) => {
         if (!abortController.signal.aborted) {
-          data.setSessionReviewInspectors((current) => ({ ...current, [selectedSessionKey]: reviewInspector }));
+          setSessionReviewInspectors((current) =>
+            current[selectedSessionKey] === reviewInspector
+              ? current
+              : { ...current, [selectedSessionKey]: reviewInspector },
+          );
         }
       })
       .catch(() => undefined);
     void getThreadContext(selectedSessionKey, { signal: abortController.signal })
       .then((threadContext) => {
         if (!abortController.signal.aborted && threadContext !== null) {
-          data.sessionEntryModesSetter((current) => ({ ...current, [selectedSessionKey]: threadContext.entry_mode }));
-          data.setSessionSourceAssetIds((current) => ({ ...current, [selectedSessionKey]: threadContext.source_asset_ids }));
+          if (sessionEntryModes[selectedSessionKey] !== threadContext.entry_mode) {
+            sessionEntryModesSetter((current) => ({
+              ...current,
+              [selectedSessionKey]: threadContext.entry_mode,
+            }));
+          }
+          if (!hasSameIds(sessionSourceAssetIds[selectedSessionKey] ?? [], threadContext.source_asset_ids)) {
+            setSessionSourceAssetIds((current) => ({
+              ...current,
+              [selectedSessionKey]: threadContext.source_asset_ids,
+            }));
+          }
         }
       })
       .catch(() => undefined);
     return () => abortController.abort();
-  }, [data, isAgentRunning, messagesLength, selectedSessionKey, selectedSessionKnowledgePointId]);
+  }, [
+    agentConnectionState,
+    isAgentRunning,
+    messagesLength,
+    selectedSessionKey,
+    selectedSessionKnowledgePointId,
+    sessionEntryModes,
+    sessionSourceAssetIds,
+    sessionEntryModesSetter,
+    setSessionReviewInspectors,
+    setSessionSourceAssetIds,
+  ]);
 }
