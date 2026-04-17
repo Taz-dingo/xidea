@@ -1,6 +1,5 @@
 import { formatActivitySubmissionForAgent } from "@/domain/agent-runtime";
 import type { TutorFixtureScenario } from "@/data/tutor-fixtures";
-import { buildKnowledgePointSuggestion } from "@/domain/knowledge-point-suggestion";
 import { getActionLabel } from "@/domain/project-session-runtime";
 import type { LearningActivitySubmission } from "@/domain/types";
 import {
@@ -93,26 +92,6 @@ export function createSessionActions({
         data.setDraftPrompt("");
       }
       return;
-    }
-
-    if (data.selectedSession.type === "project") {
-      const selectedSourceAssetIds =
-        data.sessionSourceAssetIds[data.selectedSession.id] ?? [];
-      const selectedSourceAssets = data.selectedProjectMaterials.filter((asset) =>
-        selectedSourceAssetIds.includes(asset.id),
-      );
-      const nextSuggestion = buildKnowledgePointSuggestion({
-        existingKnowledgePoints: data.selectedProjectKnowledgePoints,
-        projectId: data.selectedProject.id,
-        prompt: text,
-        sessionId: data.selectedSession.id,
-        sourceAssets: selectedSourceAssets,
-      });
-
-      data.setSessionKnowledgePointSuggestions((current) => ({
-        ...current,
-        [data.selectedSession!.id]: nextSuggestion,
-      }));
     }
 
     if (isUsingDevTutorFixture) {

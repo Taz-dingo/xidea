@@ -89,6 +89,8 @@
 - 涉及代码改动的任务默认补测试；如果当前阶段不补测试，必须明确说明原因、风险和后续补齐点
 - 会影响团队共识的内容，先更新 `docs/memory/decision-log.md`
 - 如果某个文件开始同时承载多个职责，先拆分再继续堆功能；不要把“先做完再重构”当成前端、后端或 agent 的默认路径
+- 前端不得长期拥有学习引擎语义的最终判断权：包括 pedagogical judgment、knowledge point create/archive suggestion、off-topic 判定、activity contract 生成、project memory / learning profile / knowledge point lifecycle 写回
+- 前端不得把 `diagnosis / plan / state-patch` 这类后端信号二次脑补成正式 backend contract；如果后端缺事件或对象，先补 contract 或显式降级展示，不允许在 UI 层偷偷补齐业务语义
 
 ## Current Workstream Split
 
@@ -97,6 +99,12 @@
 - 学习引擎 owner：负责 `apps/agent/src/xidea_agent`、agent contract、LangGraph runtime、repository、API 和后端测试
 - 前端 owner：负责 `apps/web` 的页面、交互、证据链展示和对 `/runs/v0` 的接入
 - 产品 / demo 叙事 owner：负责比赛故事线、讲述顺序、范围取舍、文案和答辩材料
+
+默认边界再补充 3 条：
+
+1. learning-engine owner 负责 project context、agent judgment、typed event contract、persistent object 和 writeback 语义
+2. frontend owner 负责消费 contract、管理 UI state、表达降级态和确认交互，但不负责发明 backend object 或判断结果
+3. 如果某个 demo 过渡实现暂时只能放前端，必须同时满足：明确标注为 temporary、写进 `docs/status.md` / `docs/plan.md`、并带着迁移任务，不允许静默变成长期实现
 
 开工前先回答这 3 个问题：
 

@@ -18,7 +18,6 @@ import type {
 import type { ActivityResolution } from "@/domain/project-session-runtime";
 import type {
   KnowledgePointItem,
-  KnowledgePointSuggestion,
   ProjectItem,
   ProjectStats,
   SessionItem,
@@ -30,7 +29,6 @@ import type { UIMessage } from "ai";
 
 export function SessionWorkspace({
   activeAssetSummary,
-  activeKnowledgePointSuggestion,
   activeReviewInspector,
   activeRuntime,
   activeSourceAssets,
@@ -43,7 +41,6 @@ export function SessionWorkspace({
   displayMessages,
   draftPrompt,
   errorMessage,
-  generatedProfileSummary,
   hasPendingActivity,
   hasPersistedState,
   hasStructuredRuntime,
@@ -56,10 +53,8 @@ export function SessionWorkspace({
   latestReviewedLabel,
   nextReviewLabel,
   onChangeDraftPrompt,
-  onDismissKnowledgePointSuggestion,
   onCloseSession,
   onDisableTutorFixture,
-  onAcceptKnowledgePointSuggestion,
   onEditKnowledgePoint,
   onOpenKnowledgePoint,
   onOpenProjectMetaEditor,
@@ -86,7 +81,6 @@ export function SessionWorkspace({
   workspaceSection,
 }: {
   activeAssetSummary: AgentAssetSummary | null;
-  activeKnowledgePointSuggestion: KnowledgePointSuggestion | null;
   activeReviewInspector: AgentReviewInspector | null;
   activeRuntime: RuntimeSnapshot;
   activeSourceAssets: ReadonlyArray<SourceAsset>;
@@ -99,7 +93,6 @@ export function SessionWorkspace({
   displayMessages: ReadonlyArray<UIMessage>;
   draftPrompt: string;
   errorMessage: string | null;
-  generatedProfileSummary: string;
   hasPendingActivity: boolean;
   hasPersistedState: boolean;
   hasStructuredRuntime: boolean;
@@ -112,10 +105,8 @@ export function SessionWorkspace({
   latestReviewedLabel: string;
   nextReviewLabel: string;
   onChangeDraftPrompt: (value: string) => void;
-  onDismissKnowledgePointSuggestion: () => void;
   onCloseSession: () => void;
   onDisableTutorFixture: () => void;
-  onAcceptKnowledgePointSuggestion: () => void;
   onEditKnowledgePoint: (pointId: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
   onOpenProjectMetaEditor: () => void;
@@ -220,7 +211,6 @@ export function SessionWorkspace({
 
         <SessionThreadPane
           activeRuntime={activeRuntime}
-          activeKnowledgePointSuggestion={activeKnowledgePointSuggestion}
           activeSourceAssets={activeSourceAssets}
           currentActivities={currentActivities}
           currentActivity={currentActivity}
@@ -235,13 +225,10 @@ export function SessionWorkspace({
           isMaterialsTrayOpen={isMaterialsTrayOpen}
           latestAssistantMessageId={latestAssistantMessageId}
           onChangeDraftPrompt={onChangeDraftPrompt}
-          onDismissKnowledgePointSuggestion={onDismissKnowledgePointSuggestion}
-          onOpenKnowledgePoint={onOpenKnowledgePoint}
           onOpenProjectMetaEditor={onOpenProjectMetaEditor}
           onSkipActivity={onSkipActivity}
           onSubmitActivity={onSubmitActivity}
           onSubmitPrompt={onSubmitPrompt}
-          onAcceptKnowledgePointSuggestion={onAcceptKnowledgePointSuggestion}
           onToggleMaterialsTray={onToggleMaterialsTray}
           onToggleProjectMaterial={onToggleProjectMaterial}
           onUnsetSourceAsset={onUnsetSourceAsset}
@@ -258,7 +245,6 @@ export function SessionWorkspace({
         activeReviewInspector={activeReviewInspector}
         activeRuntime={activeRuntime}
         activeTutorFixtureId={activeTutorFixtureId}
-        generatedProfileSummary={generatedProfileSummary}
         hasPersistedState={hasPersistedState}
         hasStructuredRuntime={hasStructuredRuntime}
         isBlankSession={isBlankSession}

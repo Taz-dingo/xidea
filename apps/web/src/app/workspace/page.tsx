@@ -222,11 +222,6 @@ export function WorkspacePage(): ReactElement {
               ) : (
                 <SessionWorkspace
                   activeAssetSummary={session.activeAssetSummary}
-                  activeKnowledgePointSuggestion={
-                    data.selectedSession?.type === "project"
-                      ? data.selectedSessionKnowledgePointSuggestion
-                      : null
-                  }
                   activeReviewInspector={session.activeReviewInspector}
                   activeRuntime={session.activeRuntime}
                   activeSourceAssets={session.activeSourceAssets}
@@ -239,7 +234,6 @@ export function WorkspacePage(): ReactElement {
                   displayMessages={session.displayMessages}
                   draftPrompt={data.draftPrompt}
                   errorMessage={session.errorMessage}
-                  generatedProfileSummary={session.generatedProfileSummary}
                   hasPendingActivity={session.hasPendingActivity}
                   hasPersistedState={session.hasPersistedState}
                   hasStructuredRuntime={session.hasStructuredRuntime}
@@ -252,14 +246,8 @@ export function WorkspacePage(): ReactElement {
                   latestReviewedLabel={session.latestReviewedLabel}
                   nextReviewLabel={session.nextReviewLabel}
                   onChangeDraftPrompt={session.handleChangeDraftPrompt}
-                  onDismissKnowledgePointSuggestion={() =>
-                    actions.handleDismissKnowledgePointSuggestion(data.selectedSession!.id)
-                  }
                   onCloseSession={() => data.setSelectedSessionId("")}
                   onDisableTutorFixture={session.handleDisableTutorFixture}
-                  onAcceptKnowledgePointSuggestion={() =>
-                    actions.handleAcceptKnowledgePointSuggestion(data.selectedSession!.id)
-                  }
                   onEditKnowledgePoint={actions.handleOpenKnowledgePointEditor}
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
                   onOpenProjectMetaEditor={actions.handleOpenProjectMetaEditor}

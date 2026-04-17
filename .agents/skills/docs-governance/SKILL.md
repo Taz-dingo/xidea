@@ -145,6 +145,7 @@ Then treat other docs as candidates for consolidation, not default truth.
 - the team confirms a product, technical, or collaboration decision
 - the decision is durable and affects later work
 - the decision is still active enough to deserve staying in the active log
+- especially when ownership boundaries change between `apps/web` and `apps/agent`, or when a temporary frontend mock is explicitly forbidden from becoming the long-term implementation
 
 ### Update `docs/archive/decision-log-history.md` when
 
@@ -169,6 +170,8 @@ Then treat other docs as candidates for consolidation, not default truth.
 - prefer merging overlapping reference docs instead of keeping multiple thin docs with the same job
 - do not turn brainstorms into fake decisions
 - if a point is still unsettled, write it as an open question, not as spec
+- when a frontend implementation is only a temporary stand-in for backend / agent semantics, say that explicitly in `status.md` and `plan.md`
+- do not let reference docs or UI copy imply that frontend-derived heuristics are part of the stable product contract
 
 ## Anti-Drift Checklist
 
@@ -179,6 +182,7 @@ Before finishing doc work, check:
 3. did I record durable decisions in `docs/memory/decision-log.md`
 4. did I update `docs/status.md` or `docs/plan.md` if execution changed
 5. did I leave a reference doc around that no longer has a unique job
+6. did I clearly mark any frontend-owned temporary heuristic that really belongs to backend / agent
 
 ## Task Routing
 

@@ -39,6 +39,8 @@
 - 学习引擎 owner 不主动改前端展示结构，除非为了联调修复明确的小接口问题
 - 前端 owner 不主动改 agent contract，除非先和学习引擎 owner 对齐字段变化
 - 产品 / demo 叙事 owner 可以调整 story、文案、演示顺序和证明重点，但涉及代码边界变化时要先同步相关技术 owner
+- 前端 owner 不负责补 learning-engine judgment：不在 `apps/web` 本地生成知识点建议、archive 建议、off-topic 判定、activity contract 或 project-level writeback 语义
+- 如果后端暂时缺 contract，前端只能显式展示“待后端接入 / 暂无结构化事件”，不能把 `diagnosis / plan / state-patch` 二次推导成正式业务对象
 
 ## Start-Of-Task Check
 

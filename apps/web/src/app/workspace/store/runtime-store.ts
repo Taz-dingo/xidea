@@ -9,7 +9,6 @@ import type {
   AgentReviewInspector,
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
-import type { KnowledgePointSuggestion } from "@/domain/project-workspace";
 import {
   getDefaultSourceAssetIds,
   type ActivityResolution,
@@ -46,7 +45,6 @@ interface WorkspaceRuntimeState {
   readonly assetSummaryByKey: Record<string, AgentAssetSummary>;
   readonly agentConnectionState: "checking" | "ready" | "offline";
   readonly sessionMessagesById: Record<string, UIMessage[]>;
-  readonly sessionKnowledgePointSuggestions: Record<string, KnowledgePointSuggestion | null>;
   readonly activityResolutionsBySession: Record<string, Record<string, ActivityResolution>>;
   readonly runningSessionIds: Record<string, boolean>;
   readonly bootstrapLoadedKeys: Record<string, boolean>;
@@ -77,9 +75,6 @@ interface WorkspaceRuntimeState {
   readonly setSessionMessagesById: (
     nextState: SetStateAction<Record<string, UIMessage[]>>,
   ) => void;
-  readonly setSessionKnowledgePointSuggestions: (
-    nextState: SetStateAction<Record<string, KnowledgePointSuggestion | null>>,
-  ) => void;
   readonly setActivityResolutionsBySession: (
     nextState: SetStateAction<Record<string, Record<string, ActivityResolution>>>,
   ) => void;
@@ -106,7 +101,6 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
   sessionMessagesById: Object.fromEntries(
     initialSessions.map((session) => [session.id, []]),
   ),
-  sessionKnowledgePointSuggestions: {},
   activityResolutionsBySession: {},
   runningSessionIds: {},
   bootstrapLoadedKeys: {},
@@ -145,13 +139,6 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
   setSessionMessagesById: (nextState) =>
     set((state) => ({
       sessionMessagesById: resolveState(nextState, state.sessionMessagesById),
-    })),
-  setSessionKnowledgePointSuggestions: (nextState) =>
-    set((state) => ({
-      sessionKnowledgePointSuggestions: resolveState(
-        nextState,
-        state.sessionKnowledgePointSuggestions,
-      ),
     })),
   setActivityResolutionsBySession: (nextState) =>
     set((state) => ({

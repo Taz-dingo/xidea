@@ -93,7 +93,7 @@
 - `apps/web` 的材料入口已收成单线程里的随时加材料 tray，用户不再需要在"问答 / 材料"之间切模式
 - `apps/web` 中栏输入区已收成单一输入框 + 内嵌发送按钮，thread 与 inspector 滚动区默认显示可见滚动条
 - `apps/web` 左栏已收敛为更紧凑的 codex-style workspace 导航：project 用图标行呈现，session 只保留标题级信息
-- `apps/web` 的学习画像已改为根据当前对话与运行态自动生成，不再由用户手动切换
+- `apps/web` 的学习画像展示已收回到真实 learner state / state source，不再由前端根据运行态二次生成“系统画像”判断
 - `apps/web` 的复习系统已新增 GitHub-style 近 5 周复习热力图
 - `apps/web` 主布局已收敛为基础态 + `lg` 两段响应式，不再继续细分更碎的宽度区间
 - `apps/web` 的左栏 project 已改为文件夹开关图标，并为 session reveal 补上轻量展开收起动画
@@ -158,9 +158,10 @@
 - `apps/web` 的 `Knowledge Point Detail` 已补复习热力图，并把 archive 从一键切状态收成确认后执行的交互，先让知识点生命周期更接近正式产品心智
 - `apps/web` 已将 session 右栏从监控式 inspector 收成更轻的 knowledge-point context rail，主叙事改为“当前相关知识点 / 本轮上下文 / 复习提示 / 材料上下文”，避免正式 demo 继续被监控面板抢走注意力
 - `apps/web` 已将 knowledge point archive 从“通用手动按钮”收口为“系统建议归档 -> 用户确认接受建议”，浏览卡与详情页都会显式展示归档建议；未收到建议前不再默认给出归档入口
-- `apps/web` 已在 `project session` 中补上“知识点建议新增 -> 用户确认新增”的前端 demo 流：project chat 发送后会生成候选知识点卡片，用户确认后再正式加入当前 project 的 knowledge point 池
 - `apps/web` 已在 `project session` 顶部补上 `topic / rules` 快捷入口，用户在会话中就能直接打开 `Project Meta` 面板，不必退回浏览态再改 project 叙事
 - `apps/web` 已在 session 右侧的相关知识点卡片上补上“查看 / 编辑”双入口，project chat 中涉及的知识点现在可以直接进入详情或编辑态，补齐“知识点轻量编辑”路径
+- `apps/web` 已移除 `project chat` 的本地知识点 suggestion heuristic；当前等待 backend 输出正式 `knowledge-point-suggestion` 事件后再恢复这条能力
+- `apps/web` 已移除把 `diagnosis / plan` 归一化成 activity card 的过渡逻辑；当前学习动作只消费 backend 显式 `activity` 事件
 
 ### In Progress
 
@@ -171,13 +172,15 @@
 - 收敛 `project / study / review` 三类 session 的职责与页面展开方式
 - 收敛知识点生命周期：初始化生成、project chat 建议新增、轻量编辑、archive 建议
 - 收敛学习引擎下一步运行形态：让 project materials、project memory、learning profile、session context、review context 在主决策前完成预取，并进入同一证据上下文
-- 将当前展示型 `StudyPlan` 过渡收敛为 session 内可执行 activity contract，支持 agent 在对话里直接触发学习 / 复习动作
+- 将 knowledge point 新增 / archive 建议从前端启发式过渡到 agent judgment：由 agent 读取 project context 后输出结构化 suggestion，前端仅渲染与确认
+- 将当前展示型 `StudyPlan` 过渡收敛为 session 内可执行 activity contract，支持 agent 在对话里直接触发学习 / 复习动作；前端已停止本地脑补 activity
 - 收敛 web-agent contract：从当前 `diagnosis / plan` 过渡适配切到结构化 activity / tool result 事件
 - 收敛前端 activity gating：当前学习动作未完成前，主输入区改成受约束交互
 - 收敛用户侧 activity 节奏：让"作答完成 -> 下一轮简短诊断 / 动作反馈"更自然，避免重新把内部证据摊回中间学习线程
 - 规划后续可借鉴的学习模式扩展项：`hint / more questions / performance feedback / 材料直出 quiz 或 study guide`，但不作为第一版选择题 session 的阻塞项
 - 将"project-level material library + session / turn attachments"收成稳定 contract，替换当前前端先行适配的数据壳
 - 将多 activity / card deck 从前端 fixture 和过渡归一化推进到真实后端事件
+- 清理前端里残留的 backend-owned learning semantics，避免 heuristic / fallback 再次回流到 `apps/web`
 - 将前端已出现的学习交互件整理成后端 prompt / contract 需求清单，供学习引擎 owner 对齐实现
 - 收敛 tutor system prompt：明确何时发起 activity、何时只给短引导、何时禁止继续自由讲解
 - 收敛当前 `Consolidation` 的演示路径，决定是手动触发还是模拟定时入口
@@ -192,7 +195,9 @@
 - 将 Project Workspace 改成默认知识点工作台、按需展开 session workspace 的布局
 - 为 `project / study / review` 三类 session 定义明确交互和事件 contract
 - 支持 project chat 中的新增材料、知识点建议新增、知识点轻量编辑和 topic/rules 修改入口
+- 定义 `knowledge-point-suggestion` 事件与确认写回 contract，替换当前前端本地启发式新增逻辑
 - 支持知识点 archive 建议与确认流
+- 补稳定的 `activity` 事件，替换当前只剩 `diagnosis / plan / state-patch` 的过渡流
 - 打通 `exercise-result / review-result` 回传与状态回写闭环，让练习结果和复习表现真正影响下一轮诊断
 - 决定当前 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
 - 决定主案例稳定后优先补哪个次级 demo surface：继续放大"材料导入"，还是转向"导师对练"
@@ -204,6 +209,7 @@
 
 - 如果 Project、Knowledge Point、Session 三个对象边界没有尽快在代码里落稳，MVP 会继续带着旧的 thread-centric 结构前进，后续改动成本会放大
 - 如果知识点新增和 archive 规则不够克制，项目内知识点池会快速膨胀，削弱"系统在组织学习"的主感受
+- 如果 backend 迟迟不补 `knowledge-point-suggestion` 和 `activity` 事件，前端虽然不再脑补 contract，但对应 demo 能力会继续空缺
 - 如果 project learning profile 做得过重或过拟人，会把 MVP 从"编排系统"拉偏成"画像产品"
 - 如果过早引入复杂 graph 或多 agent，当前 demo 容易被工程结构拖慢
 - 如果 demo 展示很多能力但没有主线，差异点会不明显

@@ -73,6 +73,10 @@ Treat `docs/archive/` as historical context only.
 - Avoid letting many unrelated edits accumulate into one large commit that hides what actually changed
 - Before implementation, first route the task to a primary owner / workstream
 - If a task changes team-wide understanding, update the relevant memory doc
+- Treat backend-owned learning semantics as a hard boundary:
+  - `apps/agent` owns project context loading, pedagogical judgment, typed agent events, knowledge-point suggestion / archive semantics, off-topic judgment, and durable writeback objects
+  - `apps/web` may render, confirm, or gracefully degrade these capabilities, but must not silently recreate them with local heuristics or inferred contracts
+- If the UI currently contains a temporary frontend mock for a backend-owned capability, surface that fact in `docs/status.md` and `docs/plan.md`; do not let it become an undocumented permanent path
 
 ## Start-Of-Task Gate
 
@@ -81,6 +85,7 @@ Before proposing edits or writing code, answer these questions:
 1. Is the task primarily owned by the learning-engine workstream, the frontend workstream, the product-demo workstream, or shared across them
 2. Which directories are the main edit surface for this task
 3. Which adjacent areas should stay untouched unless the task explicitly requires cross-owner coordination
+4. Is any frontend code currently trying to own a backend / agent judgment or contract that should move back to `apps/agent`
 
 If the answers are still fuzzy, stop broad implementation and clarify the workstream first through docs, a task note, or PR framing.
 

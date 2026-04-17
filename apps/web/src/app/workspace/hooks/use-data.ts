@@ -39,10 +39,6 @@ export function useWorkspaceData() {
   const selectedSession = stores.sessions.find(
     (session) => session.id === stores.selectedSessionId,
   );
-  const selectedSessionKnowledgePointSuggestion =
-    selectedSession === undefined
-      ? null
-      : stores.sessionKnowledgePointSuggestions[selectedSession.id] ?? null;
   const selectedProject = getSelectedProject(
     stores.projects,
     stores.selectedProjectId,
@@ -114,7 +110,6 @@ export function useWorkspaceData() {
     selectedProjectMaterials,
     selectedProjectSessions,
     selectedSession,
-    selectedSessionKnowledgePointSuggestion,
     sessionEntryModesSetter: stores.setSessionEntryModes,
     ...drafts,
     ...stores,

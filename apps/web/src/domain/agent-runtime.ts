@@ -484,19 +484,6 @@ function buildLearningActivity(input: {
   };
 }
 
-function buildActivityUnitRef(input: {
-  readonly unitId: string | null;
-  readonly fallbackTitle: string;
-}): { readonly id: string; readonly title: string } {
-  const normalizedTitle =
-    input.fallbackTitle.match(/^围绕「(.+)」生成的动态学习路径$/)?.[1] ?? input.fallbackTitle;
-
-  return {
-    id: input.unitId ?? "current-unit",
-    title: normalizedTitle,
-  };
-}
-
 function normalizeAgentActivity(activity: AgentActivity): LearningActivity {
   return {
     id: activity.id,
@@ -656,12 +643,10 @@ export function buildDefaultAgentPrompt(
 }
 
 export function getRequestSourceAssetIds(
-  entryMode: AgentEntryMode,
+  _entryMode: AgentEntryMode,
   sourceAssets: ReadonlyArray<SourceAsset>,
 ): ReadonlyArray<string> {
-  return entryMode === "material-import"
-    ? sourceAssets.map((asset) => asset.id)
-    : sourceAssets.slice(0, 2).map((asset) => asset.id);
+  return sourceAssets.map((asset) => asset.id);
 }
 
 export function buildAgentRequest(input: {
@@ -797,17 +782,7 @@ export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot
   const activity =
     result.graph_state.activity !== null
       ? normalizeAgentActivity(result.graph_state.activity)
-      : buildLearningActivity({
-          action: diagnosis.recommended_action,
-          mode: plan.selected_mode,
-          unit: buildActivityUnitRef({
-            unitId: diagnosis.focus_unit_id,
-            fallbackTitle: plan.headline,
-          }),
-          objective: plan.expected_outcome,
-          reason: primaryReason,
-          evidence: diagnosis.explanation?.evidence ?? learnerState.weak_signals,
-        });
+      : null;
 
   return {
     source: "live-agent",
@@ -885,19 +860,7 @@ export function normalizeAgentStreamResult(input: {
   ].filter((item): item is string => item !== null);
 
   const activity =
-    activityEvent !== undefined
-      ? normalizeAgentActivity(activityEvent.activity)
-      : buildLearningActivity({
-          action: diagnosis.recommended_action,
-          mode: plan.selected_mode,
-          unit: buildActivityUnitRef({
-            unitId: diagnosis.focus_unit_id,
-            fallbackTitle: plan.headline,
-          }),
-          objective: plan.expected_outcome,
-          reason: primaryReason,
-          evidence: diagnosis.explanation?.evidence ?? learnerState.weak_signals,
-        });
+    activityEvent !== undefined ? normalizeAgentActivity(activityEvent.activity) : null;
 
   return withActivities({
     source: "live-agent",
@@ -974,26 +937,7 @@ export function normalizePartialAgentStreamResult(input: {
   const activity =
     activityEvent !== undefined
       ? normalizeAgentActivity(activityEvent.activity)
-      : diagnosis !== undefined || plan !== undefined
-        ? buildLearningActivity({
-            action:
-              diagnosis?.recommended_action ?? input.fallbackSnapshot.state.recommendedAction,
-            mode:
-              plan?.selected_mode ??
-              input.fallbackSnapshot.activity?.mode ??
-              input.fallbackSnapshot.plan.primaryMode,
-            unit: buildActivityUnitRef({
-              unitId: diagnosis?.focus_unit_id ?? null,
-              fallbackTitle: plan?.headline ?? input.fallbackSnapshot.plan.headline,
-            }),
-            objective: plan?.expected_outcome ?? input.fallbackSnapshot.decision.objective,
-            reason: diagnosis?.reason ?? input.fallbackSnapshot.decision.reason,
-            evidence:
-              diagnosis?.explanation?.evidence ??
-              statePatchEvent?.state_patch.learner_state_patch?.weak_signals ??
-              input.fallbackSnapshot.state.weakSignals,
-          })
-        : input.fallbackSnapshot.activity;
+      : input.fallbackSnapshot.activity;
 
   return withActivities({
     source: "live-agent",

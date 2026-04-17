@@ -46,6 +46,12 @@
     - 标题、描述、来源材料、origin session
     - 掌握度、学习/复习状态、下次复习信号
     - archive 建议与确认
+- [ ] 定义 knowledge point suggestion contract：由 agent 在 project chat 中输出结构化新增 / archive 建议，前端只负责渲染与确认
+  - owner: 学习引擎 owner / 前端 owner
+  - 范围：
+    - project context 预取边界：project memory、special rules、已有 knowledge points、selected materials、recent session context
+    - `knowledge-point-suggestion` 的 payload、去重和 off-topic 边界
+    - 用户确认新增 / 忽略 / 接受 archive 建议时的 API contract
 - [ ] 定义 project-level learning profile 最小 schema，并接入后续编排上下文
   - owner: 学习引擎 owner
   - 范围：
@@ -67,6 +73,8 @@
   - owner: 前端 owner / 学习引擎 owner
 - [ ] 支持 project chat 中的新增材料、知识点建议新增、知识点轻量编辑、topic/rules 修改入口
   - owner: 前端 owner / 学习引擎 owner
+  - 说明：
+    - 前端入口可先完成，但知识点建议新增的最终判断权归 agent；当前前端本地启发式已移除，等待 backend suggestion 事件
 - [ ] 将学习 / 复习 session 第一版限制为选择题，不先接入简答题与开放式对练
   - owner: 产品 owner / 前端 owner / 学习引擎 owner
 - [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环，让学习/复习结果真正影响知识点状态与 project learning profile
@@ -112,6 +120,7 @@
    - `Project`
    - `Session`
    - `KnowledgePoint`
+   - `KnowledgePointSuggestion`
    - `ProjectLearningProfile`
    - `Activity`
    - `StatePatch`
@@ -134,14 +143,15 @@
    - 不实现完整 SRS / FSRS 算法
 5. `apps/agent` 暴露 FastAPI streaming endpoint
    - 过渡态可继续兼容 `diagnosis / text-delta / plan / state-patch / done`
-   - 下一步补结构化 `activity / tool-result / state-patch / done` 事件，逐步替代固定 `plan` 展示
+   - 下一步补结构化 `activity / tool-result / knowledge-point-suggestion / state-patch / done` 事件，逐步替代固定 `plan` 展示
 6. `apps/web` 接入真实 agent API
    - 使用 Vercel AI SDK 管理 message stream
-   - 当前已能消费 diagnosis、plan、state-patch，并把它们归一化成 activity card；后续逐步切到 session-aware event contract
+   - 当前已能消费 diagnosis、plan、state-patch；activity 现已停止由前端归一化补齐，后续以 session-aware backend event contract 为准
    - 当前有未完成 activity 时，主输入区已切到“完成当前动作 / 跳过当前动作”的受约束交互
    - 当前前端已支持“随时加材料”的附加上下文 tray，不再要求先切到单独材料模式
    - 当前前端已支持多张学习卡的 deck 视觉，但真实后端仍需补稳定的多 activity contract
-   - 下一步把 activity 来源从 `diagnosis / plan` 归一化过渡逻辑收敛到稳定的后端 event contract
+   - 下一步由 backend 补稳定的 `activity` 事件；前端不再从 `diagnosis / plan` 推导伪 activity contract
+   - 当前 project chat 里的知识点新增建议已不再由前端本地启发式生成；下一步改为消费 agent 结构化 suggestion 事件，并通过确认 API 写回 project knowledge point pool
    - Project 首页前端叙事壳已完成，当前重点从“接通真实 `/runs/v0` 数据”转到“减少 fallback / fixture 依赖”
 7. `apps/web` 重构信息架构
    - 首页先收成 `App Home -> Project Workspace -> Knowledge Point Detail`

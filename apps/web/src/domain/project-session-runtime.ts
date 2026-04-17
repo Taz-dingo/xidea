@@ -74,42 +74,6 @@ export function getNextFixtureSnapshot(
   };
 }
 
-export function buildGeneratedProfileSummary(
-  runtime: RuntimeSnapshot,
-  latestUserInput: string,
-): {
-  readonly title: string;
-  readonly summary: string;
-  readonly evidence: ReadonlyArray<string>;
-} {
-  const stage =
-    runtime.state.recommendedAction === "clarify" || runtime.state.confusion >= 65
-      ? "概念边界待拉清"
-      : runtime.state.recommendedAction === "review" || runtime.state.memoryStrength <= 50
-        ? "记忆可用性待回拉"
-        : runtime.state.recommendedAction === "apply" ||
-            (runtime.state.transferReadiness !== null &&
-              runtime.state.transferReadiness >= 65)
-          ? "已进入项目迁移验证"
-          : "理解框架待稳定";
-  const evidence = [
-    runtime.state.weakSignals[0] ?? runtime.stateSource,
-    runtime.source === "live-agent"
-      ? runtime.decision.reason
-      : "当前只恢复了 learner state，下一轮会基于真实状态重新生成诊断和路径。",
-    latestUserInput === ""
-      ? "还没有新的用户输入，先沿用当前 session 状态。"
-      : `最近输入：${latestUserInput}`,
-  ];
-
-  return {
-    title: `系统当前把这个 session 视为「${stage}」`,
-    summary:
-      "画像来自当前 learner state、诊断动作和已落库证据，不再依赖前端预设角色猜测。",
-    evidence,
-  };
-}
-
 export function getLatestReviewEvent(
   events: ReadonlyArray<AgentReviewEvent>,
   kind: AgentReviewEvent["event_kind"],

@@ -24,7 +24,6 @@ export function SessionInspector({
   activeReviewInspector,
   activeRuntime,
   activeTutorFixtureId,
-  generatedProfileSummary,
   hasPersistedState,
   hasStructuredRuntime,
   isBlankSession,
@@ -48,7 +47,6 @@ export function SessionInspector({
   activeReviewInspector: AgentReviewInspector | null;
   activeRuntime: RuntimeSnapshot;
   activeTutorFixtureId: string | null;
-  generatedProfileSummary: string;
   hasPersistedState: boolean;
   hasStructuredRuntime: boolean;
   isBlankSession: boolean;
@@ -131,7 +129,7 @@ export function SessionInspector({
         <CompactNote label="Knowledge" value={selectedUnitTitle ?? "未指定"} />
         <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
           {hasPersistedState
-            ? generatedProfileSummary
+            ? activeRuntime.stateSource
             : "当前还没有回读到真实 learner state，这一栏会在 session 有真实交互后变得更具体。"}
         </p>
       </MonitorSection>

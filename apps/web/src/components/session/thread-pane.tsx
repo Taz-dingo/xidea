@@ -1,7 +1,6 @@
 import type { ReactElement } from "react";
 import type { UIMessage } from "ai";
 import { FileInput, Settings2 } from "lucide-react";
-import { KnowledgePointSuggestionCard } from "@/components/session/knowledge-point-suggestion-card";
 import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MarkdownContent } from "@/components/markdown-content";
 import { getAssetKindLabel } from "@/components/workspace/core";
@@ -13,13 +12,11 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { getMessageText } from "@/domain/chat-message";
 import type { ActivityResolution } from "@/domain/project-session-runtime";
-import type { KnowledgePointSuggestion } from "@/domain/project-workspace";
 import type { LearningActivitySubmission, SourceAsset } from "@/domain/types";
 import type { RuntimeSnapshot } from "@/domain/agent-runtime";
 
 export function SessionThreadPane({
   activeRuntime,
-  activeKnowledgePointSuggestion,
   activeSourceAssets,
   currentActivities,
   currentActivity,
@@ -34,13 +31,10 @@ export function SessionThreadPane({
   isMaterialsTrayOpen,
   latestAssistantMessageId,
   onChangeDraftPrompt,
-  onDismissKnowledgePointSuggestion,
-  onOpenKnowledgePoint,
   onOpenProjectMetaEditor,
   onSkipActivity,
   onSubmitActivity,
   onSubmitPrompt,
-  onAcceptKnowledgePointSuggestion,
   onToggleProjectMaterial,
   onToggleMaterialsTray,
   onUnsetSourceAsset,
@@ -51,7 +45,6 @@ export function SessionThreadPane({
   submitDisabled,
 }: {
   activeRuntime: RuntimeSnapshot;
-  activeKnowledgePointSuggestion: KnowledgePointSuggestion | null;
   activeSourceAssets: ReadonlyArray<SourceAsset>;
   currentActivities: RuntimeSnapshot["activities"];
   currentActivity: RuntimeSnapshot["activity"];
@@ -66,13 +59,10 @@ export function SessionThreadPane({
   isMaterialsTrayOpen: boolean;
   latestAssistantMessageId: string | null;
   onChangeDraftPrompt: (value: string) => void;
-  onDismissKnowledgePointSuggestion: () => void;
-  onOpenKnowledgePoint: (pointId: string) => void;
   onOpenProjectMetaEditor: () => void;
   onSkipActivity: () => void;
   onSubmitActivity: (submission: LearningActivitySubmission) => void;
   onSubmitPrompt: () => void;
-  onAcceptKnowledgePointSuggestion: () => void;
   onToggleProjectMaterial: (assetId: string) => void;
   onToggleMaterialsTray: () => void;
   onUnsetSourceAsset: (assetId: string) => void;
@@ -232,20 +222,6 @@ export function SessionThreadPane({
                         </Card>
                       )}
                     </div>
-
-                    {isAssistant &&
-                    activeKnowledgePointSuggestion !== null &&
-                    !isAgentRunning &&
-                    message.id === latestAssistantMessageId ? (
-                      <div className="w-full max-w-[82%] pl-1">
-                        <KnowledgePointSuggestionCard
-                          onAccept={onAcceptKnowledgePointSuggestion}
-                          onDismiss={onDismissKnowledgePointSuggestion}
-                          onOpenKnowledgePoint={onOpenKnowledgePoint}
-                          suggestion={activeKnowledgePointSuggestion}
-                        />
-                      </div>
-                    ) : null}
 
                     {isAssistant &&
                     message.id === latestAssistantMessageId &&

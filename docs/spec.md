@@ -24,7 +24,7 @@
 - 让每个 `Project` 拥有项目级 memory、项目级学习画像和项目内 session 历史
 - 基于主题和材料自动生成一批扁平 `Knowledge Point`
 - 将知识点作为项目内最小学习单元；学习和复习都围绕知识点组织
-- 允许 project chat 在讨论过程中建议新增知识点，但默认需要用户确认
+- 允许 project chat 在讨论过程中建议新增知识点，但新增建议必须由 agent 基于 project context 做判断，默认需要用户确认；前端不自行做启发式新增判断
 - 用显式的 `LearnerState` 与 project-level learning profile 同时表达局部状态和项目级聚合判断
 - 用受约束的单 agent 表达系统如何选择训练动作与更新项目状态
 - 允许同一系统支持多种学习形式，但比赛版学习/复习 session 先只做选择题
@@ -91,5 +91,8 @@
 - `apps/web`: React + Tailwind + shadcn-friendly frontend
 - `apps/agent`: Python + LangChain + LangGraph 的受约束单 agent core
 - 两层之间通过显式 API contract 连接
+- `apps/web` 只消费、确认和表达 agent / backend contract，不负责补 pedagogical judgment、知识点生命周期判断，或把后端信号脑补成正式业务对象
+- project chat 中的知识点新增 / archive 建议属于 agent contract 的一部分，应该通过结构化事件或同等级 typed payload 输出，而不是让前端从自由文本或本地规则里猜测
+- 学习引擎的智能目标是对齐 `Codex / Claude Code` 这类 agent runtime 的方法论与领域内判断质量：强调显式状态、上下文预取、结构化事件、tool arbitration 和状态回写；但不追求开放域自主执行、长链环境探索或 coding agent 级别的通用任务自治
 - 第一版重点是 project schema、knowledge point lifecycle、state、action、tool、guardrail 的设计，而不是复杂多 agent 编排
 - graph、更多节点和更复杂 runtime 留作后续扩展，而不是第一版前提
