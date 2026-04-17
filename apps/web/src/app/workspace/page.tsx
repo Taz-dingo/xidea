@@ -261,6 +261,7 @@ export function WorkspacePage(): ReactElement {
                     actions.handleAcceptKnowledgePointSuggestion(data.selectedSession!.id)
                   }
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
+                  onOpenProjectMetaEditor={actions.handleOpenProjectMetaEditor}
                   onOpenSession={(sessionId) => {
                     data.setPendingSessionIntent(null);
                     data.setSelectedSessionId(sessionId);

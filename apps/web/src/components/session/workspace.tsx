@@ -61,6 +61,7 @@ export function SessionWorkspace({
   onDisableTutorFixture,
   onAcceptKnowledgePointSuggestion,
   onOpenKnowledgePoint,
+  onOpenProjectMetaEditor,
   onOpenSession,
   onSelectTutorFixture,
   onSkipActivity,
@@ -115,6 +116,7 @@ export function SessionWorkspace({
   onDisableTutorFixture: () => void;
   onAcceptKnowledgePointSuggestion: () => void;
   onOpenKnowledgePoint: (pointId: string) => void;
+  onOpenProjectMetaEditor: () => void;
   onOpenSession: (sessionId: string) => void;
   onSelectTutorFixture: (fixture: TutorFixtureScenario) => void;
   onSkipActivity: () => void;
@@ -233,6 +235,7 @@ export function SessionWorkspace({
           onChangeDraftPrompt={onChangeDraftPrompt}
           onDismissKnowledgePointSuggestion={onDismissKnowledgePointSuggestion}
           onOpenKnowledgePoint={onOpenKnowledgePoint}
+          onOpenProjectMetaEditor={onOpenProjectMetaEditor}
           onSkipActivity={onSkipActivity}
           onSubmitActivity={onSubmitActivity}
           onSubmitPrompt={onSubmitPrompt}
@@ -242,6 +245,7 @@ export function SessionWorkspace({
           onUnsetSourceAsset={onUnsetSourceAsset}
           selectedProjectMaterials={selectedProjectMaterials}
           selectedSessionId={selectedSession.id}
+          selectedSessionType={selectedSession.type}
           selectedSourceAssetIds={selectedSourceAssetIds}
           submitDisabled={submitDisabled}
         />
