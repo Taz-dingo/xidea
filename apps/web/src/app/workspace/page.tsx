@@ -234,7 +234,6 @@ export function WorkspacePage(): ReactElement {
                   displayMessages={session.displayMessages}
                   draftPrompt={data.draftPrompt}
                   errorMessage={session.errorMessage}
-                  generatedProfileSummary={session.generatedProfileSummary}
                   hasPendingActivity={session.hasPendingActivity}
                   hasPersistedState={session.hasPersistedState}
                   hasStructuredRuntime={session.hasStructuredRuntime}
@@ -249,7 +248,9 @@ export function WorkspacePage(): ReactElement {
                   onChangeDraftPrompt={session.handleChangeDraftPrompt}
                   onCloseSession={() => data.setSelectedSessionId("")}
                   onDisableTutorFixture={session.handleDisableTutorFixture}
+                  onEditKnowledgePoint={actions.handleOpenKnowledgePointEditor}
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
+                  onOpenProjectMetaEditor={actions.handleOpenProjectMetaEditor}
                   onOpenSession={(sessionId) => {
                     data.setPendingSessionIntent(null);
                     data.setSelectedSessionId(sessionId);
@@ -265,7 +266,6 @@ export function WorkspacePage(): ReactElement {
                   projectStats={model.projectStats}
                   relatedKnowledgePoints={model.relatedKnowledgePoints}
                   requestSourceAssetIds={session.requestSourceAssetIds}
-                  reviewHeatmap={session.reviewHeatmap}
                   selectedProject={data.selectedProject}
                   selectedProjectMaterials={data.selectedProjectMaterials}
                   selectedProjectSessions={data.selectedProjectSessions}

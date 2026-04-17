@@ -1,6 +1,28 @@
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useKnowledgePointActions(data: WorkspaceData) {
+  function handleOpenKnowledgePointEditor(pointId: string): void {
+    const targetPoint =
+      data.knowledgePoints.find((point) => point.id === pointId) ?? null;
+
+    if (targetPoint === null) {
+      return;
+    }
+
+    data.setSelectedKnowledgePointId(targetPoint.id);
+    data.setSelectedSessionId("");
+    data.setArchiveConfirmationPointId(null);
+    data.setIsEditingProjectMeta(false);
+    data.setIsProjectMetaOpen(false);
+    data.setKnowledgePointDraft({
+      title: targetPoint.title,
+      description: targetPoint.description,
+    });
+    data.setIsEditingKnowledgePoint(true);
+    data.setPendingSessionIntent(null);
+    data.setScreen("detail");
+  }
+
   function handleArchiveKnowledgePoint(pointId: string): void {
     data.setKnowledgePoints((current) =>
       current.map((point) =>
@@ -12,6 +34,7 @@ export function useKnowledgePointActions(data: WorkspaceData) {
               stageLabel: point.status === "archived" ? "待复习" : "已归档",
               nextReviewLabel:
                 point.status === "archived" ? "等待重新安排" : null,
+              archiveSuggestion: null,
               updatedAt: "刚刚",
             }
           : point,
@@ -59,6 +82,7 @@ export function useKnowledgePointActions(data: WorkspaceData) {
       });
       data.setIsEditingKnowledgePoint(false);
     },
+    handleOpenKnowledgePointEditor,
     handleSaveKnowledgePoint,
     handleStartArchiveConfirmation: (pointId: string) =>
       data.setArchiveConfirmationPointId((current) =>

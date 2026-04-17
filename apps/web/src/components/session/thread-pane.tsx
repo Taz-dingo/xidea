@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import type { UIMessage } from "ai";
-import { FileInput } from "lucide-react";
+import { FileInput, Settings2 } from "lucide-react";
 import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MarkdownContent } from "@/components/markdown-content";
 import { getAssetKindLabel } from "@/components/workspace/core";
@@ -31,6 +31,7 @@ export function SessionThreadPane({
   isMaterialsTrayOpen,
   latestAssistantMessageId,
   onChangeDraftPrompt,
+  onOpenProjectMetaEditor,
   onSkipActivity,
   onSubmitActivity,
   onSubmitPrompt,
@@ -39,6 +40,7 @@ export function SessionThreadPane({
   onUnsetSourceAsset,
   selectedProjectMaterials,
   selectedSessionId,
+  selectedSessionType,
   selectedSourceAssetIds,
   submitDisabled,
 }: {
@@ -57,6 +59,7 @@ export function SessionThreadPane({
   isMaterialsTrayOpen: boolean;
   latestAssistantMessageId: string | null;
   onChangeDraftPrompt: (value: string) => void;
+  onOpenProjectMetaEditor: () => void;
   onSkipActivity: () => void;
   onSubmitActivity: (submission: LearningActivitySubmission) => void;
   onSubmitPrompt: () => void;
@@ -65,6 +68,7 @@ export function SessionThreadPane({
   onUnsetSourceAsset: (assetId: string) => void;
   selectedProjectMaterials: ReadonlyArray<SourceAsset>;
   selectedSessionId: string;
+  selectedSessionType: "project" | "study" | "review";
   selectedSourceAssetIds: ReadonlyArray<string>;
   submitDisabled: boolean;
 }): ReactElement {
@@ -82,6 +86,17 @@ export function SessionThreadPane({
               <FileInput className="h-4 w-4" />
               {isMaterialsTrayOpen ? "收起材料" : "添加材料"}
             </Button>
+            {selectedSessionType === "project" ? (
+              <Button
+                className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
+                onClick={onOpenProjectMetaEditor}
+                type="button"
+                variant="outline"
+              >
+                <Settings2 className="h-4 w-4" />
+                改 topic / rules
+              </Button>
+            ) : null}
             {selectedSourceAssetIds.length > 0 ? (
               <Badge
                 className="border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] shadow-none"
@@ -91,7 +106,9 @@ export function SessionThreadPane({
               </Badge>
             ) : (
               <span className="text-sm text-[var(--xidea-stone)]">
-                当前先按纯对话推进，需要时再把材料挂进这一轮。
+                {selectedSessionType === "project"
+                  ? "当前先按纯对话推进，需要时可补材料或直接改 topic / rules。"
+                  : "当前先按纯对话推进，需要时再把材料挂进这一轮。"}
               </span>
             )}
           </div>

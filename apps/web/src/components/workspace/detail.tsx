@@ -152,17 +152,47 @@ export function KnowledgePointDetailScreen({
                   <Button className="rounded-full" onClick={onStartEditing} type="button" variant="outline">
                     编辑
                   </Button>
-                  <Button
-                    className="rounded-full"
-                    onClick={onStartArchiveConfirmation}
-                    type="button"
-                    variant="outline"
-                  >
-                    {knowledgePoint.status === "archived" ? "恢复" : "Archive"}
-                  </Button>
+                  {knowledgePoint.status === "archived" ? (
+                    <Button
+                      className="rounded-full"
+                      onClick={onStartArchiveConfirmation}
+                      type="button"
+                      variant="outline"
+                    >
+                      恢复
+                    </Button>
+                  ) : knowledgePoint.archiveSuggestion !== null ? (
+                    <Button
+                      className="rounded-full"
+                      onClick={onStartArchiveConfirmation}
+                      type="button"
+                      variant="outline"
+                    >
+                      接受归档建议
+                    </Button>
+                  ) : null}
                 </>
               )}
             </div>
+
+            {!isEditing && knowledgePoint.status !== "archived" ? (
+              knowledgePoint.archiveSuggestion !== null ? (
+                <Card className="rounded-[1rem] border-[#e3d3c6] bg-[#faf3ee] shadow-none">
+                  <CardContent className="space-y-2 px-4 py-4">
+                    <p className="xidea-kicker text-[var(--xidea-selection-text)]">
+                      Archive Suggestion
+                    </p>
+                    <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                      {knowledgePoint.archiveSuggestion.reason}
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <p className="text-sm leading-6 text-[var(--xidea-stone)]">
+                  当前还没有归档建议。系统会在知识点经过多轮学习与复习、状态足够稳定后再提醒。
+                </p>
+              )
+            ) : null}
 
             {isArchiveConfirmationOpen ? (
               <Card className="rounded-[1rem] border-[#ebd5cc] bg-[#f9efea] shadow-none">
@@ -170,7 +200,8 @@ export function KnowledgePointDetailScreen({
                   <p className="text-sm leading-6 text-[var(--xidea-selection-text)]">
                     {knowledgePoint.status === "archived"
                       ? "确认把这个知识点重新放回复习池吗？恢复后它会重新出现在活跃工作区里。"
-                      : "确认把这个知识点移出活跃池吗？当前会先按归档处理，后续再收敛成“系统建议 -> 用户确认”的正式流。"}
+                      : knowledgePoint.archiveSuggestion?.reason ??
+                        "确认把这个知识点移出活跃池吗？"}
                   </p>
                   <div className="flex flex-wrap gap-3">
                     <Button
@@ -178,7 +209,7 @@ export function KnowledgePointDetailScreen({
                       onClick={onConfirmArchive}
                       type="button"
                     >
-                      {knowledgePoint.status === "archived" ? "确认恢复" : "确认归档"}
+                      {knowledgePoint.status === "archived" ? "确认恢复" : "确认接受建议"}
                     </Button>
                     <Button
                       className="rounded-full"

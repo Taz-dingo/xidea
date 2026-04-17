@@ -1,12 +1,11 @@
 import { useChat } from "@ai-sdk/react";
 import { useCallback, useMemo, useRef } from "react";
-import { learningUnits, projectContext, sourceAssets } from "@/data/demo";
+import { learningUnits, sourceAssets } from "@/data/demo";
 import { getTutorFixtureScenario } from "@/data/tutor-fixtures";
 import {
   buildMockRuntimeSnapshot,
   getRequestSourceAssetIds,
 } from "@/domain/agent-runtime";
-import { getLatestUserDraft } from "@/domain/chat-message";
 import {
   buildEmptyReviewHeatmap,
   buildReviewHeatmap,
@@ -14,7 +13,6 @@ import {
   getLatestIsoDate,
 } from "@/domain/review-heatmap";
 import {
-  buildGeneratedProfileSummary,
   getActionLabel,
   getErrorMessage,
   getLatestReviewEvent,
@@ -54,10 +52,6 @@ export function useSessionAgent({
   const selectedSourceAssetIds = data.selectedSession
     ? data.sessionSourceAssetIds[data.selectedSession.id] ?? []
     : [];
-  const latestUserInput = getLatestUserDraft(
-    data.selectedSession ? data.sessionMessagesById[data.selectedSession.id] ?? [] : [],
-    data.draftPrompt,
-  );
   const seedRuntime = useMemo(
     () => buildMockRuntimeSnapshot(data.initialProfile, runtimeUnit),
     [data.initialProfile, runtimeUnit],
@@ -115,6 +109,19 @@ export function useSessionAgent({
       : selectedSourceAssetIds.length > 0 || data.sessionMaterialTrayOpen[selectedSessionKey] === true;
   const activeSourceAssetsRef = useRef<ReadonlyArray<SourceAsset>>(activeSourceAssets);
   activeSourceAssetsRef.current = activeSourceAssets;
+  const requestProjectContext = useMemo(
+    () => ({
+      name: data.selectedProject.name,
+      goal: data.selectedProject.description,
+      currentThread:
+        data.selectedSession?.summary ??
+        `当前 project 聚焦：${data.selectedProject.topic}`,
+      successSignal: "当前 project 的知识点、学习动作和状态回写能够前后一致。",
+      orchestrationWhy:
+        "这是一条项目型学习链路，应该由系统结合 project context、材料和状态决定下一步。",
+    }),
+    [data.selectedProject.description, data.selectedProject.name, data.selectedProject.topic, data.selectedSession?.summary],
+  );
   const requestSourceAssetIds = useMemo(
     () => getRequestSourceAssetIds(effectiveEntryMode, activeSourceAssets),
     [activeSourceAssets, effectiveEntryMode],
@@ -147,8 +154,6 @@ export function useSessionAgent({
       : selectedSessionKey !== null && data.runningSessionIds[selectedSessionKey] === true;
   const hasPendingActivity =
     hasStructuredRuntime && currentActivity !== null && currentActivityResolution === null;
-  const generatedProfile = buildGeneratedProfileSummary(activeRuntime, latestUserInput);
-  const generatedProfileSummary = generatedProfile.summary;
   const latestReviewedLabel = latestReviewedEvent?.event_at
     ? formatDateLabel(latestReviewedEvent.event_at) ?? "待回读"
     : activeRuntime.state.lastReviewedAt ?? "待回读";
@@ -183,7 +188,7 @@ export function useSessionAgent({
         projectId: data.selectedProject.id,
         sessionId: transportSessionId,
         entryMode: effectiveEntryMode,
-        project: projectContext,
+        project: requestProjectContext,
         getSourceAssets: () => activeSourceAssetsRef.current,
         unit: runtimeUnit,
         getFallbackSnapshot: () =>
@@ -192,7 +197,7 @@ export function useSessionAgent({
         onRunStateChange: (nextIsRunning) =>
           handleTransportRunStateChange(transportSessionId, nextIsRunning),
       }),
-    [activeRuntime, data.selectedProject.id, effectiveEntryMode, handleTransportRunStateChange, handleTransportSnapshot, runtimeUnit, transportSessionId],
+    [activeRuntime, data.selectedProject.id, effectiveEntryMode, handleTransportRunStateChange, handleTransportSnapshot, requestProjectContext, runtimeUnit, transportSessionId],
   );
   const { clearError, error, messages, sendMessage } = useChat({
     id: data.selectedSession?.id ?? data.selectedProject.id ?? "project",
@@ -214,7 +219,7 @@ export function useSessionAgent({
     data,
     error,
     messages,
-    projectContext,
+    projectContext: requestProjectContext,
     runtimeUnit,
     sendMessage,
   });
@@ -257,7 +262,6 @@ export function useSessionAgent({
     displayMessages,
     error,
     errorMessage,
-    generatedProfileSummary,
     ...actions,
     hasPendingActivity,
     hasPersistedState,

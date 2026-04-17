@@ -18,6 +18,7 @@
 ## Reference Docs
 
 - [reference/agent-state-design.md](reference/agent-state-design.md)
+- [reference/learning-engine-backend-integration.md](reference/learning-engine-backend-integration.md)
 - [reference/project-workspace-ui.md](reference/project-workspace-ui.md)
 - [reference/competition-defense-kit.md](reference/competition-defense-kit.md)
 - [reference/product-brief.md](reference/product-brief.md)

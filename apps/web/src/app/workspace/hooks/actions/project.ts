@@ -86,6 +86,11 @@ export function useProjectActions(data: WorkspaceData) {
     data.setIsEditingProjectMeta(true);
   }
 
+  function handleOpenProjectMetaEditor(): void {
+    data.setIsProjectMetaOpen(true);
+    handleStartEditingProjectMeta();
+  }
+
   function handleSaveProjectMeta(): void {
     const nextTopic = data.projectMetaDraft.topic.trim();
     const nextDescription = data.projectMetaDraft.description.trim();
@@ -135,6 +140,7 @@ export function useProjectActions(data: WorkspaceData) {
   return {
     handleCancelCreatingProject: () => data.setIsCreatingProject(false),
     handleCancelEditingProjectMeta,
+    handleOpenProjectMetaEditor,
     handleSaveProject,
     handleSaveProjectMeta,
     handleStartCreatingProject,

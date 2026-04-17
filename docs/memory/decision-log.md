@@ -3,6 +3,103 @@
 只保留"当前仍生效、后续会反复影响协作或实现"的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-17 — 学习 agent 的智能目标对齐 coding agents 的 runtime 方法论，而不是开放域自治
+
+### 决策
+
+Xidea 的学习 agent 在智能目标上，默认对齐 `Codex / Claude Code` 这类 coding agent 的 runtime 方法论和领域内判断质量，但不对齐它们的开放域执行形态。
+稳定约束为：
+
+- 对齐显式状态、上下文预取、tool arbitration、结构化事件、状态回写和 guardrail correction 这些 runtime 能力
+- 对齐“基于证据决定下一步动作”的判断质量，而不是只生成表面自然语言回复
+- 不追求 coding agent 式的开放环境探索、长链任务分解、多步自主执行和通用任务代理能力
+- 学习引擎仍然是垂直领域 agent：目标是“在学习编排领域达到接近成熟 coding agents 的 runtime 完整性”，而不是把产品做成另一个通用 agent 壳
+
+### 原因
+
+- Xidea 需要的是高质量学习编排判断，而不是开放域自动化
+- 直接追 coding agent 的执行形态会把系统拖向过重的自治、权限和环境控制问题，偏离当前产品核心
+- 但如果不借鉴这类 agent 的 runtime discipline，系统又会退化成“有 prompt 的规则引擎”或“会聊天的 tutor”
+
+### 影响
+
+- 后续学习引擎设计优先补齐 project context、tool 边界、结构化 event contract、suggestion contract 和 writeback，而不是优先增加更多花哨学习形式
+- 前后端对 runtime 的评估标准要更多看“判断质量和状态一致性”，而不是看 agent 是否显得足够自主
+- 设计讨论中如果出现“要不要做得像 Codex / Claude Code”，默认回答是：对齐 runtime 方法论，不对齐开放域自治
+
+## 2026-04-17 — 前端不得补 learning-engine judgment 或脑补 backend contract
+
+### 决策
+
+`apps/web` 默认不再补 learning-engine 语义缺口。
+稳定约束为：
+
+- 前端不本地生成 pedagogical judgment、knowledge point create/archive suggestion、off-topic 判定、project learning profile 判断
+- 前端不把 `diagnosis / plan / state-patch` 二次推导成正式的 activity contract、knowledge point suggestion 或其他 backend object
+- 如果后端暂时缺结构化事件，前端允许显式降级展示，但不允许用 heuristic 默默补齐业务语义
+- 所有这类临时降级都必须写进 `docs/status.md` 和 `docs/plan.md`，并带着明确的 backend follow-up
+
+### 原因
+
+- 一旦前端开始补 learning-engine judgment，系统很快会退化成“双轨真相”：agent 负责回复，前端负责真正决定业务语义
+- 这会直接破坏 project context、guardrail、去重、writeback 和 typed event contract 的一致性
+- 当前比赛版需要证明的是“系统在决定怎么学”，而不是“UI 在帮 agent 猜他本来应该说什么”
+
+### 影响
+
+- 当前前端已移除 project chat 本地知识点 suggestion heuristic
+- 当前前端已移除根据 `diagnosis / plan` 合成 activity card 的过渡逻辑；后续 activity 以 backend 结构化事件为准
+- 当前前端已移除根据 runtime 二次生成 project learning profile 摘要的逻辑；画像判断继续由 backend / agent 负责
+- 后续 review 要把“是否在前端偷偷补 learning-engine judgment”作为显式检查项
+
+## 2026-04-17 — `knowledge-point-suggestion` 作为独立 stream event，并配显式 confirm / dismiss API
+
+### 决策
+
+知识点建议的正式 contract 固定为：
+
+- stream 使用独立 `knowledge-point-suggestion` 事件
+- suggestion resolution 使用显式 confirm / dismiss API
+- 不把 suggestion 塞进 `tool-result`、`state-patch` 或自由文本里
+
+### 原因
+
+- suggestion 本身是用户可操作的独立业务对象，不是普通调试性 payload
+- 单独事件能让前端直接插卡、确认、忽略，不需要从别的事件里再猜
+- confirm / dismiss 走显式 API 才能保证幂等、审计和后端持久化一致
+
+### 影响
+
+- `shared-boundary-freeze` 已冻结这条 contract
+- `open-questions` 中关于 suggestion event 形状的未决项可以关闭
+- 后续学习引擎实现默认按独立事件 + resolution API 推进
+
+## 2026-04-17 — 知识点新增 / archive 建议必须由 agent judgment 输出，前端只负责渲染与确认
+
+### 决策
+
+`project chat` 中的知识点新增建议，以及后续同类 archive 建议，默认都由 agent 基于 project context 做判断并输出结构化结果。
+稳定约束为：
+
+- 前端不再作为这类建议的最终判断方
+- 前端可以在 demo 过渡期保留本地 mock / heuristic，但不能把它当成长期 source of truth
+- agent 需要在判断前读取 project memory、special rules、已有 knowledge points、selected materials 和 recent project session context
+- 建议结果应通过结构化事件或同等级 typed payload 输出，而不是只混在自由文本里
+- 用户确认新增 / 忽略 / 接受 archive 建议后，应通过显式 API contract 写回后端持久化对象
+
+### 原因
+
+- 只有 agent 才能稳定拿到 project 级上下文，前端本地规则无法可靠处理去重、主题相关性和 guardrail
+- 如果建议逻辑留在前端，会形成“agent 负责回复、前端负责真正判断”的双轨系统，后续 contract 会持续漂移
+- 这条能力本身就是“系统决定你现在应该沉淀什么知识点”的核心证明点，不应由 UI 层替代
+
+### 影响
+
+- 学习引擎后续要补 `KnowledgePointSuggestion` 或同等级 schema，并进入流式事件 contract
+- repository 后续要补 project knowledge point pool、project memory / rules 等持久化对象，至少满足去重和确认写回
+- 前端后续要把当前本地 heuristic 迁移为消费 agent suggestion 事件
+- off-topic guardrail、知识点去重和 archive 建议规则要统一收敛到 agent / backend 边界
+
 ## 2026-04-16 — 开发前先匹配对应 skill，前端全局状态默认 Zustand
 
 ### 决策

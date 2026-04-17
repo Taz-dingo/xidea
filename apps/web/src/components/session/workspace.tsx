@@ -23,7 +23,6 @@ import type {
   SessionItem,
   WorkspaceSection,
 } from "@/domain/project-workspace";
-import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import type { LearningActivitySubmission, SourceAsset } from "@/domain/types";
 import type { TutorFixtureScenario } from "@/data/tutor-fixtures";
 import type { UIMessage } from "ai";
@@ -42,7 +41,6 @@ export function SessionWorkspace({
   displayMessages,
   draftPrompt,
   errorMessage,
-  generatedProfileSummary,
   hasPendingActivity,
   hasPersistedState,
   hasStructuredRuntime,
@@ -57,7 +55,9 @@ export function SessionWorkspace({
   onChangeDraftPrompt,
   onCloseSession,
   onDisableTutorFixture,
+  onEditKnowledgePoint,
   onOpenKnowledgePoint,
+  onOpenProjectMetaEditor,
   onOpenSession,
   onSelectTutorFixture,
   onSkipActivity,
@@ -70,7 +70,6 @@ export function SessionWorkspace({
   projectStats,
   relatedKnowledgePoints,
   requestSourceAssetIds,
-  reviewHeatmap,
   selectedProject,
   selectedProjectMaterials,
   selectedSession,
@@ -94,7 +93,6 @@ export function SessionWorkspace({
   displayMessages: ReadonlyArray<UIMessage>;
   draftPrompt: string;
   errorMessage: string | null;
-  generatedProfileSummary: string;
   hasPendingActivity: boolean;
   hasPersistedState: boolean;
   hasStructuredRuntime: boolean;
@@ -109,7 +107,9 @@ export function SessionWorkspace({
   onChangeDraftPrompt: (value: string) => void;
   onCloseSession: () => void;
   onDisableTutorFixture: () => void;
+  onEditKnowledgePoint: (pointId: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
+  onOpenProjectMetaEditor: () => void;
   onOpenSession: (sessionId: string) => void;
   onSelectTutorFixture: (fixture: TutorFixtureScenario) => void;
   onSkipActivity: () => void;
@@ -122,7 +122,6 @@ export function SessionWorkspace({
   projectStats: ProjectStats;
   relatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
   requestSourceAssetIds: ReadonlyArray<string>;
-  reviewHeatmap: ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>>;
   selectedProject: ProjectItem;
   selectedProjectMaterials: ReadonlyArray<SourceAsset>;
   selectedSession: SessionItem;
@@ -226,6 +225,7 @@ export function SessionWorkspace({
           isMaterialsTrayOpen={isMaterialsTrayOpen}
           latestAssistantMessageId={latestAssistantMessageId}
           onChangeDraftPrompt={onChangeDraftPrompt}
+          onOpenProjectMetaEditor={onOpenProjectMetaEditor}
           onSkipActivity={onSkipActivity}
           onSubmitActivity={onSubmitActivity}
           onSubmitPrompt={onSubmitPrompt}
@@ -234,6 +234,7 @@ export function SessionWorkspace({
           onUnsetSourceAsset={onUnsetSourceAsset}
           selectedProjectMaterials={selectedProjectMaterials}
           selectedSessionId={selectedSession.id}
+          selectedSessionType={selectedSession.type}
           selectedSourceAssetIds={selectedSourceAssetIds}
           submitDisabled={submitDisabled}
         />
@@ -244,7 +245,6 @@ export function SessionWorkspace({
         activeReviewInspector={activeReviewInspector}
         activeRuntime={activeRuntime}
         activeTutorFixtureId={activeTutorFixtureId}
-        generatedProfileSummary={generatedProfileSummary}
         hasPersistedState={hasPersistedState}
         hasStructuredRuntime={hasStructuredRuntime}
         isBlankSession={isBlankSession}
@@ -253,11 +253,11 @@ export function SessionWorkspace({
         latestReviewedLabel={latestReviewedLabel}
         nextReviewLabel={nextReviewLabel}
         onDisableTutorFixture={onDisableTutorFixture}
+        onEditKnowledgePoint={onEditKnowledgePoint}
         onOpenKnowledgePoint={onOpenKnowledgePoint}
         onSelectTutorFixture={onSelectTutorFixture}
         relatedKnowledgePoints={relatedKnowledgePoints}
         requestSourceAssetIds={requestSourceAssetIds}
-        reviewHeatmap={reviewHeatmap}
         selectedProject={selectedProject}
         selectedSessionStatus={selectedSession.status}
         selectedSourceAssetIds={selectedSourceAssetIds}

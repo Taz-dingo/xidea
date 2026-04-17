@@ -16,6 +16,10 @@ export type KnowledgePointStatus =
   | "active_review"
   | "archived";
 
+export interface KnowledgePointArchiveSuggestion {
+  readonly reason: string;
+}
+
 export interface ProjectItem {
   readonly id: string;
   readonly name: string;
@@ -47,6 +51,7 @@ export interface KnowledgePointItem {
   readonly nextReviewLabel: string | null;
   readonly updatedAt: string;
   readonly sourceAssetIds: ReadonlyArray<string>;
+  readonly archiveSuggestion: KnowledgePointArchiveSuggestion | null;
 }
 
 export interface ProjectStats {
@@ -95,5 +100,5 @@ export function getNextSuggestedAction(
     return `开始学习 ${unlearnedCount} 个未学知识点`;
   }
 
-  return "继续当前 project session";
+  return "继续当前 project";
 }

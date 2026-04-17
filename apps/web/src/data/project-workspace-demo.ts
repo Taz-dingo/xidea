@@ -16,6 +16,7 @@ const knowledgePointMetaByUnitId: Record<string, KnowledgePointSeed> = {
     nextReviewLabel: "今日到期",
     updatedAt: "昨天",
     sourceAssetIds: ["asset-1", "asset-3"],
+    archiveSuggestion: null,
   },
   "unit-2": {
     status: "active_unlearned",
@@ -24,14 +25,18 @@ const knowledgePointMetaByUnitId: Record<string, KnowledgePointSeed> = {
     nextReviewLabel: null,
     updatedAt: "今天",
     sourceAssetIds: ["asset-1", "asset-2"],
+    archiveSuggestion: null,
   },
   "unit-3": {
-    status: "active_learning",
-    mastery: 52,
-    stageLabel: "学习中",
-    nextReviewLabel: "明天复习",
-    updatedAt: "2 天前",
+    status: "active_review",
+    mastery: 84,
+    stageLabel: "待复习",
+    nextReviewLabel: "可归档",
+    updatedAt: "今天",
     sourceAssetIds: ["asset-2", "asset-3"],
+    archiveSuggestion: {
+      reason: "这个知识点最近几轮已经能稳定用于项目表达，系统建议先移出活跃池，后续按需要再恢复。",
+    },
   },
 };
 
@@ -64,6 +69,7 @@ export const initialKnowledgePoints: ReadonlyArray<KnowledgePointItem> =
       nextReviewLabel: meta?.nextReviewLabel ?? null,
       updatedAt: meta?.updatedAt ?? "刚刚",
       sourceAssetIds: meta?.sourceAssetIds ?? [],
+      archiveSuggestion: meta?.archiveSuggestion ?? null,
     };
   });
 
@@ -97,5 +103,15 @@ export const initialSessions: ReadonlyArray<SessionItem> = [
     summary: "把设计取舍转成比赛答辩可讲的表达结构。",
     updatedAt: "2d",
     status: "进行中",
+  },
+  {
+    id: "session-review-context-window",
+    projectId,
+    type: "review",
+    knowledgePointId: "unit-3",
+    title: "复习：上下文构造回拉",
+    summary: "确认这个知识点已经能稳定服务于答辩表达与设计判断。",
+    updatedAt: "今天",
+    status: "稳定",
   },
 ];
