@@ -212,6 +212,14 @@ export function KnowledgePointCard({
             {point.nextReviewLabel}
           </Badge>
         ) : null}
+        {point.archiveSuggestion !== null ? (
+          <Badge
+            className="border-[#d8c9b9] bg-[#f6ede6] px-2 py-1 text-[12px] text-[#915d3a] shadow-none"
+            variant="outline"
+          >
+            系统建议归档
+          </Badge>
+        ) : null}
         <Badge
           className={`border px-2 py-1 text-[12px] shadow-none ${getUpdatedAtAccent(point.updatedAt)}`}
           variant="outline"

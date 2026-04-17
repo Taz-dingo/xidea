@@ -23,7 +23,6 @@ import type {
   SessionItem,
   WorkspaceSection,
 } from "@/domain/project-workspace";
-import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import type { LearningActivitySubmission, SourceAsset } from "@/domain/types";
 import type { TutorFixtureScenario } from "@/data/tutor-fixtures";
 import type { UIMessage } from "ai";
@@ -70,7 +69,6 @@ export function SessionWorkspace({
   projectStats,
   relatedKnowledgePoints,
   requestSourceAssetIds,
-  reviewHeatmap,
   selectedProject,
   selectedProjectMaterials,
   selectedSession,
@@ -122,7 +120,6 @@ export function SessionWorkspace({
   projectStats: ProjectStats;
   relatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
   requestSourceAssetIds: ReadonlyArray<string>;
-  reviewHeatmap: ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>>;
   selectedProject: ProjectItem;
   selectedProjectMaterials: ReadonlyArray<SourceAsset>;
   selectedSession: SessionItem;
@@ -257,7 +254,6 @@ export function SessionWorkspace({
         onSelectTutorFixture={onSelectTutorFixture}
         relatedKnowledgePoints={relatedKnowledgePoints}
         requestSourceAssetIds={requestSourceAssetIds}
-        reviewHeatmap={reviewHeatmap}
         selectedProject={selectedProject}
         selectedSessionStatus={selectedSession.status}
         selectedSourceAssetIds={selectedSourceAssetIds}

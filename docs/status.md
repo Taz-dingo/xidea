@@ -156,6 +156,8 @@
 - `apps/web` 首页左侧 `All Projects / Recent / Due Review / Archived` 现已接成真实筛选，不再只是静态占位按钮；首页 `Continue` 卡会跟随当前筛选结果切换
 - `apps/web` 右栏已补上 `Review Engine` 监控区，当前会直接展示近 5 周复习热力图、最近复盘和下次安排，不再只保留内部 helper 未落到 UI
 - `apps/web` 的 `Knowledge Point Detail` 已补复习热力图，并把 archive 从一键切状态收成确认后执行的交互，先让知识点生命周期更接近正式产品心智
+- `apps/web` 已将 session 右栏从监控式 inspector 收成更轻的 knowledge-point context rail，主叙事改为“当前相关知识点 / 本轮上下文 / 复习提示 / 材料上下文”，避免正式 demo 继续被监控面板抢走注意力
+- `apps/web` 已将 knowledge point archive 从“通用手动按钮”收口为“系统建议归档 -> 用户确认接受建议”，浏览卡与详情页都会显式展示归档建议；未收到建议前不再默认给出归档入口
 
 ### In Progress
 

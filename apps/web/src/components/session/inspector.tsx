@@ -5,14 +5,12 @@ import { getKnowledgePointAccent } from "@/components/workspace/core";
 import {
   CompactNote,
   MonitorSection,
-  ReviewHeatmap,
 } from "@/components/workspace/monitor";
 import type {
   AgentAssetSummary,
   AgentReviewInspector,
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
-import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import type {
   KnowledgePointItem,
   ProjectItem,
@@ -37,7 +35,6 @@ export function SessionInspector({
   onSelectTutorFixture,
   relatedKnowledgePoints,
   requestSourceAssetIds,
-  reviewHeatmap,
   selectedProject,
   selectedSessionStatus,
   selectedSourceAssetIds,
@@ -61,7 +58,6 @@ export function SessionInspector({
   onSelectTutorFixture: (fixture: TutorFixtureScenario) => void;
   relatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
   requestSourceAssetIds: ReadonlyArray<string>;
-  reviewHeatmap: ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>>;
   selectedProject: ProjectItem;
   selectedSessionStatus: string;
   selectedSourceAssetIds: ReadonlyArray<string>;
@@ -70,11 +66,85 @@ export function SessionInspector({
 }): ReactElement {
   return (
     <div className="space-y-4">
+      <MonitorSection title="当前相关知识点">
+        <div className="space-y-3">
+          {relatedKnowledgePoints.map((point) => (
+            <button
+              className="w-full rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3 text-left transition-colors hover:border-[var(--xidea-selection-border)]"
+              key={point.id}
+              onClick={() => onOpenKnowledgePoint(point.id)}
+              type="button"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-[var(--xidea-near-black)]">{point.title}</p>
+                <Badge
+                  className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
+                  variant="outline"
+                >
+                  {point.stageLabel}
+                </Badge>
+              </div>
+              <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">{point.description}</p>
+              <p className="mt-2 text-[12px] text-[var(--xidea-stone)]">{point.nextReviewLabel ?? "等待下一次调度"}</p>
+            </button>
+          ))}
+        </div>
+      </MonitorSection>
+
+      <MonitorSection title="本轮上下文">
+        <CompactNote label="Project" value={selectedProject.name} />
+        <CompactNote label="Session" value={selectedSessionStatus} />
+        <CompactNote label="Mode" value={hasStructuredRuntime ? activeRuntime.decision.title : "待生成"} />
+        <CompactNote label="Knowledge" value={selectedUnitTitle ?? "未指定"} />
+        <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
+          {hasPersistedState
+            ? generatedProfileSummary
+            : "当前还没有回读到真实 learner state，这一栏会在 session 有真实交互后变得更具体。"}
+        </p>
+      </MonitorSection>
+
+      <MonitorSection title="复习提示">
+        <CompactNote label="Last" value={latestReviewedLabel} />
+        <CompactNote label="Next" value={nextReviewLabel} />
+        <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
+          {activeReviewInspector === null
+            ? "当前 session 还没有回读到真实复习轨迹；完成一轮交互后会继续刷新。"
+            : activeReviewInspector.summary}
+        </p>
+      </MonitorSection>
+
+      <MonitorSection title="材料上下文">
+        <CompactNote
+          label="Selected"
+          value={
+            isBlankSession
+              ? "0 assets"
+              : selectedSourceAssetIds.length > 0
+                ? `${requestSourceAssetIds.length} attached`
+                : `${requestSourceAssetIds.length} linked`
+          }
+        />
+        <CompactNote label="Context" value={activeAssetSummary?.summary ?? "等待读取真实材料上下文"} />
+        {activeAssetSummary?.keyConcepts.length ? (
+          <div className="flex flex-wrap gap-2">
+            {activeAssetSummary.keyConcepts.slice(0, 4).map((concept) => (
+              <Badge
+                className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
+                key={concept}
+                variant="outline"
+              >
+                {concept}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+      </MonitorSection>
+
       {isDevEnvironment ? (
-        <MonitorSection accent="Mock" title="Tutor Fixtures">
+        <MonitorSection accent="Dev Only" title="Tutor Fixtures">
           <div className="space-y-2">
             <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-              用前端本地场景直接打磨 activity 插卡、gating 和失败回滚，不用起后端。
+              这块只服务前端交互打磨，不属于正式 demo 叙事。
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -102,94 +172,6 @@ export function SessionInspector({
           </div>
         </MonitorSection>
       ) : null}
-
-      <MonitorSection title="当前相关知识点">
-        <div className="space-y-3">
-          {relatedKnowledgePoints.map((point) => (
-            <button
-              className="w-full rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3 text-left transition-colors hover:border-[var(--xidea-selection-border)]"
-              key={point.id}
-              onClick={() => onOpenKnowledgePoint(point.id)}
-              type="button"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-[var(--xidea-near-black)]">{point.title}</p>
-                <Badge
-                  className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
-                  variant="outline"
-                >
-                  {point.stageLabel}
-                </Badge>
-              </div>
-              <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">{point.description}</p>
-              <p className="mt-2 text-[12px] text-[var(--xidea-stone)]">{point.nextReviewLabel ?? "等待下一次调度"}</p>
-            </button>
-          ))}
-        </div>
-      </MonitorSection>
-
-      <MonitorSection
-        accent={
-          activeRuntime.source === "live-agent"
-            ? "Live"
-            : activeRuntime.source === "hydrated-state"
-              ? "Hydrated"
-              : "Mock"
-        }
-        title="Session Summary"
-      >
-        <CompactNote label="Project" value={selectedProject.name} />
-        <CompactNote label="Session" value={selectedSessionStatus} />
-        <CompactNote label="Mode" value={hasStructuredRuntime ? activeRuntime.decision.title : "待生成"} />
-        <CompactNote
-          label="State"
-          value={hasPersistedState ? activeRuntime.stateSource : "当前 session 还没有真实 learner state。"}
-        />
-        {hasPersistedState ? (
-          <div className="rounded-[0.95rem] bg-[var(--xidea-selection)] px-3 py-3 text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-            {generatedProfileSummary}
-          </div>
-        ) : null}
-      </MonitorSection>
-
-      <MonitorSection title="Review Engine">
-        <ReviewHeatmap weeks={reviewHeatmap} />
-        <CompactNote label="Last" value={latestReviewedLabel} />
-        <CompactNote label="Next" value={nextReviewLabel} />
-        <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
-          {activeReviewInspector === null
-            ? "当前 session 还没有回读到真实复习轨迹；完成一轮交互后会继续刷新。"
-            : "热力图会跟随 Review Engine 的安排与已完成事件一起更新。"}
-        </p>
-      </MonitorSection>
-
-      <MonitorSection title="Materials">
-        <CompactNote
-          label="Selected"
-          value={
-            isBlankSession
-              ? "0 assets"
-              : selectedSourceAssetIds.length > 0
-                ? `${requestSourceAssetIds.length} attached`
-                : `${requestSourceAssetIds.length} linked`
-          }
-        />
-        <CompactNote label="Knowledge" value={selectedUnitTitle ?? "未指定"} />
-        <CompactNote label="Context" value={activeAssetSummary?.summary ?? "等待读取真实材料上下文"} />
-        {activeAssetSummary?.keyConcepts.length ? (
-          <div className="flex flex-wrap gap-2">
-            {activeAssetSummary.keyConcepts.slice(0, 4).map((concept) => (
-              <Badge
-                className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
-                key={concept}
-                variant="outline"
-              >
-                {concept}
-              </Badge>
-            ))}
-          </div>
-        ) : null}
-      </MonitorSection>
     </div>
   );
 }

@@ -265,7 +265,6 @@ export function WorkspacePage(): ReactElement {
                   projectStats={model.projectStats}
                   relatedKnowledgePoints={model.relatedKnowledgePoints}
                   requestSourceAssetIds={session.requestSourceAssetIds}
-                  reviewHeatmap={session.reviewHeatmap}
                   selectedProject={data.selectedProject}
                   selectedProjectMaterials={data.selectedProjectMaterials}
                   selectedProjectSessions={data.selectedProjectSessions}

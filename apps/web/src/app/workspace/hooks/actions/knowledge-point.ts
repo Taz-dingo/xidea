@@ -12,6 +12,7 @@ export function useKnowledgePointActions(data: WorkspaceData) {
               stageLabel: point.status === "archived" ? "待复习" : "已归档",
               nextReviewLabel:
                 point.status === "archived" ? "等待重新安排" : null,
+              archiveSuggestion: null,
               updatedAt: "刚刚",
             }
           : point,
