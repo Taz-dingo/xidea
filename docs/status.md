@@ -160,6 +160,7 @@
 - `apps/web` 已将 knowledge point archive 从“通用手动按钮”收口为“系统建议归档 -> 用户确认接受建议”，浏览卡与详情页都会显式展示归档建议；未收到建议前不再默认给出归档入口
 - `apps/web` 已在 `project session` 中补上“知识点建议新增 -> 用户确认新增”的前端 demo 流：project chat 发送后会生成候选知识点卡片，用户确认后再正式加入当前 project 的 knowledge point 池
 - `apps/web` 已在 `project session` 顶部补上 `topic / rules` 快捷入口，用户在会话中就能直接打开 `Project Meta` 面板，不必退回浏览态再改 project 叙事
+- `apps/web` 已在 session 右侧的相关知识点卡片上补上“查看 / 编辑”双入口，project chat 中涉及的知识点现在可以直接进入详情或编辑态，补齐“知识点轻量编辑”路径
 
 ### In Progress
 

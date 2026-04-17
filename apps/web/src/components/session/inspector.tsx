@@ -1,6 +1,8 @@
 import type { ReactElement } from "react";
+import { PenSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { getKnowledgePointAccent } from "@/components/workspace/core";
 import {
   CompactNote,
@@ -31,6 +33,7 @@ export function SessionInspector({
   latestReviewedLabel,
   nextReviewLabel,
   onDisableTutorFixture,
+  onEditKnowledgePoint,
   onOpenKnowledgePoint,
   onSelectTutorFixture,
   relatedKnowledgePoints,
@@ -54,6 +57,7 @@ export function SessionInspector({
   latestReviewedLabel: string;
   nextReviewLabel: string;
   onDisableTutorFixture: () => void;
+  onEditKnowledgePoint: (pointId: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
   onSelectTutorFixture: (fixture: TutorFixtureScenario) => void;
   relatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
@@ -69,24 +73,53 @@ export function SessionInspector({
       <MonitorSection title="当前相关知识点">
         <div className="space-y-3">
           {relatedKnowledgePoints.map((point) => (
-            <button
-              className="w-full rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3 text-left transition-colors hover:border-[var(--xidea-selection-border)]"
+            <Card
+              className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none"
               key={point.id}
-              onClick={() => onOpenKnowledgePoint(point.id)}
-              type="button"
             >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-[var(--xidea-near-black)]">{point.title}</p>
-                <Badge
-                  className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
-                  variant="outline"
-                >
-                  {point.stageLabel}
-                </Badge>
-              </div>
-              <p className="mt-2 text-[13px] leading-6 text-[var(--xidea-charcoal)]">{point.description}</p>
-              <p className="mt-2 text-[12px] text-[var(--xidea-stone)]">{point.nextReviewLabel ?? "等待下一次调度"}</p>
-            </button>
+              <CardContent className="space-y-3 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                    {point.title}
+                  </p>
+                  <Badge
+                    className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
+                    variant="outline"
+                  >
+                    {point.stageLabel}
+                  </Badge>
+                </div>
+                <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">
+                  {point.description}
+                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[12px] text-[var(--xidea-stone)]">
+                    {point.nextReviewLabel ?? "等待下一次调度"}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      className="h-8 rounded-full px-3"
+                      onClick={() => onOpenKnowledgePoint(point.id)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      查看
+                    </Button>
+                    <Button
+                      className="h-8 rounded-full px-3"
+                      onClick={() => onEditKnowledgePoint(point.id)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <PenSquare className="h-3.5 w-3.5" />
+                      编辑
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </MonitorSection>

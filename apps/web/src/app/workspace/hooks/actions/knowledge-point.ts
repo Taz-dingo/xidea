@@ -1,6 +1,28 @@
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useKnowledgePointActions(data: WorkspaceData) {
+  function handleOpenKnowledgePointEditor(pointId: string): void {
+    const targetPoint =
+      data.knowledgePoints.find((point) => point.id === pointId) ?? null;
+
+    if (targetPoint === null) {
+      return;
+    }
+
+    data.setSelectedKnowledgePointId(targetPoint.id);
+    data.setSelectedSessionId("");
+    data.setArchiveConfirmationPointId(null);
+    data.setIsEditingProjectMeta(false);
+    data.setIsProjectMetaOpen(false);
+    data.setKnowledgePointDraft({
+      title: targetPoint.title,
+      description: targetPoint.description,
+    });
+    data.setIsEditingKnowledgePoint(true);
+    data.setPendingSessionIntent(null);
+    data.setScreen("detail");
+  }
+
   function handleAcceptKnowledgePointSuggestion(sessionId: string): void {
     const suggestion = data.sessionKnowledgePointSuggestions[sessionId] ?? null;
 
@@ -107,6 +129,7 @@ export function useKnowledgePointActions(data: WorkspaceData) {
       });
       data.setIsEditingKnowledgePoint(false);
     },
+    handleOpenKnowledgePointEditor,
     handleSaveKnowledgePoint,
     handleDismissKnowledgePointSuggestion: (sessionId: string) =>
       data.setSessionKnowledgePointSuggestions((current) => ({

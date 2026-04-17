@@ -260,6 +260,7 @@ export function WorkspacePage(): ReactElement {
                   onAcceptKnowledgePointSuggestion={() =>
                     actions.handleAcceptKnowledgePointSuggestion(data.selectedSession!.id)
                   }
+                  onEditKnowledgePoint={actions.handleOpenKnowledgePointEditor}
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
                   onOpenProjectMetaEditor={actions.handleOpenProjectMetaEditor}
                   onOpenSession={(sessionId) => {

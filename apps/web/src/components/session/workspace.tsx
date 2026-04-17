@@ -60,6 +60,7 @@ export function SessionWorkspace({
   onCloseSession,
   onDisableTutorFixture,
   onAcceptKnowledgePointSuggestion,
+  onEditKnowledgePoint,
   onOpenKnowledgePoint,
   onOpenProjectMetaEditor,
   onOpenSession,
@@ -115,6 +116,7 @@ export function SessionWorkspace({
   onCloseSession: () => void;
   onDisableTutorFixture: () => void;
   onAcceptKnowledgePointSuggestion: () => void;
+  onEditKnowledgePoint: (pointId: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
   onOpenProjectMetaEditor: () => void;
   onOpenSession: (sessionId: string) => void;
@@ -265,6 +267,7 @@ export function SessionWorkspace({
         latestReviewedLabel={latestReviewedLabel}
         nextReviewLabel={nextReviewLabel}
         onDisableTutorFixture={onDisableTutorFixture}
+        onEditKnowledgePoint={onEditKnowledgePoint}
         onOpenKnowledgePoint={onOpenKnowledgePoint}
         onSelectTutorFixture={onSelectTutorFixture}
         relatedKnowledgePoints={relatedKnowledgePoints}
