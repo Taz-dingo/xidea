@@ -38,6 +38,11 @@ Read these files in order:
 Only read older or broader docs under `docs/reference/` like `product-brief.md`, `competition-defense-kit.md`, `architecture.md`, and `agent-state-design.md` if the current task truly needs them.
 Only read `docs/archive/` when historical context is truly needed.
 
+If the task is primarily in the learning-engine workstream or touches the backend/frontend agent contract, also read:
+
+12. [../../../docs/process/shared-boundary-freeze.md](../../../docs/process/shared-boundary-freeze.md)
+13. [../../../docs/reference/learning-engine-backend-integration.md](../../../docs/reference/learning-engine-backend-integration.md)
+
 ## Expected Output After Reading
 
 After reading, the agent should be able to state:

@@ -52,6 +52,7 @@
     - project context 预取边界：project memory、special rules、已有 knowledge points、selected materials、recent session context
     - `knowledge-point-suggestion` 的 payload、去重和 off-topic 边界
     - 用户确认新增 / 忽略 / 接受 archive 建议时的 API contract
+  - 参考：`docs/reference/learning-engine-backend-integration.md`
 - [ ] 定义 project-level learning profile 最小 schema，并接入后续编排上下文
   - owner: 学习引擎 owner
   - 范围：
@@ -142,8 +143,9 @@
    - 基于启发式规则更新 `memoryStrength / nextReviewAt`
    - 不实现完整 SRS / FSRS 算法
 5. `apps/agent` 暴露 FastAPI streaming endpoint
-   - 过渡态可继续兼容 `diagnosis / text-delta / plan / state-patch / done`
-   - 下一步补结构化 `activity / tool-result / knowledge-point-suggestion / state-patch / done` 事件，逐步替代固定 `plan` 展示
+  - 过渡态可继续兼容 `diagnosis / text-delta / plan / state-patch / done`
+  - 下一步补结构化 `activity / tool-result / knowledge-point-suggestion / state-patch / done` 事件，逐步替代固定 `plan` 展示
+  - 参考：`docs/reference/learning-engine-backend-integration.md`
 6. `apps/web` 接入真实 agent API
    - 使用 Vercel AI SDK 管理 message stream
    - 当前已能消费 diagnosis、plan、state-patch；activity 现已停止由前端归一化补齐，后续以 session-aware backend event contract 为准

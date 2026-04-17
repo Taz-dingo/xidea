@@ -11,8 +11,6 @@
 
 - 中转站 API 单次请求 27-33s（3 次串行调用），是否需要优化模型选择或调用并行度
   - owner: 学习引擎 owner
-- `knowledge-point-suggestion` 应作为独立 stream event，还是先并入 `tool-result` / `state-patch` 过渡输出
-  - owner: 学习引擎 owner / 前端 owner
 
 ## Frontend
 

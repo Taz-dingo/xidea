@@ -162,6 +162,7 @@
 - `apps/web` 已在 session 右侧的相关知识点卡片上补上“查看 / 编辑”双入口，project chat 中涉及的知识点现在可以直接进入详情或编辑态，补齐“知识点轻量编辑”路径
 - `apps/web` 已移除 `project chat` 的本地知识点 suggestion heuristic；当前等待 backend 输出正式 `knowledge-point-suggestion` 事件后再恢复这条能力
 - `apps/web` 已移除把 `diagnosis / plan` 归一化成 activity card 的过渡逻辑；当前学习动作只消费 backend 显式 `activity` 事件
+- 已补一份 backend / agent 实施文档，明确当前 web 对接所需接口、stream 事件、repository 扩展和 acceptance checklist，供新开的学习引擎 session 直接照着实现：`docs/reference/learning-engine-backend-integration.md`
 
 ### In Progress
 

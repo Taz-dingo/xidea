@@ -126,6 +126,7 @@ SSE 目标事件集合冻结为：
 
 - `text-delta`
 - `activity`
+- `knowledge-point-suggestion`
 - `tool-result`
 - `state-patch`
 - `done`
@@ -166,6 +167,33 @@ payload 结构固定为：
 - `payload`
 - `meta: Record<string, unknown>`
 
+### `knowledge-point-suggestion`
+
+事件名固定为 `knowledge-point-suggestion`。
+payload 结构固定为：
+
+```json
+{
+  "event": "knowledge-point-suggestion",
+  "run_id": "run_xxx",
+  "session_id": "session_xxx",
+  "suggestions": []
+}
+```
+
+`KnowledgePointSuggestion` 最小 schema：
+
+- `id`
+- `kind: create | archive`
+- `project_id`
+- `session_id`
+- `knowledge_point_id?`
+- `title`
+- `description`
+- `reason`
+- `source_material_refs: string[]`
+- `status: pending | accepted | dismissed`
+
 ### `done`
 
 `done` 不要求一定带最终文本回复，但必须带收尾所需元信息。
@@ -183,6 +211,8 @@ payload 结构固定为：
 - 第一版即使只发 1 张卡，也走 `activities[]`
 - 第一版选择题 activity 至少要有 `id / kind / knowledge_point_id / prompt / options / required / submit_label`
 - `tool-result` 只发结构化低噪声结果，不发原始内部 dump
+- `knowledge-point-suggestion` 作为独立事件存在，不并入 `tool-result` 或 `state-patch`
+- 第一版允许只发单条 suggestion，但事件层统一走 `suggestions[]`
 
 ## 3. Activity Submission Contract
 
@@ -221,6 +251,7 @@ payload 结构固定为：
 - `ProjectMemory`
 - `ReviewState`
 - `ReviewEvent`
+- `KnowledgePointSuggestion`
 
 ### Boundary Notes
 
@@ -231,10 +262,31 @@ payload 结构固定为：
 - `ProjectMaterial` 存 project 级长期材料池
 - `SessionAttachment` 存 session 与材料的挂载关系
 - `SessionMessage` 只存消息，不承担业务状态
+- `KnowledgePointSuggestion` 存待确认的新增 / archive 建议及其处理状态
 - `run_id` 是协议级共享概念，不要求作为长期主对象落库
 - `ToolResult` 默认不作为长期主对象持久化，除非后续明确需要回放或审计
 
-## 5. Page Information Architecture
+## 5. Suggestion Resolution Contract
+
+`knowledge-point-suggestion` 的确认与忽略不走自由文本消息，先冻结为显式 API：
+
+- `POST /projects/{project_id}/knowledge-point-suggestions/{suggestion_id}/confirm`
+- `POST /projects/{project_id}/knowledge-point-suggestions/{suggestion_id}/dismiss`
+
+确认后最小返回：
+
+- `suggestion`
+- `knowledge_point?`
+- `knowledge_point_state?`
+
+### Frozen Conclusions
+
+- `confirm` / `dismiss` 必须幂等
+- `create` suggestion 确认后写入 `KnowledgePoint` 与对应 `KnowledgePointState`
+- `archive` suggestion 确认后更新已有 `KnowledgePoint` / `KnowledgePointState`
+- 不允许由前端直接写 knowledge point pool 来绕过 suggestion resolution API
+
+## 6. Page Information Architecture
 
 页面结构正式冻结为：
 
@@ -249,7 +301,7 @@ payload 结构固定为：
 - detail 是独立页，不是常驻侧栏或抽屉
 - `project chat` 是 `Project Workspace` 里的一个 `project` session，不是单独入口
 
-## 6. Project Creation Flow
+## 7. Project Creation Flow
 
 输入冻结为：
 
@@ -272,7 +324,7 @@ payload 结构固定为：
 - 同步生成 project memory 和 learning profile
 - AI 自动找资料不作为主路径
 
-## 7. Knowledge Point Lifecycle
+## 8. Knowledge Point Lifecycle
 
 来源先冻结为：
 
@@ -294,7 +346,7 @@ payload 结构固定为：
 - archive 先走“系统建议 + 用户确认”
 - archive 后允许恢复
 
-## 8. Off-Topic Guardrail
+## 9. Off-Topic Guardrail
 
 产品规则先冻结为：
 
@@ -304,7 +356,7 @@ payload 结构固定为：
 - 不新增 `KnowledgePoint`
 - 不触发学习或复习 `activity`
 
-## 9. Consolidation Entry
+## 10. Consolidation Entry
 
 当前只冻结演示策略：
 
@@ -320,7 +372,7 @@ payload 结构固定为：
 - `KnowledgePointState` 承担点级动态学习状态
 - 新增 `ProjectMaterial / SessionAttachment` 作为正式共享材料模型
 - `ProjectMemory` 冻结为 project 级长期摘要对象
-- SSE 正式目标切到 `text-delta / activity(activities[]) / tool-result / state-patch / done`
+- SSE 正式目标切到 `text-delta / activity(activities[]) / knowledge-point-suggestion(suggestions[]) / tool-result / state-patch / done`
 - `Activity / ToolResult` 冻结最小 schema
 - `run_id` 升成正式共享运行态概念
 - 页面正式冻结为 `App Home -> Project Workspace -> Knowledge Point Detail`
