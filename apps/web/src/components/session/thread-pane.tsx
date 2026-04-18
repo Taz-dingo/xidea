@@ -10,14 +10,41 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { getMessageText } from "@/domain/chat-message";
+import { getMessageText, sanitizeVisibleAssistantText } from "@/domain/chat-message";
 import type { ActivityResolution } from "@/domain/project-session-runtime";
-import type { LearningActivitySubmission, SourceAsset } from "@/domain/types";
+import type {
+  LearningActivityAttempt,
+  LearningActivitySubmission,
+  SourceAsset,
+} from "@/domain/types";
 import type { RuntimeSnapshot } from "@/domain/agent-runtime";
+
+function SessionStreamingStatus({
+  label,
+}: {
+  label: string;
+}): ReactElement {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-1.5 text-[12px] text-[var(--xidea-stone)]">
+      <span>{label}</span>
+      <span className="flex items-center gap-1">
+        {[0, 1, 2].map((index) => (
+          <span
+            className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--xidea-terracotta)]/70"
+            key={index}
+            style={{ animationDelay: `${index * 0.15}s` }}
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
 
 export function SessionThreadPane({
   activeRuntime,
   activeSourceAssets,
+  activityInputDisabled,
+  composerDisabled,
   currentActivities,
   currentActivity,
   currentActivityKey,
@@ -42,10 +69,11 @@ export function SessionThreadPane({
   selectedSessionId,
   selectedSessionType,
   selectedSourceAssetIds,
-  submitDisabled,
 }: {
   activeRuntime: RuntimeSnapshot;
   activeSourceAssets: ReadonlyArray<SourceAsset>;
+  activityInputDisabled: boolean;
+  composerDisabled: boolean;
   currentActivities: RuntimeSnapshot["activities"];
   currentActivity: RuntimeSnapshot["activity"];
   currentActivityKey: string | null;
@@ -60,7 +88,7 @@ export function SessionThreadPane({
   latestAssistantMessageId: string | null;
   onChangeDraftPrompt: (value: string) => void;
   onOpenProjectMetaEditor: () => void;
-  onSkipActivity: () => void;
+  onSkipActivity: (attempts?: ReadonlyArray<LearningActivityAttempt>) => void;
   onSubmitActivity: (submission: LearningActivitySubmission) => void;
   onSubmitPrompt: () => void;
   onToggleProjectMaterial: (assetId: string) => void;
@@ -70,22 +98,51 @@ export function SessionThreadPane({
   selectedSessionId: string;
   selectedSessionType: "project" | "study" | "review";
   selectedSourceAssetIds: ReadonlyArray<string>;
-  submitDisabled: boolean;
 }): ReactElement {
+  const latestMessage = displayMessages.at(-1);
+  const latestMessageText = latestMessage ? getMessageText(latestMessage) : "";
+  const latestAssistantMessage = [...displayMessages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  const latestAssistantText = latestAssistantMessage
+    ? getMessageText(latestAssistantMessage)
+    : "";
+  const streamingPreviewText = sanitizeVisibleAssistantText(activeRuntime.assistantMessage).trim();
+  const streamingStatusLabel =
+    activeRuntime.streamStatusLabel ?? "正在结合当前 project、材料和状态判断下一步";
+  const shouldShowStreamingPreview =
+    isAgentRunning &&
+    hasStructuredRuntime &&
+    streamingPreviewText !== "" &&
+    latestAssistantText === "";
+  const shouldShowRunningPlaceholder =
+    isAgentRunning &&
+    !shouldShowStreamingPreview &&
+    (latestMessage?.role !== "assistant" || latestMessageText === "");
+  const canManageMaterials = selectedSessionType === "project";
+  const shouldShowActivityStack =
+    hasStructuredRuntime &&
+    currentActivity !== null &&
+    !isAgentRunning &&
+    !shouldShowStreamingPreview &&
+    !shouldShowRunningPlaceholder;
+
   return (
     <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
       <div className="px-5 pt-5 lg:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Button
-              className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
-              onClick={onToggleMaterialsTray}
-              type="button"
-              variant="outline"
-            >
-              <FileInput className="h-4 w-4" />
-              {isMaterialsTrayOpen ? "收起材料" : "添加材料"}
-            </Button>
+            {canManageMaterials ? (
+              <Button
+                className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
+                onClick={onToggleMaterialsTray}
+                type="button"
+                variant="outline"
+              >
+                <FileInput className="h-4 w-4" />
+                {isMaterialsTrayOpen ? "收起材料" : "添加材料"}
+              </Button>
+            ) : null}
             {selectedSessionType === "project" ? (
               <Button
                 className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
@@ -108,12 +165,14 @@ export function SessionThreadPane({
               <span className="text-sm text-[var(--xidea-stone)]">
                 {selectedSessionType === "project"
                   ? "当前先按纯对话推进，需要时可补材料或直接改 topic / rules。"
-                  : "当前先按纯对话推进，需要时再把材料挂进这一轮。"}
+                  : selectedSessionType === "study"
+                    ? "study session 只围绕当前知识点编排卡组，不在这里挂项目材料。"
+                    : "review session 只围绕回忆与校准推进，不在这里挂项目材料。"}
               </span>
             )}
           </div>
 
-          {selectedSourceAssetIds.length > 0 ? (
+          {canManageMaterials && selectedSourceAssetIds.length > 0 ? (
             <div className="flex flex-wrap justify-end gap-2">
               {activeSourceAssets.slice(0, 3).map((asset) => (
                 <button
@@ -135,7 +194,7 @@ export function SessionThreadPane({
       <div className="min-h-0 flex-1 px-5 lg:px-6">
         <ScrollArea className="h-full pr-3">
           <div className="space-y-4 pb-4">
-            {isMaterialsTrayOpen ? (
+            {canManageMaterials && isMaterialsTrayOpen ? (
               <section className="space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
@@ -144,7 +203,7 @@ export function SessionThreadPane({
                   <div>
                     <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
                     <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                      这些材料会作为本轮附加上下文一起送给 agent，不需要先切模式。
+                      这些材料只会在 project session 里作为本轮附加上下文送给 agent。
                     </p>
                   </div>
                 </div>
@@ -188,49 +247,62 @@ export function SessionThreadPane({
               </section>
             ) : null}
 
-            {displayMessages.length === 0 ? (
-              <Card className="rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+            {displayMessages.length === 0 &&
+            !shouldShowStreamingPreview &&
+            !shouldShowRunningPlaceholder ? (
+                <Card className="rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                 <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
-                  当前 session 还没有消息。你可以先输入问题、补材料，或让系统直接开始学习 / 复习。
+                  {selectedSessionType === "project"
+                    ? "当前 session 还没有消息。你可以先继续 project 对话、补材料，或让系统沉淀知识点建议。"
+                    : "当前 session 还没有消息。你可以先输入这轮真正想验证的问题，让系统开始一组学习 / 复习动作。"}
                 </CardContent>
               </Card>
             ) : (
               displayMessages.map((message) => {
                 const isAssistant = message.role === "assistant";
                 const rawText = getMessageText(message);
+                const shouldReplaceLatestAssistantWithActivityIntro =
+                  isAssistant &&
+                  message.id === latestAssistantMessageId &&
+                  shouldShowActivityStack &&
+                  hasPendingActivity;
                 if (isAssistant && rawText === "") {
                   return null;
                 }
 
                 return (
                   <div className="space-y-3" key={message.id}>
-                    <div className={isAssistant ? "flex justify-start" : "flex justify-end"}>
-                      {isAssistant ? (
-                        <div className="w-full max-w-[82%] py-0.5">
-                          <div className="mb-1.5 flex items-center gap-2">
-                            <span className="xidea-kicker text-[var(--xidea-selection-text)]">
-                              Agent
-                            </span>
-                          </div>
-                          <MarkdownContent content={rawText} />
+                    {shouldReplaceLatestAssistantWithActivityIntro ? (
+                      <div className="flex justify-start">
+                        <div className="w-full max-w-[82%] py-0.5 text-[14px] leading-6 text-[var(--xidea-stone)]">
+                          {selectedSessionType === "review"
+                            ? "这轮先完成下面这组复习动作，再继续下一轮对话。"
+                            : "这轮先完成下面这组学习动作，再继续下一轮对话。"}
                         </div>
-                      ) : (
-                        <Card className="w-full max-w-[72%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                          <CardContent className="px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                            <div>{rawText}</div>
-                          </CardContent>
-                        </Card>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className={isAssistant ? "flex justify-start" : "flex justify-end"}>
+                        {isAssistant ? (
+                          <div className="w-full max-w-[82%] py-0.5">
+                            <MarkdownContent content={rawText} />
+                          </div>
+                        ) : (
+                          <Card className="w-full max-w-[72%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                            <CardContent className="px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
+                              <div>{rawText}</div>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    )}
 
                     {isAssistant &&
                     message.id === latestAssistantMessageId &&
-                    hasStructuredRuntime &&
-                    currentActivity !== null ? (
+                    shouldShowActivityStack ? (
                       <div className="w-full max-w-[82%] pl-1">
                         <LearningActivityStack
                           activities={currentActivities}
-                          disabled={submitDisabled}
+                          disabled={activityInputDisabled}
                           key={`${selectedSessionId}-${currentActivityKey ?? currentActivity.id}`}
                           onSkip={onSkipActivity}
                           onSubmit={onSubmitActivity}
@@ -242,6 +314,27 @@ export function SessionThreadPane({
                 );
               })
             )}
+
+            {shouldShowStreamingPreview || shouldShowRunningPlaceholder ? (
+              <div className="space-y-3">
+                <div className="flex justify-start">
+                  <div className="w-full max-w-[82%] py-0.5">
+                    {shouldShowStreamingPreview ? (
+                      <MarkdownContent content={streamingPreviewText} />
+                    ) : (
+                      <div className="space-y-3">
+                        <SessionStreamingStatus label={streamingStatusLabel} />
+                        <p className="text-[14px] leading-6 text-[var(--xidea-stone)]">
+                          {selectedSessionType === "project"
+                            ? "回复还在生成中，这一轮会先完成 project 判断，再决定是否沉淀知识点或材料建议。"
+                            : "回复还在生成中，等这轮判断和说明完成后，才会把整组学习动作接上。"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </ScrollArea>
       </div>
@@ -252,21 +345,23 @@ export function SessionThreadPane({
             <div className="relative">
               <Textarea
                 className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] pr-28 pb-12 text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
-                disabled={submitDisabled}
+                disabled={composerDisabled}
                 onChange={(event) => onChangeDraftPrompt(event.target.value)}
                 placeholder={
                   hasPendingActivity
                     ? "先完成当前学习动作或跳过，再继续对话。"
-                    : selectedSourceAssetIds.length > 0
+                    : canManageMaterials && selectedSourceAssetIds.length > 0
                       ? "补一句你希望系统围绕这些材料先判断什么、澄清什么，或生成什么训练动作。"
-                      : "输入这一轮你想推进的问题或材料。"
+                      : selectedSessionType === "project"
+                        ? "输入这一轮你想推进的 project 问题、材料判断或知识点沉淀诉求。"
+                        : "输入这一轮你想验证的问题，系统会据此安排下一组学习动作。"
                 }
                 value={draftPrompt}
               />
 
               <Button
                 className="absolute bottom-3 right-3 rounded-full bg-[var(--xidea-terracotta)] px-4 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                disabled={submitDisabled}
+                disabled={composerDisabled}
                 onClick={onSubmitPrompt}
                 type="button"
               >

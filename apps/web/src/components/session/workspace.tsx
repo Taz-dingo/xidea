@@ -15,7 +15,10 @@ import type {
   AgentReviewInspector,
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
-import type { ActivityResolution } from "@/domain/project-session-runtime";
+import type {
+  ActivityResolution,
+  CompletedActivityDeck,
+} from "@/domain/project-session-runtime";
 import type {
   KnowledgePointItem,
   ProjectItem,
@@ -23,7 +26,11 @@ import type {
   SessionItem,
   WorkspaceSection,
 } from "@/domain/project-workspace";
-import type { LearningActivitySubmission, SourceAsset } from "@/domain/types";
+import type {
+  LearningActivityAttempt,
+  LearningActivitySubmission,
+  SourceAsset,
+} from "@/domain/types";
 import type { TutorFixtureScenario } from "@/data/tutor-fixtures";
 import type { UIMessage } from "ai";
 
@@ -33,11 +40,14 @@ export function SessionWorkspace({
   activeRuntime,
   activeSourceAssets,
   activeTutorFixtureId,
+  activityInputDisabled,
   agentConnectionState,
+  composerDisabled,
   currentActivities,
   currentActivity,
   currentActivityKey,
   currentActivityResolution,
+  completedActivityDecks,
   displayMessages,
   draftPrompt,
   errorMessage,
@@ -76,7 +86,6 @@ export function SessionWorkspace({
   selectedSourceAssetIds,
   selectedUnitTitle,
   selectedProjectSessions,
-  submitDisabled,
   tutorFixtureScenarios,
   workspaceSection,
 }: {
@@ -85,11 +94,14 @@ export function SessionWorkspace({
   activeRuntime: RuntimeSnapshot;
   activeSourceAssets: ReadonlyArray<SourceAsset>;
   activeTutorFixtureId: string | null;
+  activityInputDisabled: boolean;
   agentConnectionState: "checking" | "ready" | "offline";
+  composerDisabled: boolean;
   currentActivities: RuntimeSnapshot["activities"];
   currentActivity: RuntimeSnapshot["activity"];
   currentActivityKey: string | null;
   currentActivityResolution: ActivityResolution | null;
+  completedActivityDecks: ReadonlyArray<CompletedActivityDeck>;
   displayMessages: ReadonlyArray<UIMessage>;
   draftPrompt: string;
   errorMessage: string | null;
@@ -112,7 +124,7 @@ export function SessionWorkspace({
   onOpenProjectMetaEditor: () => void;
   onOpenSession: (sessionId: string) => void;
   onSelectTutorFixture: (fixture: TutorFixtureScenario) => void;
-  onSkipActivity: () => void;
+  onSkipActivity: (attempts?: ReadonlyArray<LearningActivityAttempt>) => void;
   onSubmitActivity: (submission: LearningActivitySubmission) => void;
   onSubmitPrompt: () => void;
   onToggleProjectMaterial: (assetId: string) => void;
@@ -128,7 +140,6 @@ export function SessionWorkspace({
   selectedSourceAssetIds: ReadonlyArray<string>;
   selectedUnitTitle: string | null;
   selectedProjectSessions: ReadonlyArray<SessionItem>;
-  submitDisabled: boolean;
   tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario>;
   workspaceSection: WorkspaceSection;
 }): ReactElement {
@@ -212,6 +223,8 @@ export function SessionWorkspace({
         <SessionThreadPane
           activeRuntime={activeRuntime}
           activeSourceAssets={activeSourceAssets}
+          activityInputDisabled={activityInputDisabled}
+          composerDisabled={composerDisabled}
           currentActivities={currentActivities}
           currentActivity={currentActivity}
           currentActivityKey={currentActivityKey}
@@ -236,7 +249,6 @@ export function SessionWorkspace({
           selectedSessionId={selectedSession.id}
           selectedSessionType={selectedSession.type}
           selectedSourceAssetIds={selectedSourceAssetIds}
-          submitDisabled={submitDisabled}
         />
       </Card>
 
@@ -245,6 +257,7 @@ export function SessionWorkspace({
         activeReviewInspector={activeReviewInspector}
         activeRuntime={activeRuntime}
         activeTutorFixtureId={activeTutorFixtureId}
+        completedActivityDecks={completedActivityDecks}
         hasPersistedState={hasPersistedState}
         hasStructuredRuntime={hasStructuredRuntime}
         isBlankSession={isBlankSession}
@@ -260,6 +273,7 @@ export function SessionWorkspace({
         requestSourceAssetIds={requestSourceAssetIds}
         selectedProject={selectedProject}
         selectedSessionStatus={selectedSession.status}
+        selectedSessionType={selectedSession.type}
         selectedSourceAssetIds={selectedSourceAssetIds}
         selectedUnitTitle={selectedUnitTitle}
         tutorFixtureScenarios={tutorFixtureScenarios}

@@ -1,7 +1,11 @@
 import type { ReactElement } from "react";
 import { Badge } from "@/components/ui/badge";
 import { LearningActivityCard } from "@/components/learning-activity-card";
-import type { LearningActivity, LearningActivitySubmission } from "@/domain/types";
+import type {
+  LearningActivity,
+  LearningActivityAttempt,
+  LearningActivitySubmission,
+} from "@/domain/types";
 
 function getStackRotation(index: number): string {
   if (index % 2 === 0) {
@@ -32,7 +36,7 @@ export function LearningActivityStack({
   activities: ReadonlyArray<LearningActivity>;
   disabled: boolean;
   resolution: "submitted" | "skipped" | null;
-  onSkip?: () => void;
+  onSkip?: (attempts?: ReadonlyArray<LearningActivityAttempt>) => void;
   onSubmit: (submission: LearningActivitySubmission) => void;
 }): ReactElement | null {
   const currentActivity = activities[0] ?? null;
@@ -99,7 +103,7 @@ export function LearningActivityStack({
               </span>
             </div>
             <span className="text-sm text-[var(--xidea-stone)]">
-              先完成最上面这一张
+              答对后自动切到下一张
             </span>
           </div>
         ) : null}

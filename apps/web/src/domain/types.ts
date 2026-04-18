@@ -97,6 +97,9 @@ export interface LearningActivityChoice {
   readonly id: string;
   readonly label: string;
   readonly detail: string;
+  readonly isCorrect: boolean;
+  readonly feedbackLayers: ReadonlyArray<string>;
+  readonly analysis: string | null;
 }
 
 export type LearningActivityInput =
@@ -128,4 +131,17 @@ export interface LearningActivitySubmission {
   readonly kind: LearningActivityKind;
   readonly responseText: string;
   readonly selectedChoiceId: string | null;
+  readonly isCorrect: boolean | null;
+  readonly attempts: ReadonlyArray<LearningActivityAttempt>;
+  readonly finalFeedback: string | null;
+  readonly finalAnalysis: string | null;
+}
+
+export interface LearningActivityAttempt {
+  readonly attemptNumber: number;
+  readonly responseText: string;
+  readonly selectedChoiceId: string | null;
+  readonly isCorrect: boolean | null;
+  readonly feedback: string | null;
+  readonly analysis: string | null;
 }

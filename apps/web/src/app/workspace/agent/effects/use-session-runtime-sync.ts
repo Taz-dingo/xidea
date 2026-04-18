@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { buildDefaultAgentPrompt } from "@/domain/agent-runtime";
 import type { UIMessage } from "ai";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
@@ -20,58 +20,94 @@ export function useSessionRuntimeSync({
   runtimeUnit: Parameters<typeof buildDefaultAgentPrompt>[0];
   sendMessage: (message: { text: string }) => PromiseLike<void> | void;
 }): void {
+  const selectedSessionId = data.selectedSession?.id ?? null;
+  const selectedSessionKnowledgePointId = data.selectedSession?.knowledgePointId ?? null;
+  const pendingInitialPrompt = data.pendingInitialPrompt;
+  const initializedDraftKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
+    if (selectedSessionId === null) {
+      initializedDraftKeyRef.current = null;
+      return;
+    }
+
+    const nextDraftKey = `${selectedSessionId}:${runtimeUnit.id}`;
+    if (initializedDraftKeyRef.current === nextDraftKey) {
+      return;
+    }
+
     data.setDraftPrompt(
-      data.selectedSession?.knowledgePointId === null
+      selectedSessionKnowledgePointId === null
         ? ""
         : buildDefaultAgentPrompt(runtimeUnit, projectContext),
     );
-  }, [data, projectContext, runtimeUnit]);
+    initializedDraftKeyRef.current = nextDraftKey;
+  }, [
+    data.setDraftPrompt,
+    projectContext,
+    runtimeUnit,
+    selectedSessionId,
+    selectedSessionKnowledgePointId,
+  ]);
 
   useEffect(() => {
-    if (data.selectedSession !== undefined) {
+    if (selectedSessionId !== null) {
       data.setSessionMessagesById((current) =>
-        current[data.selectedSession!.id] === messages
+        current[selectedSessionId] === messages
           ? current
-          : { ...current, [data.selectedSession!.id]: messages },
+          : { ...current, [selectedSessionId]: messages },
       );
     }
-  }, [data, messages]);
+  }, [data.setSessionMessagesById, messages, selectedSessionId]);
 
   useEffect(() => {
-    if (data.selectedSession === undefined || error === undefined) {
+    if (selectedSessionId === null || error === undefined) {
       return;
     }
     if (currentActivityKey !== null) {
       data.setActivityResolutionsBySession((current) => {
-        const nextSessionResolutions = { ...(current[data.selectedSession!.id] ?? {}) };
+        const nextSessionResolutions = { ...(current[selectedSessionId] ?? {}) };
         delete nextSessionResolutions[currentActivityKey];
-        return { ...current, [data.selectedSession!.id]: nextSessionResolutions };
+        return { ...current, [selectedSessionId]: nextSessionResolutions };
       });
     }
-    data.setRunningSessionIds((current) => ({ ...current, [data.selectedSession!.id]: false }));
+    data.setRunningSessionIds((current) => ({ ...current, [selectedSessionId]: false }));
     data.setSessions((current) =>
       current.map((session) =>
-        session.id === data.selectedSession!.id && session.status !== "错误"
+        session.id === selectedSessionId && session.status !== "错误"
           ? { ...session, status: "错误", updatedAt: "刚刚" }
           : session,
       ),
     );
-  }, [currentActivityKey, data, error]);
+  }, [
+    currentActivityKey,
+    data.setActivityResolutionsBySession,
+    data.setRunningSessionIds,
+    data.setSessions,
+    error,
+    selectedSessionId,
+  ]);
 
   useEffect(() => {
-    if (data.pendingInitialPrompt === null || data.selectedSession?.id !== data.pendingInitialPrompt.sessionId) {
+    if (pendingInitialPrompt === null || selectedSessionId !== pendingInitialPrompt.sessionId) {
       return;
     }
     data.setSessions((current) =>
       current.map((session) =>
-        session.id === data.pendingInitialPrompt!.sessionId
-          ? { ...session, summary: data.pendingInitialPrompt!.sessionSummary, updatedAt: "刚刚", status: "运行中" }
+        session.id === pendingInitialPrompt.sessionId
+          ? { ...session, summary: pendingInitialPrompt.sessionSummary, updatedAt: "刚刚", status: "运行中" }
           : session,
       ),
     );
-    data.setRunningSessionIds((current) => ({ ...current, [data.pendingInitialPrompt!.sessionId]: true }));
-    void sendMessage({ text: data.pendingInitialPrompt.text });
+    data.setRunningSessionIds((current) => ({ ...current, [pendingInitialPrompt.sessionId]: true }));
+    void sendMessage({ text: pendingInitialPrompt.text });
     data.setPendingInitialPrompt(null);
-  }, [data, sendMessage]);
+  }, [
+    data.setPendingInitialPrompt,
+    data.setRunningSessionIds,
+    data.setSessions,
+    pendingInitialPrompt,
+    selectedSessionId,
+    sendMessage,
+  ]);
 }

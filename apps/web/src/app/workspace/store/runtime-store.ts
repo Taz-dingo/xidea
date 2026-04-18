@@ -12,7 +12,9 @@ import type {
 import {
   getDefaultSourceAssetIds,
   type ActivityResolution,
+  type CompletedActivityDeck,
   type DevTutorFixtureState,
+  type SessionActivityBatchState,
   buildDevTutorFixtureState,
 } from "@/domain/project-session-runtime";
 
@@ -48,6 +50,8 @@ interface WorkspaceRuntimeState {
   readonly activityResolutionsBySession: Record<string, Record<string, ActivityResolution>>;
   readonly runningSessionIds: Record<string, boolean>;
   readonly bootstrapLoadedKeys: Record<string, boolean>;
+  readonly activityBatchStateBySession: Record<string, SessionActivityBatchState>;
+  readonly completedActivityDecksBySession: Record<string, ReadonlyArray<CompletedActivityDeck>>;
   readonly setSessionEntryModes: (
     nextState: SetStateAction<Record<string, AgentEntryMode>>,
   ) => void;
@@ -81,6 +85,12 @@ interface WorkspaceRuntimeState {
   readonly setRunningSessionIds: (
     nextState: SetStateAction<Record<string, boolean>>,
   ) => void;
+  readonly setActivityBatchStateBySession: (
+    nextState: SetStateAction<Record<string, SessionActivityBatchState>>,
+  ) => void;
+  readonly setCompletedActivityDecksBySession: (
+    nextState: SetStateAction<Record<string, ReadonlyArray<CompletedActivityDeck>>>,
+  ) => void;
   readonly markBootstrapLoaded: (key: string) => void;
   readonly clearBootstrapLoaded: (key: string) => void;
 }
@@ -104,6 +114,8 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
   activityResolutionsBySession: {},
   runningSessionIds: {},
   bootstrapLoadedKeys: {},
+  activityBatchStateBySession: {},
+  completedActivityDecksBySession: {},
   setSessionEntryModes: (nextState) =>
     set((state) => ({
       sessionEntryModes: resolveState(nextState, state.sessionEntryModes),
@@ -150,6 +162,20 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) =>
   setRunningSessionIds: (nextState) =>
     set((state) => ({
       runningSessionIds: resolveState(nextState, state.runningSessionIds),
+    })),
+  setActivityBatchStateBySession: (nextState) =>
+    set((state) => ({
+      activityBatchStateBySession: resolveState(
+        nextState,
+        state.activityBatchStateBySession,
+      ),
+    })),
+  setCompletedActivityDecksBySession: (nextState) =>
+    set((state) => ({
+      completedActivityDecksBySession: resolveState(
+        nextState,
+        state.completedActivityDecksBySession,
+      ),
     })),
   markBootstrapLoaded: (key) =>
     set((state) => ({

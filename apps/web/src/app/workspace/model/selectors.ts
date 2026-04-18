@@ -209,6 +209,10 @@ export function getRelatedKnowledgePoints({
   selectedProjectKnowledgePoints,
   selectedSession,
 }: RelatedKnowledgeParams): ReadonlyArray<KnowledgePointItem> {
+  if (selectedSession?.type === "project") {
+    return [];
+  }
+
   if (
     selectedSession?.knowledgePointId !== null &&
     selectedSession?.knowledgePointId !== undefined

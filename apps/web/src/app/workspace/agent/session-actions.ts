@@ -1,7 +1,15 @@
 import { formatActivitySubmissionForAgent } from "@/domain/agent-runtime";
 import type { TutorFixtureScenario } from "@/data/tutor-fixtures";
-import { getActionLabel } from "@/domain/project-session-runtime";
-import type { LearningActivitySubmission } from "@/domain/types";
+import {
+  buildAggregateActivityResult,
+  buildActivityBatchSummaryMessage,
+  buildCompletedActivityDeck,
+  createActivityBatchResult,
+  getActionLabel,
+  type SessionActivityBatchState,
+} from "@/domain/project-session-runtime";
+import type { AgentActivityResult } from "@/domain/agent-runtime";
+import type { LearningActivityAttempt, LearningActivitySubmission } from "@/domain/types";
 import {
   buildFreeReplyFixtureState,
   buildSubmittedFixtureState,
@@ -16,13 +24,19 @@ export function createSessionActions({
   activeTutorFixture,
   clearError,
   currentActivity,
+  currentActivities,
+  currentDeckKey,
   currentActivityKey,
+  currentActivityBatchState,
   data,
   error,
   handleCreateSession,
   isMaterialsTrayOpen,
   isUsingDevTutorFixture,
+  latestAssistantMessageId,
+  onQueueActivityResult,
   selectedSessionKey,
+  selectedSessionKnowledgePointId,
   sendMessage,
 }: {
   activeRuntime: {
@@ -40,7 +54,10 @@ export function createSessionActions({
   currentActivity:
     | Parameters<typeof formatActivitySubmissionForAgent>[0]["activity"]
     | null;
+  currentActivities: ReadonlyArray<Parameters<typeof formatActivitySubmissionForAgent>[0]["activity"]>;
+  currentDeckKey: string | null;
   currentActivityKey: string | null;
+  currentActivityBatchState: SessionActivityBatchState | null;
   data: WorkspaceData;
   error: Error | undefined;
   handleCreateSession: (
@@ -51,9 +68,40 @@ export function createSessionActions({
   ) => { id: string } | null;
   isMaterialsTrayOpen: boolean;
   isUsingDevTutorFixture: boolean;
+  latestAssistantMessageId: string | null;
+  onQueueActivityResult: (result: AgentActivityResult | null) => void;
   selectedSessionKey: string | null;
+  selectedSessionKnowledgePointId: string | null;
   sendMessage: (message: { text: string }) => PromiseLike<void> | void;
 }) {
+  function buildNextBatchState(
+    nextResult: ReturnType<typeof createActivityBatchResult>,
+    awaitingAgent: boolean,
+  ): SessionActivityBatchState | null {
+    if (currentDeckKey === null) {
+      return null;
+    }
+
+    const baseState: SessionActivityBatchState =
+      currentActivityBatchState?.deckKey === currentDeckKey
+        ? currentActivityBatchState
+        : {
+            assistantMessageIdBeforeSend: latestAssistantMessageId,
+            awaitingAgent: false,
+            currentIndex: 0,
+            deckKey: currentDeckKey,
+            results: [],
+          };
+
+    return {
+      ...baseState,
+      assistantMessageIdBeforeSend: latestAssistantMessageId,
+      awaitingAgent,
+      currentIndex: awaitingAgent ? baseState.currentIndex : baseState.currentIndex + 1,
+      results: [...baseState.results, nextResult],
+    };
+  }
+
   function handleSendToAgent(text: string, sessionSummary: string): void {
     if (data.selectedSession === undefined) {
       return;
@@ -85,7 +133,6 @@ export function createSessionActions({
         data.pendingSessionIntent.projectId,
         data.pendingSessionIntent.type,
         data.pendingSessionIntent.knowledgePointId,
-        data.pendingSessionIntent.sourceAssetIds,
       );
       if (createdSession !== null) {
         data.setPendingInitialPrompt({ sessionId: createdSession.id, text, sessionSummary: text });
@@ -114,15 +161,14 @@ export function createSessionActions({
       clearError();
     }
 
-    data.setActivityResolutionsBySession((current) => ({
-      ...current,
-      [data.selectedSession!.id]: {
-        ...(current[data.selectedSession!.id] ?? {}),
-        [currentActivityKey]: "submitted",
-      },
-    }));
-
     if (isUsingDevTutorFixture && activeTutorFixture !== null) {
+      data.setActivityResolutionsBySession((current) => ({
+        ...current,
+        [data.selectedSession!.id]: {
+          ...(current[data.selectedSession!.id] ?? {}),
+          [currentActivityKey]: "submitted",
+        },
+      }));
       if (activeTutorFixture.submitErrorMessage !== null) {
         data.setDevTutorFixtureState((current) =>
           current === null
@@ -141,13 +187,65 @@ export function createSessionActions({
       return;
     }
 
+    const nextBatchState = buildNextBatchState(
+      createActivityBatchResult({
+        activity: currentActivity,
+        knowledgePointId: selectedSessionKnowledgePointId,
+        submission,
+        action: "submit",
+      }),
+      currentActivities.length === 1,
+    );
+    if (nextBatchState === null) {
+      return;
+    }
+
+    data.setActivityBatchStateBySession((current) => ({
+      ...current,
+      [data.selectedSession!.id]: nextBatchState,
+    }));
+
+    if (currentActivities.length > 1) {
+      return;
+    }
+
+    const completedDeck =
+      currentDeckKey === null
+        ? null
+        : buildCompletedActivityDeck({
+            deckKey: currentDeckKey,
+            sessionId: data.selectedSession.id,
+            sessionType: data.selectedSession.type,
+            results: nextBatchState.results,
+          });
+    if (completedDeck !== null) {
+      data.setCompletedActivityDecksBySession((current) => ({
+        ...current,
+        [data.selectedSession!.id]: [
+          completedDeck,
+          ...(current[data.selectedSession!.id] ?? []).filter(
+            (deck) => deck.deckKey !== completedDeck.deckKey,
+          ),
+        ].slice(0, 8),
+      }));
+    }
+
+    const aggregatedResult = buildAggregateActivityResult({
+      fallbackKnowledgePointId: selectedSessionKnowledgePointId,
+      results: nextBatchState.results,
+      runId: `run-${Date.now()}`,
+      sessionId: data.selectedSession.id,
+      sessionType: data.selectedSession.type,
+      projectId: data.selectedSession.projectId,
+    });
+    onQueueActivityResult(aggregatedResult);
     handleSendToAgent(
-      formatActivitySubmissionForAgent({ activity: currentActivity, submission }),
-      `${currentActivity.title} / ${getActionLabel(activeRuntime.state.recommendedAction)}`,
+      buildActivityBatchSummaryMessage(nextBatchState.results),
+      `完成 ${nextBatchState.results.length} 张卡 / ${getActionLabel(activeRuntime.state.recommendedAction)}`,
     );
   }
 
-  function handleSkipActivity(): void {
+  function handleSkipActivity(attempts: ReadonlyArray<LearningActivityAttempt> = []): void {
     if (data.selectedSession === undefined || currentActivity === null || currentActivityKey === null) {
       return;
     }
@@ -155,15 +253,14 @@ export function createSessionActions({
       clearError();
     }
 
-    data.setActivityResolutionsBySession((current) => ({
-      ...current,
-      [data.selectedSession!.id]: {
-        ...(current[data.selectedSession!.id] ?? {}),
-        [currentActivityKey]: "skipped",
-      },
-    }));
-
     if (isUsingDevTutorFixture && activeTutorFixture !== null) {
+      data.setActivityResolutionsBySession((current) => ({
+        ...current,
+        [data.selectedSession!.id]: {
+          ...(current[data.selectedSession!.id] ?? {}),
+          [currentActivityKey]: "skipped",
+        },
+      }));
       data.setDevTutorFixtureState((current) =>
         current === null
           ? current
@@ -172,9 +269,73 @@ export function createSessionActions({
       return;
     }
 
+    const nextBatchState = buildNextBatchState(
+      createActivityBatchResult({
+        activity: currentActivity,
+        knowledgePointId: selectedSessionKnowledgePointId,
+        submission:
+          attempts.length === 0
+            ? null
+            : {
+                activityId: currentActivity.id,
+                kind: currentActivity.kind,
+                responseText: "",
+                selectedChoiceId: null,
+                isCorrect: false,
+                attempts,
+                finalFeedback: null,
+                finalAnalysis: attempts.at(-1)?.analysis ?? null,
+              },
+        action: "skip",
+      }),
+      currentActivities.length === 1,
+    );
+    if (nextBatchState === null) {
+      return;
+    }
+
+    data.setActivityBatchStateBySession((current) => ({
+      ...current,
+      [data.selectedSession!.id]: nextBatchState,
+    }));
+
+    if (currentActivities.length > 1) {
+      return;
+    }
+
+    const completedDeck =
+      currentDeckKey === null
+        ? null
+        : buildCompletedActivityDeck({
+            deckKey: currentDeckKey,
+            sessionId: data.selectedSession.id,
+            sessionType: data.selectedSession.type,
+            results: nextBatchState.results,
+          });
+    if (completedDeck !== null) {
+      data.setCompletedActivityDecksBySession((current) => ({
+        ...current,
+        [data.selectedSession!.id]: [
+          completedDeck,
+          ...(current[data.selectedSession!.id] ?? []).filter(
+            (deck) => deck.deckKey !== completedDeck.deckKey,
+          ),
+        ].slice(0, 8),
+      }));
+    }
+
+    const aggregatedResult = buildAggregateActivityResult({
+      fallbackKnowledgePointId: selectedSessionKnowledgePointId,
+      results: nextBatchState.results,
+      runId: `run-${Date.now()}`,
+      sessionId: data.selectedSession.id,
+      sessionType: data.selectedSession.type,
+      projectId: data.selectedSession.projectId,
+    });
+    onQueueActivityResult(aggregatedResult);
     handleSendToAgent(
-      `我先跳过「${currentActivity.title}」这轮学习动作。请基于当前状态重新安排下一步，并告诉我为什么要这样推进。`,
-      `${currentActivity.title} / 跳过后重新编排`,
+      buildActivityBatchSummaryMessage(nextBatchState.results),
+      `完成 ${nextBatchState.results.length} 张卡 / ${getActionLabel(activeRuntime.state.recommendedAction)}`,
     );
   }
 
@@ -201,7 +362,7 @@ export function createSessionActions({
     handleSubmitActivity,
     handleSubmitPrompt,
     handleToggleMaterialsTray: () => {
-      if (selectedSessionKey !== null) {
+      if (selectedSessionKey !== null && data.selectedSession?.type === "project") {
         data.setSessionMaterialTrayOpen((current) => ({
           ...current,
           [selectedSessionKey]: !isMaterialsTrayOpen,
@@ -209,7 +370,7 @@ export function createSessionActions({
       }
     },
     handleToggleProjectMaterial: (assetId: string) => {
-      if (data.selectedSession !== undefined) {
+      if (data.selectedSession?.type === "project") {
         data.setSessionSourceAssetIds((current) => {
           const currentSelection = current[data.selectedSession!.id] ?? [];
           return {
@@ -222,7 +383,7 @@ export function createSessionActions({
       }
     },
     handleUnsetSourceAsset: (assetId: string) => {
-      if (data.selectedSession !== undefined) {
+      if (data.selectedSession?.type === "project") {
         data.setSessionSourceAssetIds((current) => ({
           ...current,
           [data.selectedSession!.id]: (current[data.selectedSession!.id] ?? []).filter(

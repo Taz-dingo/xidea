@@ -33,7 +33,6 @@ export interface PendingSessionIntent {
   readonly type: Extract<SessionType, "review" | "study">;
   readonly knowledgePointId: string | null;
   readonly knowledgePointTitle: string | null;
-  readonly sourceAssetIds: ReadonlyArray<string>;
 }
 
 export interface PendingInitialPrompt {

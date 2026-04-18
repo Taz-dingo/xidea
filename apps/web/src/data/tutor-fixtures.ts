@@ -230,9 +230,38 @@ export const tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario> = [
         input: {
           type: "choice",
           choices: [
-            { id: "stack-1-a", label: "先看上下文构造是不是把检索结果组织坏了", detail: "" },
-            { id: "stack-1-b", label: "先假设 embedding 一定失效了", detail: "" },
-            { id: "stack-1-c", label: "先去改 temperature", detail: "" },
+            {
+              id: "stack-1-a",
+              label: "先看上下文构造是不是把检索结果组织坏了",
+              detail: "先区分检索命中和回答组织是否错位。",
+              isCorrect: true,
+              feedbackLayers: [
+                "对，检索命中了但回答仍然漂，先看组织层更合理。",
+              ],
+              analysis: "这条选择先检查检索后的组织层，最符合这张卡的判断目标。",
+            },
+            {
+              id: "stack-1-b",
+              label: "先假设 embedding 一定失效了",
+              detail: "这会跳过更直接的组织层排查。",
+              isCorrect: false,
+              feedbackLayers: [
+                "先别急着归因到 embedding，本题给的前提是检索结果本身已经比较准。",
+                "如果检索结果本身准，但回答还是漂，优先怀疑的是组织层，而不是先把问题推回 embedding。",
+              ],
+              analysis: "这条选择忽略了“检索结果本身是准的”这个前提，归因方向偏了。",
+            },
+            {
+              id: "stack-1-c",
+              label: "先去改 temperature",
+              detail: "这会跳过当前更关键的系统层判断。",
+              isCorrect: false,
+              feedbackLayers: [
+                "temperature 更像生成层调参，不是这张卡最先要看的判断点。",
+                "这题要先分清是检索后的组织层出问题，还是更上游的检索层出问题；直接改 temperature 太晚了。",
+              ],
+              analysis: "这条选择把问题过早推到生成参数，没有先完成系统层的定位。",
+            },
           ],
         },
       });

@@ -26,15 +26,6 @@ export function useSessionActions(data: WorkspaceData) {
         : (data.knowledgePoints.find(
             (point) => point.id === knowledgePointId,
           ) ?? null);
-    const projectMaterialIds =
-      data.projectMaterialIdsByProject[targetProject.id] ?? [];
-    const suggestedSourceAssetIds =
-      targetPoint === null
-        ? []
-        : targetPoint.sourceAssetIds.filter((assetId) =>
-            projectMaterialIds.includes(assetId),
-          );
-
     data.setSelectedProjectId(targetProject.id);
     data.setSelectedSessionId("");
     data.setSelectedKnowledgePointId(
@@ -51,7 +42,6 @@ export function useSessionActions(data: WorkspaceData) {
       type,
       knowledgePointId: targetPoint?.id ?? knowledgePointId,
       knowledgePointTitle: targetPoint?.title ?? null,
-      sourceAssetIds: suggestedSourceAssetIds,
     });
     data.setScreen("workspace");
   }
@@ -104,7 +94,7 @@ export function useSessionActions(data: WorkspaceData) {
     }));
     data.setSessionSourceAssetIds((current) => ({
       ...current,
-      [createdSession.id]: initialSourceAssetIds,
+      [createdSession.id]: type === "project" ? initialSourceAssetIds : [],
     }));
     data.setSelectedProjectId(targetProject.id);
     data.setSelectedSessionId(createdSession.id);
@@ -122,17 +112,6 @@ export function useSessionActions(data: WorkspaceData) {
     },
     handleCreateSession,
     handlePrepareSessionStart,
-    handleTogglePendingMaterial: (assetId: string) => {
-      data.setPendingSessionIntent((current) =>
-        current === null
-          ? current
-          : {
-              ...current,
-              sourceAssetIds: current.sourceAssetIds.includes(assetId)
-                ? current.sourceAssetIds.filter((id) => id !== assetId)
-                : [...current.sourceAssetIds, assetId],
-            },
-      );
-    },
+    handleTogglePendingMaterial: (_assetId: string) => {},
   };
 }

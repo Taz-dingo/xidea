@@ -53,10 +53,12 @@ export function useWorkspaceStores() {
   const runtime = useWorkspaceRuntimeStore(
     useShallow((state) => ({
       activityResolutionsBySession: state.activityResolutionsBySession,
+      activityBatchStateBySession: state.activityBatchStateBySession,
       agentConnectionState: state.agentConnectionState,
       assetSummaryByKey: state.assetSummaryByKey,
       bootstrapLoadedKeys: state.bootstrapLoadedKeys,
       clearBootstrapLoaded: state.clearBootstrapLoaded,
+      completedActivityDecksBySession: state.completedActivityDecksBySession,
       devTutorFixtureState: state.devTutorFixtureState,
       markBootstrapLoaded: state.markBootstrapLoaded,
       runningSessionIds: state.runningSessionIds,
@@ -67,8 +69,10 @@ export function useWorkspaceStores() {
       sessionSnapshots: state.sessionSnapshots,
       sessionSourceAssetIds: state.sessionSourceAssetIds,
       setActivityResolutionsBySession: state.setActivityResolutionsBySession,
+      setActivityBatchStateBySession: state.setActivityBatchStateBySession,
       setAgentConnectionState: state.setAgentConnectionState,
       setAssetSummaryByKey: state.setAssetSummaryByKey,
+      setCompletedActivityDecksBySession: state.setCompletedActivityDecksBySession,
       setDevTutorFixtureState: state.setDevTutorFixtureState,
       setRunningSessionIds: state.setRunningSessionIds,
       setSessionEntryModes: state.setSessionEntryModes,

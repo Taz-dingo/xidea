@@ -8,6 +8,7 @@ import {
   type AgentStreamEvent,
   type RuntimeSnapshot,
 } from "@/domain/agent-runtime";
+import type { SessionType } from "@/domain/project-workspace";
 import type { LearningUnit, ProjectContext, SourceAsset } from "@/domain/types";
 import { getLearnerUnitState, runAgentV0, runAgentV0Stream } from "@/lib/agent-client";
 
@@ -37,12 +38,15 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function createAgentChatTransport(input: {
+  readonly consumeActivityResult?: () => Parameters<typeof buildAgentRequest>[0]["activityResult"];
   readonly projectId: string;
   readonly sessionId: string;
+  readonly sessionType: SessionType;
   readonly entryMode: AgentEntryMode;
   readonly project: ProjectContext;
   readonly getSourceAssets: () => ReadonlyArray<SourceAsset>;
   readonly unit: LearningUnit;
+  readonly targetUnitId: string | null;
   readonly getFallbackSnapshot: () => RuntimeSnapshot;
   readonly onSnapshot: (snapshot: RuntimeSnapshot) => void;
   readonly onRunStateChange?: (isRunning: boolean) => void;
@@ -51,13 +55,16 @@ export function createAgentChatTransport(input: {
     async sendMessages({ messages, abortSignal }) {
       const prompt = getLatestUserText(messages);
       const request = buildAgentRequest({
+        activityResult: input.consumeActivityResult?.() ?? null,
         projectId: input.projectId,
         sessionId: input.sessionId,
+        sessionType: input.sessionType,
         entryMode: input.entryMode,
         project: input.project,
         prompt,
         sourceAssets: input.getSourceAssets(),
         unit: input.unit,
+        targetUnitId: input.targetUnitId,
       });
       const messageId = `assistant-${Date.now()}`;
 
@@ -126,7 +133,11 @@ export function createAgentChatTransport(input: {
             controller.enqueue({ type: "text-end", id: messageId });
             controller.close();
 
-            void getLearnerUnitState(input.sessionId, input.unit.id, {
+            if (input.targetUnitId === null) {
+              return;
+            }
+
+            void getLearnerUnitState(input.sessionId, input.targetUnitId, {
               signal: abortSignal,
             })
               .then((learnerState) => {

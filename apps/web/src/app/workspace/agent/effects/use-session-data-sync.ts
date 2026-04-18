@@ -28,6 +28,7 @@ export function useSessionDataSync({
   seedRuntime,
   selectedSessionKey,
   selectedSessionKnowledgePointId,
+  selectedSessionType,
 }: {
   assetSummaryKey: string;
   data: WorkspaceData;
@@ -37,6 +38,7 @@ export function useSessionDataSync({
   seedRuntime: ReturnType<typeof hydrateRuntimeSnapshotFromLearnerState>;
   selectedSessionKey: string | null;
   selectedSessionKnowledgePointId: string | null;
+  selectedSessionType: "project" | "study" | "review";
 }): void {
   const {
     agentConnectionState,
@@ -88,7 +90,10 @@ export function useSessionDataSync({
               [selectedSessionKey]: thread_context.entry_mode,
             }));
           }
-          if (!hasSameIds(sessionSourceAssetIds[selectedSessionKey] ?? [], thread_context.source_asset_ids)) {
+          if (
+            selectedSessionType === "project" &&
+            !hasSameIds(sessionSourceAssetIds[selectedSessionKey] ?? [], thread_context.source_asset_ids)
+          ) {
             setSessionSourceAssetIds((current) => ({
               ...current,
               [selectedSessionKey]: thread_context.source_asset_ids,
@@ -110,6 +115,7 @@ export function useSessionDataSync({
     seedRuntime,
     selectedSessionKey,
     selectedSessionKnowledgePointId,
+    selectedSessionType,
     sessionEntryModes,
     sessionSourceAssetIds,
     sessionEntryModesSetter,
@@ -119,7 +125,12 @@ export function useSessionDataSync({
   ]);
 
   useEffect(() => {
-    if (agentConnectionState !== "ready" || assetSummaryKey === "" || assetSummaryByKey[assetSummaryKey] !== undefined) {
+    if (
+      agentConnectionState !== "ready" ||
+      selectedSessionType !== "project" ||
+      assetSummaryKey === "" ||
+      assetSummaryByKey[assetSummaryKey] !== undefined
+    ) {
       return;
     }
     const abortController = new AbortController();
@@ -133,7 +144,14 @@ export function useSessionDataSync({
       })
       .catch(() => undefined);
     return () => abortController.abort();
-  }, [agentConnectionState, assetSummaryByKey, assetSummaryKey, requestSourceAssetIds, setAssetSummaryByKey]);
+  }, [
+    agentConnectionState,
+    assetSummaryByKey,
+    assetSummaryKey,
+    requestSourceAssetIds,
+    selectedSessionType,
+    setAssetSummaryByKey,
+  ]);
 
   useEffect(() => {
     if (
@@ -166,7 +184,10 @@ export function useSessionDataSync({
               [selectedSessionKey]: threadContext.entry_mode,
             }));
           }
-          if (!hasSameIds(sessionSourceAssetIds[selectedSessionKey] ?? [], threadContext.source_asset_ids)) {
+          if (
+            selectedSessionType === "project" &&
+            !hasSameIds(sessionSourceAssetIds[selectedSessionKey] ?? [], threadContext.source_asset_ids)
+          ) {
             setSessionSourceAssetIds((current) => ({
               ...current,
               [selectedSessionKey]: threadContext.source_asset_ids,
@@ -182,6 +203,7 @@ export function useSessionDataSync({
     messagesLength,
     selectedSessionKey,
     selectedSessionKnowledgePointId,
+    selectedSessionType,
     sessionEntryModes,
     sessionSourceAssetIds,
     sessionEntryModesSetter,

@@ -208,13 +208,10 @@ export function WorkspacePage(): ReactElement {
                     data.setSelectedSessionId(sessionId);
                   }}
                   onSubmitPendingPrompt={session.handleSubmitPrompt}
-                  onTogglePendingMaterial={actions.handleTogglePendingMaterial}
                   onWorkspaceSectionChange={data.setWorkspaceSection}
                   pendingPrompt={data.draftPrompt}
                   pendingSessionIntent={data.pendingSessionIntent}
                   profileSummary={model.browseProfileSummary}
-                  projectMaterialCount={model.projectMaterialCount}
-                  projectMaterials={data.selectedProjectMaterials}
                   projectStats={model.projectStats}
                   selectedProjectSessions={data.selectedProjectSessions}
                   workspaceSection={data.workspaceSection}
@@ -231,6 +228,7 @@ export function WorkspacePage(): ReactElement {
                   currentActivity={session.currentActivity}
                   currentActivityKey={session.currentActivityKey}
                   currentActivityResolution={session.currentActivityResolution}
+                  completedActivityDecks={session.completedActivityDecks}
                   displayMessages={session.displayMessages}
                   draftPrompt={data.draftPrompt}
                   errorMessage={session.errorMessage}
@@ -272,7 +270,8 @@ export function WorkspacePage(): ReactElement {
                   selectedSession={data.selectedSession}
                   selectedSourceAssetIds={session.selectedSourceAssetIds}
                   selectedUnitTitle={session.selectedUnitTitle}
-                  submitDisabled={session.submitDisabled}
+                  activityInputDisabled={session.activityInputDisabled}
+                  composerDisabled={session.composerDisabled}
                   tutorFixtureScenarios={tutorFixtureScenarios}
                   workspaceSection={data.workspaceSection}
                 />
