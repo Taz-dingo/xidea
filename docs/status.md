@@ -1,6 +1,6 @@
 # Status
 
-## As Of 2026-04-17
+## As Of 2026-04-18
 
 ### Done
 
@@ -124,11 +124,14 @@
 - `build_llm_client()` 切到 OpenAI-compatible 兼容层，默认接智谱 `glm-5`，同时保留 OpenAI 旧环境变量兼容
 - 智谱运行时默认关闭 `thinking`，结构化阶段启用更严格的 JSON 输出约束；LLM HTTP client 默认不继承代理环境变量，减少本地代理/证书链导致的空正文和 TLS 问题
 - `/runs/v0/stream` 已切到真实流式执行：API 直接消费 runtime 事件生成器，连接建立后会立即打开 SSE；当前事件顺序仍为 `diagnosis -> text-delta -> plan -> state-patch -> done`
-- agent 主路径已将 `signal extraction + diagnosis` 合并为一次 bundled LLM 调用；正常链路从 4 次模型请求降到 3 次，且 reply 已从 plan 依赖里拆开，首屏等待主要收敛在 `bundled diagnosis -> reply`
-- 完成真实 LLM API 端到端验证：使用 OpenAI-compatible 中转站 (gpt-5.4) 跑通 4 个端到端测试（基础问答、混淆场景、材料导入、SSE 流式），全部通过
+- agent 主路径已将 `signal extraction + diagnosis` 合并为一次 bundled LLM 调用；正常链路先从 4 次模型请求降到 3 次，并为后续单次主决策收敛打底
+- `apps/agent` 已继续把 `reply + plan` bundling 成一次结构化调用；在 `needs_tool=true` 的链路上，sync / stream 当前优先走 `main_decision / bundled diagnosis -> bundled response`，主链路收敛到 2 次主模型调用；bundle 失败时仍回退到旧的 split path
+- `apps/agent` 已补 `main_decision` 单次主决策调用：当 `diagnosis.needs_tool=false` 时，sync / stream 会在同一次主调用里同时产出 `signals + diagnosis + reply + plan`，无工具路径已收敛到 1 次主模型调用
+- `apps/agent` 已继续收敛 tool/session loop：`material-import` 会在主决策前预取 `asset-summary`，`coach-followup` 会预取 `thread-memory`，review 倾向会预取 `review-context`，带 `target_unit_id` 的问答会预取 `unit-detail`；当这些预取上下文已经足够时，`main_decision` 不再被硬编码强制进入 `needs_tool=true`
+- 完成真实 LLM API 端到端验证：当前 `real_llm` 套件覆盖基础问答、混淆场景、材料导入和 SSE 流式 4 个端到端用例，在本地生效 provider 配置下全部通过
 - 新增 `XIDEA_LLM_FORCE_STREAM` 环境变量，适配要求所有请求 `stream=true` 的 API 代理
 - 为所有 LLM 调用添加按步骤标记的计时日志（`bundled_diagnose / generate_reply / stream_reply / build_plan`），每条日志包含 model、provider、耗时(s)和输出字符数
-- 当前 agent 全量 118 个测试全部通过（114 mock + 4 real LLM）
+- 当前 agent 全量 142 个测试全部通过（138 mock + 4 real LLM）
 - 已确认当前 `3` 次串行 LLM 调用 + 展示型 `StudyPlan` 属于过渡实现；下一阶段将对齐成熟 agent 方案，收敛为"预取上下文 -> 单次主决策调用 -> tool / activity loop -> 状态回写"
 - `apps/web` 中栏已新增 activity-first 学习动作卡：当前会优先把 agent `diagnosis / plan` 归一化成可执行动作，并支持在对话里直接完成辨析 / 回忆 / 导师追问后，把结果回传给现有 agent 对话流；学习动作卡已从固定底部区块收成跟随最后一条 agent 回复出现的 inline card
 - 已补充共享约束：当前前端的 activity-first 卡片仍是过渡适配；长期形态应由 agent 在消息流中发出结构化 activity / tool result 事件，前端按事件插 card，而不是固定保留整段学习动作 / 路径 / 证据面板
@@ -170,7 +173,14 @@
 - `apps/agent` 已补 pair-aware project-level dedupe：类似 `embedding 与 reranking` / `reranking 与 embedding` 的边界标题按顺序无关去重，不会重复生成 suggestion 或 knowledge point id
 - `apps/agent` 已补 project-level off-topic guardrail：命中明显偏题消息时会在 runtime 前置短路，不调用主诊断 LLM、不发 learning/review activity、不发 create/archive suggestion，也不写 learner/review 状态
 - `apps/agent` 已补 `POST /projects/{project_id}/knowledge-point-suggestions/{suggestion_id}/confirm|dismiss`；confirm create 会写入 `knowledge_points / knowledge_point_state`，confirm archive 会归档对应 knowledge point/state，dismiss 只更新 suggestion 状态，两个 endpoint 都保持幂等
-- 已补 activity / project context / knowledge-point-suggestion / off-topic / archive 回归测试；当前 mock 主套件为 `129 passed, 4 deselected`，`real_llm` 套件为 `4 passed`
+- `apps/agent` 已补 typed `activity_result` contract：`AgentRequest` 现可在同一 `/runs/v0` 通道携带 `exercise-result / review-result`，并作为独立 observation 进入 runtime
+- `apps/agent` 已新增 `project_memories / project_learning_profiles` 最小持久化对象，并在 `build_project_context()` 中预取到主决策上下文；当前会和 source assets / thread memory / review context 一起进入同一 project summary
+- `apps/agent` 已把 `exercise-result / review-result` 接到 writeback：学习/复习结果现在会更新 `KnowledgePointState`、`ReviewState`、`ProjectMemory` 和 `ProjectLearningProfile`；off-topic 命中时仍阻断这些写回
+- 已补 bundled response 回归测试：当前 runtime 会优先验证 2 次主调用路径，bundle 失败时再回退到旧的 reply/plan split 路径
+- 已补 `main_decision` 回归测试：当前 runtime 会优先验证无工具路径的单次主决策调用；如果 `main_decision` 或其结构化 payload 不可用，再回退到 staged diagnosis / bundled response
+- 已补 preloaded tool context 回归测试：`material-import` 会复用前置 `asset-summary`，review 请求会复用前置 `review-context`，常规问答中的 `unit-detail` 也会在 `needs_tool=true` 时复用，不再重复拉取
+- 已同步修正文档漂移：`docs/plan.md` 中的 suggestion contract / off-topic / archive rule 已改成完成态，避免继续把已做完的项当成下一步
+- 已补 activity result / bundled response / project memory / learning profile / dynamic tool preload 回归测试；当前 mock 主套件为 `138 passed, 4 deselected`，`real_llm` 套件为 `4 passed`
 
 ### In Progress
 
@@ -195,17 +205,13 @@
 
 ### Next
 
-- 压缩主链路 LLM 调用次数，减少当前串行请求带来的首轮回复延迟
 - 定义 Project 创建与初始化编排所需的最小 schema：topic、description、materials、special rules、initial memory
 - 定义 knowledge point 最小 schema：title、description、source materials、origin session、mastery/review/archive state
-- 定义 project learning profile 最小 schema：当前阶段、主要薄弱点、学习偏好、新鲜度
-- 将前端页面信息架构改到 `App Home -> Project Workspace -> Knowledge Point Detail`
-- 将 Project Workspace 改成默认知识点工作台、按需展开 session workspace 的布局
 - 为 `project / study / review` 三类 session 定义明确交互和事件 contract
 - 支持 project chat 中的新增材料、知识点建议新增、知识点轻量编辑和 topic/rules 修改入口
-- 将当前保守的 archive / off-topic 规则继续接到 project memory、learning profile 和知识点详情页读模型，避免事件层已到位但 project-level writeback 仍割裂
+- 将当前 summary 级 project memory / learning profile 写回继续扩成更稳定的 project-level 读模型，并接到知识点详情页与浏览态
 - 将当前单个 `activity` 事件扩成稳定的 session activity contract，补齐多 activity / card deck / 受约束输入节奏
-- 打通 `exercise-result / review-result` 回传与状态回写闭环，让练习结果和复习表现真正影响下一轮诊断
+- 将 web activity 提交从自由文本消息切到 typed `activity_result` contract，直接消费 backend 已完成的 writeback 闭环
 - 决定当前 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
 - 决定主案例稳定后优先补哪个次级 demo surface：继续放大"材料导入"，还是转向"导师对练"
 - 补答辩素材与竞品对比摘要，避免 demo 能演示但叙事支撑不足
@@ -216,10 +222,11 @@
 
 - 如果 Project、Knowledge Point、Session 三个对象边界没有尽快在代码里落稳，MVP 会继续带着旧的 thread-centric 结构前进，后续改动成本会放大
 - 如果知识点新增和 archive 规则不够克制，项目内知识点池会快速膨胀，削弱"系统在组织学习"的主感受
-- 如果 archive / off-topic 规则长期停留在当前保守启发式，而不继续接 exercise-result、project memory 和 learning profile 写回，project chat 的知识点治理仍会偏弱
+- 如果前端继续沿用自由文本提交 activity，而不切到 typed `activity_result` contract，当前后端 writeback 仍难以稳定进入真实用户链路
+- 如果 project memory / learning profile 长期停留在当前 summary 级写回，而不继续扩成更稳的读模型，project-level context 仍会偏粗
 - 如果 project learning profile 做得过重或过拟人，会把 MVP 从"编排系统"拉偏成"画像产品"
 - 如果过早引入复杂 graph 或多 agent，当前 demo 容易被工程结构拖慢
 - 如果 demo 展示很多能力但没有主线，差异点会不明显
 - 如果主案例虽然锁定，但状态来源和动作理由不够可信，评委仍会把它看成概念样机
-- 中转站 API 单次端到端请求约 27-33s（3 次串行 LLM 调用），延迟主要在中转站/模型侧
+- 即使主链路已收敛到 2 次主模型调用，provider 侧延迟仍然明显；如果继续保留展示型 `plan` 和同步 JSON bundle，首屏体感仍可能受模型完成时延限制
 - 如果继续沿用"展示型 plan + 串行文本调用"，agent 会更像会解释的脚本，而不是会安排真实学习动作的系统
