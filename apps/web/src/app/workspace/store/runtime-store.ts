@@ -1,6 +1,7 @@
 import type { SetStateAction } from "react";
 import type { UIMessage } from "ai";
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { initialSessions } from "@/data/project-workspace-demo";
 import { getTutorFixtureScenario } from "@/data/tutor-fixtures";
 import type {
@@ -95,102 +96,123 @@ interface WorkspaceRuntimeState {
   readonly clearBootstrapLoaded: (key: string) => void;
 }
 
-export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) => ({
-  sessionEntryModes: Object.fromEntries(
-    initialSessions.map((session) => [session.id, "chat-question"]),
-  ),
-  sessionSourceAssetIds: Object.fromEntries(
-    initialSessions.map((session) => [session.id, getDefaultSourceAssetIds()]),
-  ),
-  sessionMaterialTrayOpen: {},
-  devTutorFixtureState: getInitialDevTutorFixtureState(),
-  sessionSnapshots: {},
-  sessionReviewInspectors: {},
-  assetSummaryByKey: {},
-  agentConnectionState: "checking",
-  sessionMessagesById: Object.fromEntries(
-    initialSessions.map((session) => [session.id, []]),
-  ),
-  activityResolutionsBySession: {},
-  runningSessionIds: {},
-  bootstrapLoadedKeys: {},
-  activityBatchStateBySession: {},
-  completedActivityDecksBySession: {},
-  setSessionEntryModes: (nextState) =>
-    set((state) => ({
-      sessionEntryModes: resolveState(nextState, state.sessionEntryModes),
-    })),
-  setSessionSourceAssetIds: (nextState) =>
-    set((state) => ({
-      sessionSourceAssetIds: resolveState(nextState, state.sessionSourceAssetIds),
-    })),
-  setSessionMaterialTrayOpen: (nextState) =>
-    set((state) => ({
-      sessionMaterialTrayOpen: resolveState(nextState, state.sessionMaterialTrayOpen),
-    })),
-  setDevTutorFixtureState: (nextState) =>
-    set((state) => ({
-      devTutorFixtureState: resolveState(nextState, state.devTutorFixtureState),
-    })),
-  setSessionSnapshots: (nextState) =>
-    set((state) => ({
-      sessionSnapshots: resolveState(nextState, state.sessionSnapshots),
-    })),
-  setSessionReviewInspectors: (nextState) =>
-    set((state) => ({
-      sessionReviewInspectors: resolveState(nextState, state.sessionReviewInspectors),
-    })),
-  setAssetSummaryByKey: (nextState) =>
-    set((state) => ({
-      assetSummaryByKey: resolveState(nextState, state.assetSummaryByKey),
-    })),
-  setAgentConnectionState: (nextState) =>
-    set((state) => ({
-      agentConnectionState: resolveState(nextState, state.agentConnectionState),
-    })),
-  setSessionMessagesById: (nextState) =>
-    set((state) => ({
-      sessionMessagesById: resolveState(nextState, state.sessionMessagesById),
-    })),
-  setActivityResolutionsBySession: (nextState) =>
-    set((state) => ({
-      activityResolutionsBySession: resolveState(
-        nextState,
-        state.activityResolutionsBySession,
+export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()(
+  persist(
+    (set) => ({
+      sessionEntryModes: Object.fromEntries(
+        initialSessions.map((session) => [session.id, "chat-question"]),
       ),
-    })),
-  setRunningSessionIds: (nextState) =>
-    set((state) => ({
-      runningSessionIds: resolveState(nextState, state.runningSessionIds),
-    })),
-  setActivityBatchStateBySession: (nextState) =>
-    set((state) => ({
-      activityBatchStateBySession: resolveState(
-        nextState,
-        state.activityBatchStateBySession,
+      sessionSourceAssetIds: Object.fromEntries(
+        initialSessions.map((session) => [session.id, getDefaultSourceAssetIds()]),
       ),
-    })),
-  setCompletedActivityDecksBySession: (nextState) =>
-    set((state) => ({
-      completedActivityDecksBySession: resolveState(
-        nextState,
-        state.completedActivityDecksBySession,
+      sessionMaterialTrayOpen: {},
+      devTutorFixtureState: getInitialDevTutorFixtureState(),
+      sessionSnapshots: {},
+      sessionReviewInspectors: {},
+      assetSummaryByKey: {},
+      agentConnectionState: "checking",
+      sessionMessagesById: Object.fromEntries(
+        initialSessions.map((session) => [session.id, []]),
       ),
-    })),
-  markBootstrapLoaded: (key) =>
-    set((state) => ({
-      bootstrapLoadedKeys:
-        state.bootstrapLoadedKeys[key] === true
-          ? state.bootstrapLoadedKeys
-          : { ...state.bootstrapLoadedKeys, [key]: true },
-    })),
-  clearBootstrapLoaded: (key) =>
-    set((state) => {
-      if (state.bootstrapLoadedKeys[key] === undefined) {
-        return state;
-      }
-      const nextKeys = { ...state.bootstrapLoadedKeys };
-      delete nextKeys[key];
-      return { bootstrapLoadedKeys: nextKeys };
+      activityResolutionsBySession: {},
+      runningSessionIds: {},
+      bootstrapLoadedKeys: {},
+      activityBatchStateBySession: {},
+      completedActivityDecksBySession: {},
+      setSessionEntryModes: (nextState) =>
+        set((state) => ({
+          sessionEntryModes: resolveState(nextState, state.sessionEntryModes),
+        })),
+      setSessionSourceAssetIds: (nextState) =>
+        set((state) => ({
+          sessionSourceAssetIds: resolveState(nextState, state.sessionSourceAssetIds),
+        })),
+      setSessionMaterialTrayOpen: (nextState) =>
+        set((state) => ({
+          sessionMaterialTrayOpen: resolveState(nextState, state.sessionMaterialTrayOpen),
+        })),
+      setDevTutorFixtureState: (nextState) =>
+        set((state) => ({
+          devTutorFixtureState: resolveState(nextState, state.devTutorFixtureState),
+        })),
+      setSessionSnapshots: (nextState) =>
+        set((state) => ({
+          sessionSnapshots: resolveState(nextState, state.sessionSnapshots),
+        })),
+      setSessionReviewInspectors: (nextState) =>
+        set((state) => ({
+          sessionReviewInspectors: resolveState(nextState, state.sessionReviewInspectors),
+        })),
+      setAssetSummaryByKey: (nextState) =>
+        set((state) => ({
+          assetSummaryByKey: resolveState(nextState, state.assetSummaryByKey),
+        })),
+      setAgentConnectionState: (nextState) =>
+        set((state) => ({
+          agentConnectionState: resolveState(nextState, state.agentConnectionState),
+        })),
+      setSessionMessagesById: (nextState) =>
+        set((state) => ({
+          sessionMessagesById: resolveState(nextState, state.sessionMessagesById),
+        })),
+      setActivityResolutionsBySession: (nextState) =>
+        set((state) => ({
+          activityResolutionsBySession: resolveState(
+            nextState,
+            state.activityResolutionsBySession,
+          ),
+        })),
+      setRunningSessionIds: (nextState) =>
+        set((state) => ({
+          runningSessionIds: resolveState(nextState, state.runningSessionIds),
+        })),
+      setActivityBatchStateBySession: (nextState) =>
+        set((state) => ({
+          activityBatchStateBySession: resolveState(
+            nextState,
+            state.activityBatchStateBySession,
+          ),
+        })),
+      setCompletedActivityDecksBySession: (nextState) =>
+        set((state) => ({
+          completedActivityDecksBySession: resolveState(
+            nextState,
+            state.completedActivityDecksBySession,
+          ),
+        })),
+      markBootstrapLoaded: (key) =>
+        set((state) => ({
+          bootstrapLoadedKeys:
+            state.bootstrapLoadedKeys[key] === true
+              ? state.bootstrapLoadedKeys
+              : { ...state.bootstrapLoadedKeys, [key]: true },
+        })),
+      clearBootstrapLoaded: (key) =>
+        set((state) => {
+          if (state.bootstrapLoadedKeys[key] === undefined) {
+            return state;
+          }
+          const nextKeys = { ...state.bootstrapLoadedKeys };
+          delete nextKeys[key];
+          return { bootstrapLoadedKeys: nextKeys };
+        }),
     }),
-}));
+    {
+      name: "xidea-workspace-runtime",
+      partialize: (state) => ({
+        activityBatchStateBySession: state.activityBatchStateBySession,
+        activityResolutionsBySession: state.activityResolutionsBySession,
+        assetSummaryByKey: state.assetSummaryByKey,
+        completedActivityDecksBySession: state.completedActivityDecksBySession,
+        sessionEntryModes: state.sessionEntryModes,
+        sessionMaterialTrayOpen: state.sessionMaterialTrayOpen,
+        sessionMessagesById: state.sessionMessagesById,
+        sessionReviewInspectors: state.sessionReviewInspectors,
+        sessionSnapshots: state.sessionSnapshots,
+        sessionSourceAssetIds: state.sessionSourceAssetIds,
+      }),
+      storage: createJSONStorage(() => localStorage),
+      version: 1,
+    },
+  ),
+);

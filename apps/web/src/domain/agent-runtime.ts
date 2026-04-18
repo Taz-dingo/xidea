@@ -600,6 +600,42 @@ export function buildDefaultAgentPrompt(
   return `我正在推进「${project.name}」，当前目标是${project.goal}。请围绕「${unit.title}」判断我这轮更适合先学什么，并解释为什么。`;
 }
 
+function buildAttachedMaterialPromptContext(
+  sourceAssets: ReadonlyArray<SourceAsset>,
+): string | null {
+  if (sourceAssets.length === 0) {
+    return null;
+  }
+
+  const materialLines = sourceAssets.slice(0, 3).map((asset, index) => {
+    const summary = asset.summary?.trim();
+    return [
+      `${index + 1}. ${asset.title}`,
+      asset.topic.trim() ? `主题：${asset.topic.trim()}` : null,
+      summary ? `摘要：${summary.slice(0, 140)}` : null,
+    ]
+      .filter(Boolean)
+      .join("；");
+  });
+
+  return `当前已附材料：\n${materialLines.join("\n")}`;
+}
+
+function shouldInjectMaterialTargeting(prompt: string): boolean {
+  const normalizedPrompt = prompt.trim();
+  if (normalizedPrompt === "") {
+    return true;
+  }
+
+  if (normalizedPrompt.length <= 12) {
+    return true;
+  }
+
+  return /这个|这些|这份|这篇|这几个|这组|上面这|刚上传|附件|材料/.test(
+    normalizedPrompt,
+  );
+}
+
 export function getRequestSourceAssetIds(
   _entryMode: AgentEntryMode,
   sourceAssets: ReadonlyArray<SourceAsset>,
@@ -620,8 +656,23 @@ export function buildAgentRequest(input: {
   readonly targetUnitId: string | null;
 }): AgentRequest {
   const normalizedPrompt = input.prompt.trim();
-  const fallbackPrompt = normalizedPrompt || buildDefaultAgentPrompt(input.unit, input.project);
   const sourceAssetIds = getRequestSourceAssetIds(input.entryMode, input.sourceAssets);
+  const materialContext = buildAttachedMaterialPromptContext(input.sourceAssets);
+  const fallbackPrompt = normalizedPrompt || buildDefaultAgentPrompt(input.unit, input.project);
+  const promptWithMaterials =
+    materialContext === null
+      ? fallbackPrompt
+      : shouldInjectMaterialTargeting(normalizedPrompt)
+        ? [
+            "请优先围绕我当前附带的材料识别学习主题、关键概念和更合适的下一步编排。",
+            materialContext,
+            `我的原话：${fallbackPrompt}`,
+          ].join("\n\n")
+        : [fallbackPrompt, materialContext].join("\n\n");
+  const contextHint =
+    materialContext === null
+      ? input.project.currentThread
+      : [input.project.currentThread, materialContext].filter(Boolean).join("\n\n");
 
   return {
     project_id: input.projectId,
@@ -632,10 +683,10 @@ export function buildAgentRequest(input: {
       input.targetUnitId === null
         ? input.project.goal.trim() || input.project.name
         : input.unit.title,
-    messages: [{ role: "user", content: fallbackPrompt }],
+    messages: [{ role: "user", content: promptWithMaterials }],
     source_asset_ids: sourceAssetIds,
     target_unit_id: input.targetUnitId,
-    context_hint: input.project.currentThread,
+    context_hint: contextHint,
     activity_result: input.activityResult,
     response_mode: "stream",
   };

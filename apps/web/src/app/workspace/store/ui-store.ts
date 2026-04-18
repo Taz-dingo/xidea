@@ -1,5 +1,6 @@
 import type { SetStateAction } from "react";
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 import {
   initialKnowledgePoints,
   initialProjects,
@@ -71,83 +72,101 @@ if (initialProject === undefined || initialKnowledgePoint === undefined) {
   throw new Error("Workspace UI store requires seeded project and knowledge point data.");
 }
 
-export const useWorkspaceUiStore = create<WorkspaceUiState>()((set) => ({
-  screen: "home",
-  homeSection: "all-projects",
-  workspaceSection: "overview",
-  isProjectMetaOpen: false,
-  searchQuery: "",
-  isCreatingProject: false,
-  isEditingProjectMeta: false,
-  isEditingKnowledgePoint: false,
-  isKnowledgePointDialogOpen: false,
-  archiveConfirmationPointId: null,
-  pendingSessionIntent: null,
-  pendingInitialPrompt: null,
-  selectedProjectId: initialProject.id,
-  selectedSessionId: "",
-  selectedKnowledgePointId: initialKnowledgePoint.id,
-  draftPrompt: "",
-  setScreen: (nextState) =>
-    set((state) => ({ screen: resolveState(nextState, state.screen) })),
-  setHomeSection: (nextState) =>
-    set((state) => ({ homeSection: resolveState(nextState, state.homeSection) })),
-  setWorkspaceSection: (nextState) =>
-    set((state) => ({
-      workspaceSection: resolveState(nextState, state.workspaceSection),
-    })),
-  setIsProjectMetaOpen: (nextState) =>
-    set((state) => ({
-      isProjectMetaOpen: resolveState(nextState, state.isProjectMetaOpen),
-    })),
-  setSearchQuery: (nextState) =>
-    set((state) => ({ searchQuery: resolveState(nextState, state.searchQuery) })),
-  setIsCreatingProject: (nextState) =>
-    set((state) => ({
-      isCreatingProject: resolveState(nextState, state.isCreatingProject),
-    })),
-  setIsEditingProjectMeta: (nextState) =>
-    set((state) => ({
-      isEditingProjectMeta: resolveState(nextState, state.isEditingProjectMeta),
-    })),
-  setIsEditingKnowledgePoint: (nextState) =>
-    set((state) => ({
-      isEditingKnowledgePoint: resolveState(nextState, state.isEditingKnowledgePoint),
-    })),
-  setIsKnowledgePointDialogOpen: (nextState) =>
-    set((state) => ({
-      isKnowledgePointDialogOpen: resolveState(nextState, state.isKnowledgePointDialogOpen),
-    })),
-  setArchiveConfirmationPointId: (nextState) =>
-    set((state) => ({
-      archiveConfirmationPointId: resolveState(
-        nextState,
-        state.archiveConfirmationPointId,
-      ),
-    })),
-  setPendingSessionIntent: (nextState) =>
-    set((state) => ({
-      pendingSessionIntent: resolveState(nextState, state.pendingSessionIntent),
-    })),
-  setPendingInitialPrompt: (nextState) =>
-    set((state) => ({
-      pendingInitialPrompt: resolveState(nextState, state.pendingInitialPrompt),
-    })),
-  setSelectedProjectId: (nextState) =>
-    set((state) => ({
-      selectedProjectId: resolveState(nextState, state.selectedProjectId),
-    })),
-  setSelectedSessionId: (nextState) =>
-    set((state) => ({
-      selectedSessionId: resolveState(nextState, state.selectedSessionId),
-    })),
-  setSelectedKnowledgePointId: (nextState) =>
-    set((state) => ({
-      selectedKnowledgePointId: resolveState(
-        nextState,
-        state.selectedKnowledgePointId,
-      ),
-    })),
-  setDraftPrompt: (nextState) =>
-    set((state) => ({ draftPrompt: resolveState(nextState, state.draftPrompt) })),
-}));
+export const useWorkspaceUiStore = create<WorkspaceUiState>()(
+  persist(
+    (set) => ({
+      screen: "home",
+      homeSection: "all-projects",
+      workspaceSection: "overview",
+      isProjectMetaOpen: false,
+      searchQuery: "",
+      isCreatingProject: false,
+      isEditingProjectMeta: false,
+      isEditingKnowledgePoint: false,
+      isKnowledgePointDialogOpen: false,
+      archiveConfirmationPointId: null,
+      pendingSessionIntent: null,
+      pendingInitialPrompt: null,
+      selectedProjectId: initialProject.id,
+      selectedSessionId: "",
+      selectedKnowledgePointId: initialKnowledgePoint.id,
+      draftPrompt: "",
+      setScreen: (nextState) =>
+        set((state) => ({ screen: resolveState(nextState, state.screen) })),
+      setHomeSection: (nextState) =>
+        set((state) => ({ homeSection: resolveState(nextState, state.homeSection) })),
+      setWorkspaceSection: (nextState) =>
+        set((state) => ({
+          workspaceSection: resolveState(nextState, state.workspaceSection),
+        })),
+      setIsProjectMetaOpen: (nextState) =>
+        set((state) => ({
+          isProjectMetaOpen: resolveState(nextState, state.isProjectMetaOpen),
+        })),
+      setSearchQuery: (nextState) =>
+        set((state) => ({ searchQuery: resolveState(nextState, state.searchQuery) })),
+      setIsCreatingProject: (nextState) =>
+        set((state) => ({
+          isCreatingProject: resolveState(nextState, state.isCreatingProject),
+        })),
+      setIsEditingProjectMeta: (nextState) =>
+        set((state) => ({
+          isEditingProjectMeta: resolveState(nextState, state.isEditingProjectMeta),
+        })),
+      setIsEditingKnowledgePoint: (nextState) =>
+        set((state) => ({
+          isEditingKnowledgePoint: resolveState(nextState, state.isEditingKnowledgePoint),
+        })),
+      setIsKnowledgePointDialogOpen: (nextState) =>
+        set((state) => ({
+          isKnowledgePointDialogOpen: resolveState(nextState, state.isKnowledgePointDialogOpen),
+        })),
+      setArchiveConfirmationPointId: (nextState) =>
+        set((state) => ({
+          archiveConfirmationPointId: resolveState(
+            nextState,
+            state.archiveConfirmationPointId,
+          ),
+        })),
+      setPendingSessionIntent: (nextState) =>
+        set((state) => ({
+          pendingSessionIntent: resolveState(nextState, state.pendingSessionIntent),
+        })),
+      setPendingInitialPrompt: (nextState) =>
+        set((state) => ({
+          pendingInitialPrompt: resolveState(nextState, state.pendingInitialPrompt),
+        })),
+      setSelectedProjectId: (nextState) =>
+        set((state) => ({
+          selectedProjectId: resolveState(nextState, state.selectedProjectId),
+        })),
+      setSelectedSessionId: (nextState) =>
+        set((state) => ({
+          selectedSessionId: resolveState(nextState, state.selectedSessionId),
+        })),
+      setSelectedKnowledgePointId: (nextState) =>
+        set((state) => ({
+          selectedKnowledgePointId: resolveState(
+            nextState,
+            state.selectedKnowledgePointId,
+          ),
+        })),
+      setDraftPrompt: (nextState) =>
+        set((state) => ({ draftPrompt: resolveState(nextState, state.draftPrompt) })),
+    }),
+    {
+      name: "xidea-workspace-ui",
+      partialize: (state) => ({
+        homeSection: state.homeSection,
+        screen: state.screen,
+        searchQuery: state.searchQuery,
+        selectedKnowledgePointId: state.selectedKnowledgePointId,
+        selectedProjectId: state.selectedProjectId,
+        selectedSessionId: state.selectedSessionId,
+        workspaceSection: state.workspaceSection,
+      }),
+      storage: createJSONStorage(() => localStorage),
+      version: 1,
+    },
+  ),
+);

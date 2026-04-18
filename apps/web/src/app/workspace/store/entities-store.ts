@@ -1,5 +1,6 @@
 import type { SetStateAction } from "react";
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 import {
   initialKnowledgePoints,
   initialProjects,
@@ -67,29 +68,45 @@ const initialProjectAssets = Object.fromEntries(
   ]),
 );
 
-export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()((set) => ({
-  projects: initialProjects,
-  knowledgePoints: initialKnowledgePoints,
-  sessions: initialSessions,
-  projectMaterialIdsByProject: initialProjectMaterials,
-  projectAssetsByProject: initialProjectAssets,
-  setProjects: (nextState) =>
-    set((state) => ({ projects: resolveState(nextState, state.projects) })),
-  setKnowledgePoints: (nextState) =>
-    set((state) => ({
-      knowledgePoints: resolveState(nextState, state.knowledgePoints),
-    })),
-  setSessions: (nextState) =>
-    set((state) => ({ sessions: resolveState(nextState, state.sessions) })),
-  setProjectMaterialIdsByProject: (nextState) =>
-    set((state) => ({
-      projectMaterialIdsByProject: resolveState(
-        nextState,
-        state.projectMaterialIdsByProject,
-      ),
-    })),
-  setProjectAssetsByProject: (nextState) =>
-    set((state) => ({
-      projectAssetsByProject: resolveState(nextState, state.projectAssetsByProject),
-    })),
-}));
+export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
+  persist(
+    (set) => ({
+      projects: initialProjects,
+      knowledgePoints: initialKnowledgePoints,
+      sessions: initialSessions,
+      projectMaterialIdsByProject: initialProjectMaterials,
+      projectAssetsByProject: initialProjectAssets,
+      setProjects: (nextState) =>
+        set((state) => ({ projects: resolveState(nextState, state.projects) })),
+      setKnowledgePoints: (nextState) =>
+        set((state) => ({
+          knowledgePoints: resolveState(nextState, state.knowledgePoints),
+        })),
+      setSessions: (nextState) =>
+        set((state) => ({ sessions: resolveState(nextState, state.sessions) })),
+      setProjectMaterialIdsByProject: (nextState) =>
+        set((state) => ({
+          projectMaterialIdsByProject: resolveState(
+            nextState,
+            state.projectMaterialIdsByProject,
+          ),
+        })),
+      setProjectAssetsByProject: (nextState) =>
+        set((state) => ({
+          projectAssetsByProject: resolveState(nextState, state.projectAssetsByProject),
+        })),
+    }),
+    {
+      name: "xidea-workspace-entities",
+      partialize: (state) => ({
+        knowledgePoints: state.knowledgePoints,
+        projectAssetsByProject: state.projectAssetsByProject,
+        projectMaterialIdsByProject: state.projectMaterialIdsByProject,
+        projects: state.projects,
+        sessions: state.sessions,
+      }),
+      storage: createJSONStorage(() => localStorage),
+      version: 1,
+    },
+  ),
+);
