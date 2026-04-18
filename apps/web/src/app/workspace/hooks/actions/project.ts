@@ -132,6 +132,7 @@ export function useProjectActions(data: WorkspaceData) {
       [data.selectedProject.id]: data.projectMetaDraft.materialIds,
     }));
     data.setIsEditingProjectMeta(false);
+    data.setIsProjectMetaOpen(false);
   }
 
   async function uploadAndStoreProjectMaterial(file: File) {
@@ -209,6 +210,7 @@ export function useProjectActions(data: WorkspaceData) {
         data.projectMaterialIdsByProject[data.selectedProject.id] ?? [],
     });
     data.setIsEditingProjectMeta(false);
+    data.setIsProjectMetaOpen(false);
   }
 
   return {

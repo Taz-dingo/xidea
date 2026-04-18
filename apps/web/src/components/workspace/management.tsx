@@ -33,6 +33,15 @@ interface ProjectMetaDraftValue {
   readonly materialIds: ReadonlyArray<string>;
 }
 
+interface ProjectMetaEditorProps {
+  readonly assets: ReadonlyArray<SourceAsset>;
+  readonly draft: ProjectMetaDraftValue;
+  readonly onCancel: () => void;
+  readonly onChange: (draft: ProjectMetaDraftValue) => void;
+  readonly onUploadMaterial: (file: File) => Promise<void>;
+  readonly onSave: () => void;
+}
+
 function AssetPicker({
   assets,
   selectedAssetIds,
@@ -200,22 +209,37 @@ export function EditMetaPanel({
   onChange,
   onUploadMaterial,
   onSave,
-}: {
-  assets: ReadonlyArray<SourceAsset>;
-  draft: ProjectMetaDraftValue;
-  onCancel: () => void;
-  onChange: (draft: ProjectMetaDraftValue) => void;
-  onUploadMaterial: (file: File) => Promise<void>;
-  onSave: () => void;
-}): ReactElement {
-  const isDisabled =
-    draft.topic.trim() === "" || draft.description.trim() === "";
-
+}: ProjectMetaEditorProps): ReactElement {
   return (
     <FormShell
       description="这里改的是当前项目的主题叙事、特殊约束和材料池。"
       title="编辑项目信息"
     >
+      <ProjectMetaEditorFields
+        assets={assets}
+        draft={draft}
+        onCancel={onCancel}
+        onChange={onChange}
+        onSave={onSave}
+        onUploadMaterial={onUploadMaterial}
+      />
+    </FormShell>
+  );
+}
+
+function ProjectMetaEditorFields({
+  assets,
+  draft,
+  onCancel,
+  onChange,
+  onUploadMaterial,
+  onSave,
+}: ProjectMetaEditorProps): ReactElement {
+  const isDisabled =
+    draft.topic.trim() === "" || draft.description.trim() === "";
+
+  return (
+    <>
       <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
         <span className="font-medium text-[var(--xidea-near-black)]">主题</span>
         <input
@@ -275,6 +299,34 @@ export function EditMetaPanel({
           取消
         </Button>
       </div>
-    </FormShell>
+    </>
+  );
+}
+
+export function InlineProjectMetaEditor({
+  assets,
+  draft,
+  onCancel,
+  onChange,
+  onUploadMaterial,
+  onSave,
+}: ProjectMetaEditorProps): ReactElement {
+  return (
+    <div className="space-y-4 rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] p-4">
+      <div className="space-y-1">
+        <p className="xidea-kicker text-[var(--xidea-selection-text)]">编辑项目</p>
+        <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+          在这里直接调整主题、说明、约束和材料池。
+        </p>
+      </div>
+      <ProjectMetaEditorFields
+        assets={assets}
+        draft={draft}
+        onCancel={onCancel}
+        onChange={onChange}
+        onSave={onSave}
+        onUploadMaterial={onUploadMaterial}
+      />
+    </div>
   );
 }

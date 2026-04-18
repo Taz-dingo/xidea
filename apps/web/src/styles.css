@@ -166,19 +166,8 @@ button:not(:disabled):active {
 .xidea-sidebar-reveal {
   transition:
     grid-template-rows 180ms ease,
-    opacity 180ms ease,
-    margin-top 180ms ease;
-}
-
-@keyframes xidea-soft-rise {
-  0% {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+    margin-top 180ms ease,
+    max-height 180ms ease;
 }
 
 @keyframes xidea-dot-wave {
@@ -195,7 +184,20 @@ button:not(:disabled):active {
 }
 
 .xidea-card-motion {
-  animation: xidea-soft-rise 220ms ease;
+  transition:
+    width 220ms ease,
+    min-width 220ms ease,
+    max-width 220ms ease,
+    flex-basis 220ms ease,
+    grid-template-columns 220ms ease,
+    grid-template-rows 220ms ease,
+    max-height 220ms ease,
+    padding 220ms ease,
+    gap 220ms ease,
+    margin 220ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .xidea-dot-wave {
@@ -254,9 +256,13 @@ button:not(:disabled):active {
 @media (prefers-reduced-motion: reduce) {
   .xidea-feedback-shake,
   .xidea-feedback-success,
-  .xidea-card-motion,
   .xidea-dot-wave {
     animation: none;
+  }
+
+  .xidea-card-motion,
+  .xidea-sidebar-reveal {
+    transition: none;
   }
 
   button:not(:disabled):active {

@@ -9,15 +9,10 @@ import { useWorkspaceData } from "@/app/workspace/hooks/use-data";
 import { useWorkspacePageModel } from "@/app/workspace/hooks/use-page-model";
 import { KnowledgePointDetailScreen } from "@/components/workspace/detail";
 import { SessionWorkspace } from "@/components/session/workspace";
-import {
-  CreateProjectPanel,
-  EditMetaPanel,
-} from "@/components/workspace/management";
-import { MetaPanel } from "@/components/workspace/core";
+import { CreateProjectPanel } from "@/components/workspace/management";
 import { HomeScreen } from "@/components/workspace/screens/home";
 import { WorkspaceBrowseScreen } from "@/components/workspace/screens/browse";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 
 export function WorkspacePage(): ReactElement {
   const data = useWorkspaceData();
@@ -36,9 +31,14 @@ export function WorkspacePage(): ReactElement {
       <div className="relative mx-auto min-h-screen max-w-[1520px] px-3 py-3 lg:px-4 lg:py-4">
         <div className="space-y-4">
           <WorkspaceHeader
+            isProjectMetaEditing={data.isEditingProjectMeta}
+            onCancelProjectMetaEditing={actions.handleCancelEditingProjectMeta}
+            onChangeProjectMetaDraft={data.setProjectMetaDraft}
             onCreateProject={actions.handleStartCreatingProject}
             onEditProject={actions.handleOpenProjectMetaEditor}
             onGoHome={actions.handleGoHome}
+            onGoWorkspace={() => actions.handleSelectProject(data.selectedProject.id)}
+            onSaveProjectMeta={actions.handleSaveProjectMeta}
             onSearchChange={data.setSearchQuery}
             onStartProjectSession={() =>
               actions.handleCreateSession(data.selectedProject.id, "project")
@@ -57,12 +57,20 @@ export function WorkspacePage(): ReactElement {
                 model.studyTargetPoint?.id ?? null,
               )
             }
+            onUploadProjectMaterial={actions.handleUploadProjectMaterial}
+            projectAssets={data.selectedProjectAssets}
+            projectMaterialCount={model.projectMaterialCount}
+            projectMetaDraft={data.projectMetaDraft}
+            projectSessionCount={data.selectedProjectSessions.length}
+            projectStats={model.projectStats}
             reviewDisabled={model.reviewTargetPoint === null}
             screen={data.screen}
             searchQuery={data.searchQuery}
             selectedProjectDescription={data.selectedProject.description}
             selectedProjectName={data.selectedProject.name}
+            selectedProjectRules={data.selectedProject.specialRules}
             selectedProjectTopic={data.selectedProject.topic}
+            selectedProjectUpdatedAt={data.selectedProject.updatedAt}
             studyDisabled={model.studyTargetPoint === null}
           />
 
@@ -103,47 +111,6 @@ export function WorkspacePage(): ReactElement {
             />
           ) : (
             <div className="space-y-4">
-              {data.isProjectMetaOpen ? (
-                <div className="space-y-4">
-                  <MetaPanel
-                    materialCount={model.projectMaterialCount}
-                    materials={data.selectedProjectMaterials}
-                    onClose={actions.handleCancelEditingProjectMeta}
-                    project={data.selectedProject}
-                    sessionCount={data.selectedProjectSessions.length}
-                  />
-                  <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                    <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
-                      <div className="space-y-2">
-                        <p className="xidea-kicker text-[var(--xidea-selection-text)]">项目设置</p>
-                        <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                          继续调整当前项目的主题、规则和材料池，不需要回到首页重建。
-                        </p>
-                      </div>
-                      <Button
-                        className="rounded-full"
-                        onClick={actions.handleStartEditingProjectMeta}
-                        type="button"
-                        variant="outline"
-                      >
-                        编辑项目信息
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {data.isEditingProjectMeta ? (
-                    <EditMetaPanel
-                      assets={data.selectedProjectAssets}
-                      draft={data.projectMetaDraft}
-                      onCancel={actions.handleCancelEditingProjectMeta}
-                      onChange={data.setProjectMetaDraft}
-                      onUploadMaterial={actions.handleUploadProjectMaterial}
-                      onSave={actions.handleSaveProjectMeta}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-
               {data.selectedSession === undefined ? (
                 <WorkspaceBrowseScreen
                   filteredKnowledgePoints={model.filteredKnowledgePoints}
@@ -243,13 +210,12 @@ export function WorkspacePage(): ReactElement {
               >
                 <div className="mb-3 flex justify-end">
                   <Button
-                    className="rounded-full bg-[var(--xidea-white)]"
+                    className="h-10 w-10 rounded-full bg-[var(--xidea-white)] p-0"
                     onClick={actions.handleCloseKnowledgePointDialog}
                     type="button"
                     variant="outline"
                   >
                     <X className="h-4 w-4" />
-                    关闭
                   </Button>
                 </div>
                 <KnowledgePointDetailScreen
