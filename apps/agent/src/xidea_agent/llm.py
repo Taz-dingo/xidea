@@ -25,6 +25,10 @@ from types import SimpleNamespace
 import httpx
 
 from xidea_agent.state import (
+    Activity,
+    ActivityChoice,
+    ActivityChoiceInput,
+    ActivityTextInput,
     Diagnosis,
     Explanation,
     LearnerUnitState,
@@ -294,7 +298,28 @@ COMBINED_MAIN_DECISION_SYSTEM_PROMPT = """\
         "outcome": "完成后能检验什么"
       }
     ]
-  }
+  },
+  "activities": [
+    {
+      "title": "可选；当 session_type 不是 project 且 diagnosis.needs_tool=false 时，建议一并返回",
+      "objective": "这张卡希望检验什么",
+      "prompt": "给用户看到的题干 / 指令",
+      "support": "为什么安排这张卡",
+      "input": {
+        "type": "choice",
+        "choices": [
+          {
+            "id": "choice-id",
+            "label": "选项主文案",
+            "detail": "选项补充说明",
+            "is_correct": true,
+            "feedback_layers": ["第一层反馈", "第二层反馈"],
+            "analysis": "为什么这项对 / 错"
+          }
+        ]
+      }
+    }
+  ]
 }
 
 ## 约束
@@ -308,6 +333,8 @@ COMBINED_MAIN_DECISION_SYSTEM_PROMPT = """\
 - diagnosis.needs_tool=false 时，必须同时返回 reply 和 plan
 - 如果提供了候选模式列表，plan.steps 中的 mode 必须从候选列表中选
 - reply 必须围绕 plan 第一条 step 展开，控制在 2-4 句以内，不要以“好的”“当然”等口水话开头
+- 如果 session_type 不是 project，建议同时返回 activities，并让 activities 数量与 plan.steps 数量一致；如果这次没法稳定返回，可以留空，系统会补独立 activity 生成
+- activities 必须直接围绕知识点 / 学习主题本身出题，不能写成系统自指或“如何答题”的 meta 题
 - 如果上下文里已经明确给出材料摘要、thread memory、review 摘要或其他补充上下文，不要仅因为 entry_mode 是 material-import / coach-followup 就机械地把 diagnosis.needs_tool 设为 true
 - 直接输出 JSON 对象，不要包含 markdown 代码块标记
 """
@@ -427,7 +454,28 @@ COMBINED_RESPONSE_SYSTEM_PROMPT = """\
         "outcome": "完成后能检验什么"
       }
     ]
-  }
+  },
+  "activities": [
+    {
+      "title": "可选；当 session_type 不是 project 时，建议一并返回",
+      "objective": "这张卡希望检验什么",
+      "prompt": "给用户看到的题干 / 指令",
+      "support": "为什么安排这张卡",
+      "input": {
+        "type": "choice",
+        "choices": [
+          {
+            "id": "choice-id",
+            "label": "选项主文案",
+            "detail": "选项补充说明",
+            "is_correct": true,
+            "feedback_layers": ["第一层反馈", "第二层反馈"],
+            "analysis": "为什么这项对 / 错"
+          }
+        ]
+      }
+    }
+  ]
 }
 
 ## 约束
@@ -439,6 +487,61 @@ COMBINED_RESPONSE_SYSTEM_PROMPT = """\
 - 如果提供了候选模式列表，plan.steps 中的 mode 必须从候选列表中选
 - plan.selected_mode 取第一步的 mode
 - reason / outcome 必须针对用户的具体问题
+- activities 必须直接围绕知识点 / 学习主题本身出题，不能写成系统自指或“如何答题”的 meta 题
+- 如果 session_type 不是 project，建议同时返回 activities，为每个 plan.step 生成一张学习卡；如果当前调用没能稳定生成，也可以留空，系统会补独立 activity 生成调用
+- 直接输出 JSON 对象，不要包含 markdown 代码块标记
+"""
+
+ACTIVITY_GENERATION_SYSTEM_PROMPT = """\
+你是 Xidea 学习编排系统的学习卡生成模块。
+
+你的职责是根据当前 diagnosis、plan、学习者状态和最新用户输入，为 study/review session 生成一组可直接渲染的 activities。
+
+## 输入语义
+
+- 输入里会明确给出当前 session_type，只可能是 project、study、review
+- 如果 session_type=project，直接返回 {"activities": []}，不要生成学习卡
+- 如果 session_type=study 或 review，需要按 plan.steps 的顺序，一步生成一张 activity
+
+## 输出格式
+
+严格输出一个 JSON 对象：
+{
+  "activities": [
+    {
+      "title": "卡片标题",
+      "objective": "这张卡希望检验什么",
+      "prompt": "给用户看到的题干 / 指令",
+      "support": "为什么安排这张卡",
+      "input": {
+        "type": "choice",
+        "choices": [
+          {
+            "id": "choice-id",
+            "label": "选项主文案",
+            "detail": "选项补充说明",
+            "is_correct": true,
+            "feedback_layers": ["第一层反馈", "第二层反馈"],
+            "analysis": "为什么这项对 / 错"
+          }
+        ]
+      }
+    }
+  ]
+}
+
+## 约束
+
+- activities 数量必须和 plan.steps 数量一致，顺序一致
+- 每张卡都必须直接围绕当前学习主题 / 当前知识点本身出题，不要问“你应该怎么答题”“系统下一步会怎么做”这类 meta 问题
+- 题干和选项必须贴合用户当前主题与最新问题，不能写成系统自指文案
+- 默认使用 choice input
+- choice 至少 3 个，且必须恰好 1 个正确答案
+- 错误选项必须是贴着当前知识点的 plausible misconception，不能是明显废话
+- 错误选项 feedback_layers 要层层递进：先给短提示，再给更明确解释，最后点破关键边界
+- 正确选项 feedback_layers 给 1-2 层强化反馈
+- review session 优先生成回忆校准 / 记忆辨析风格卡片，不要漂成 project 讨论
+- study session 可以围绕理解建立、边界辨析、短练习或应用判断展开
 - 直接输出 JSON 对象，不要包含 markdown 代码块标记
 """
 
@@ -561,6 +664,7 @@ PROMPT_FAMILY_TO_SESSION_BLOCKS: dict[str, tuple[str, ...]] = {
     "diagnosis": ("default", "diagnosis"),
     "combined-diagnosis": ("default", "signals", "diagnosis"),
     "main-decision": ("default", "signals", "diagnosis", "plan", "reply"),
+    "activities": ("default", "plan", "reply"),
     "plan": ("default", "plan"),
     "reply": ("default", "reply"),
     "response": ("default", "plan", "reply"),
@@ -989,6 +1093,146 @@ def _parse_study_plan_payload(
         expected_outcome=expected_outcome,
         steps=steps,
     )
+
+
+def _activity_kind_for_mode(mode: str, action: str) -> str:
+    if mode == "contrast-drill":
+        return "quiz"
+    if action == "review" or mode in {"image-recall", "audio-recall"}:
+        return "recall"
+    return "coach-followup"
+
+
+def _submit_label_for_kind(kind: str) -> str:
+    if kind == "quiz":
+        return "提交判断"
+    if kind == "recall":
+        return "提交回忆"
+    return "提交作答"
+
+
+def _parse_activity_choice_payload(choice: object, fallback_id: str) -> ActivityChoice | None:
+    if not isinstance(choice, dict):
+        return None
+
+    label = str(choice.get("label", "")).strip()
+    detail = str(choice.get("detail", "")).strip()
+    if not label or not detail:
+        return None
+
+    choice_id = str(choice.get("id", "")).strip() or fallback_id
+    feedback_layers_raw = choice.get("feedback_layers", [])
+    feedback_layers = [
+        str(item).strip()
+        for item in feedback_layers_raw
+        if str(item).strip()
+    ] if isinstance(feedback_layers_raw, list) else []
+    analysis = str(choice.get("analysis", "")).strip() or detail
+
+    return ActivityChoice(
+        id=choice_id,
+        label=label,
+        detail=detail,
+        is_correct=bool(choice.get("is_correct", False)),
+        feedback_layers=feedback_layers,
+        analysis=analysis,
+    )
+
+
+def _parse_activity_input_payload(input_payload: object) -> ActivityChoiceInput | ActivityTextInput | None:
+    if not isinstance(input_payload, dict):
+        return None
+
+    input_type = str(input_payload.get("type", "")).strip()
+    if input_type == "" and isinstance(input_payload.get("choices"), list):
+        input_type = "choice"
+    if input_type == "" and isinstance(input_payload.get("placeholder"), str):
+        input_type = "text"
+
+    if input_type == "choice":
+        raw_choices = input_payload.get("choices", [])
+        if not isinstance(raw_choices, list) or len(raw_choices) < 3:
+            return None
+
+        choices = [
+            _parse_activity_choice_payload(choice, f"choice-{index + 1}")
+            for index, choice in enumerate(raw_choices)
+        ]
+        if any(choice is None for choice in choices):
+            return None
+
+        normalized_choices = [choice for choice in choices if choice is not None]
+        if sum(1 for choice in normalized_choices if choice.is_correct) != 1:
+            return None
+
+        return ActivityChoiceInput(type="choice", choices=normalized_choices)
+
+    if input_type == "text":
+        placeholder = str(input_payload.get("placeholder", "")).strip()
+        min_length = int(input_payload.get("min_length", 1))
+        if not placeholder:
+            return None
+        return ActivityTextInput(
+            type="text",
+            placeholder=placeholder,
+            min_length=max(1, min_length),
+        )
+
+    return None
+
+
+def _parse_activity_list_payload(
+    parsed: object,
+    *,
+    plan: StudyPlan,
+    diagnosis: Diagnosis,
+    learner_state: LearnerUnitState,
+    knowledge_point_id: str | None,
+    evidence: list[str],
+) -> list[Activity] | None:
+    raw_activities = parsed.get("activities") if isinstance(parsed, dict) else parsed
+    if not isinstance(raw_activities, list):
+        return None
+    if not raw_activities:
+        return []
+    if len(raw_activities) != len(plan.steps):
+        return None
+
+    activities: list[Activity] = []
+    for index, step in enumerate(plan.steps):
+        item = raw_activities[index]
+        if not isinstance(item, dict):
+            return None
+
+        title = str(item.get("title", "")).strip()
+        prompt = str(item.get("prompt", "")).strip()
+        if not title or not prompt:
+            return None
+
+        objective = str(item.get("objective", "")).strip() or step.outcome
+        support = str(item.get("support", "")).strip() or step.reason
+        input_payload = _parse_activity_input_payload(item.get("input"))
+        if input_payload is None:
+            return None
+
+        kind = _activity_kind_for_mode(step.mode, diagnosis.recommended_action)
+        activities.append(
+            Activity(
+                id=f"activity-{knowledge_point_id or learner_state.unit_id}-{step.mode}-{index + 1}",
+                kind=kind,  # type: ignore[arg-type]
+                knowledge_point_id=knowledge_point_id,
+                title=title,
+                objective=objective,
+                prompt=prompt,
+                support=support,
+                mode=step.mode,
+                evidence=evidence,
+                submit_label=_submit_label_for_kind(kind),
+                input=input_payload,
+            )
+        )
+
+    return activities
 
 
 def _chat_completion(
@@ -1576,7 +1820,7 @@ def llm_build_main_decision(
     tool_result: ToolResult | None = None,
     *,
     session_type: str = "study",
-) -> tuple[list[Signal], Diagnosis, str | None, StudyPlan | None] | None:
+) -> tuple[list[Signal], Diagnosis, str | None, StudyPlan | None, list[Activity] | None] | None:
     user_texts = [message.content for message in messages if message.role == "user"]
     if not user_texts:
         return None
@@ -1667,9 +1911,24 @@ def llm_build_main_decision(
 
         reply = str(parsed.get("reply", "")).strip() or None
         plan = _parse_study_plan_payload(parsed.get("plan"), candidate_modes)
+        activities = (
+            _parse_activity_list_payload(
+                parsed.get("activities"),
+                plan=plan,
+                diagnosis=diagnosis,
+                learner_state=learner_state,
+                knowledge_point_id=target_unit_id or learner_state.unit_id,
+                evidence=learner_state.weak_signals[:3]
+                or (diagnosis.explanation.evidence[:3] if diagnosis.explanation is not None else []),
+            )
+            if plan is not None and session_type != "project"
+            else []
+            if session_type == "project"
+            else None
+        )
         if diagnosis.needs_tool:
-            return signals, diagnosis, None, None
-        return signals, diagnosis, reply, plan
+            return signals, diagnosis, None, None, None
+        return signals, diagnosis, reply, plan, activities
     except Exception as exc:
         if _is_provider_safety_error(exc):
             logger.warning(
@@ -1678,6 +1937,7 @@ def llm_build_main_decision(
             return (
                 _build_provider_safety_signals(observations),
                 _build_provider_safety_diagnosis(learner_state, target_unit_id),
+                None,
                 None,
                 None,
             )
@@ -1719,6 +1979,47 @@ def _build_plan_context_parts(
     ]
     if candidate_modes:
         context_parts.append(f"候选训练模式（steps 的 mode 必须从中选）：{', '.join(candidate_modes)}")
+    return context_parts
+
+
+def _build_activity_context_parts(
+    topic: str,
+    unit_title: str,
+    diagnosis: Diagnosis,
+    learner_state: LearnerUnitState,
+    user_message: str,
+    plan: StudyPlan,
+    *,
+    session_type: str = "study",
+) -> list[str]:
+    context_parts = [
+        f"用户最新消息：{user_message}",
+        f"当前 session 类型：{session_type}",
+        f"学习主题：{topic}",
+        f"学习单元：{unit_title}",
+        f"诊断结果：recommended_action={diagnosis.recommended_action}, "
+        f"primary_issue={diagnosis.primary_issue}, reason={diagnosis.reason}",
+        f"学习者状态：理解={learner_state.understanding_level}, "
+        f"记忆={learner_state.memory_strength}, "
+        f"混淆={learner_state.confusion_level}, "
+        f"迁移={learner_state.transfer_readiness}",
+        "学习计划步骤："
+        + json.dumps(
+            [
+                {
+                    "id": step.id,
+                    "title": step.title,
+                    "mode": step.mode,
+                    "reason": step.reason,
+                    "outcome": step.outcome,
+                }
+                for step in plan.steps
+            ],
+            ensure_ascii=False,
+        ),
+    ]
+    if learner_state.weak_signals:
+        context_parts.append(f"薄弱信号：{', '.join(learner_state.weak_signals)}")
     return context_parts
 
 
@@ -1803,7 +2104,7 @@ def llm_build_reply_and_plan(
     tool_result: ToolResult | None = None,
     *,
     session_type: str = "study",
-) -> tuple[str, StudyPlan] | None:
+) -> tuple[str, StudyPlan, list[Activity] | None] | None:
     if _is_provider_safety_diagnosis(diagnosis):
         return None
 
@@ -1849,7 +2150,20 @@ def llm_build_reply_and_plan(
         plan = _parse_study_plan_payload(parsed.get("plan"), candidate_modes)
         if not reply or plan is None:
             return None
-        return reply, plan
+        activities = (
+            _parse_activity_list_payload(
+                parsed.get("activities"),
+                plan=plan,
+                diagnosis=diagnosis,
+                learner_state=learner_state,
+                knowledge_point_id=learner_state.unit_id,
+                evidence=learner_state.weak_signals[:3]
+                or (diagnosis.explanation.evidence[:3] if diagnosis.explanation is not None else []),
+            )
+            if session_type != "project"
+            else []
+        )
+        return reply, plan, activities
     except Exception as exc:
         if _is_provider_safety_error(exc):
             logger.warning(
@@ -1858,6 +2172,84 @@ def llm_build_reply_and_plan(
             return None
         logger.warning(
             "LLM bundled reply+plan failed, falling back to split path. raw preview: %r",
+            raw[:160] if "raw" in locals() else "",
+            exc_info=True,
+        )
+        return None
+
+
+def llm_build_activities(
+    llm: LLMClient,
+    topic: str,
+    unit_title: str,
+    diagnosis: Diagnosis,
+    plan: StudyPlan,
+    learner_state: LearnerUnitState,
+    user_message: str,
+    tool_result: ToolResult | None = None,
+    *,
+    session_type: str = "study",
+) -> list[Activity] | None:
+    if session_type == "project":
+        return []
+    if _is_provider_safety_diagnosis(diagnosis):
+        return None
+
+    context_parts = _build_activity_context_parts(
+        topic,
+        unit_title,
+        diagnosis,
+        learner_state,
+        user_message,
+        plan,
+        session_type=session_type,
+    )
+    if tool_result is not None:
+        context_parts.extend(_build_tool_context_parts(tool_result))
+    user_prompt = "\n".join(context_parts)
+
+    evidence = learner_state.weak_signals[:3] or (
+        diagnosis.explanation.evidence[:3] if diagnosis.explanation is not None else []
+    )
+
+    try:
+        response = _chat_completion(
+            llm,
+            messages=[
+                {
+                    "role": "system",
+                    "content": _build_system_prompt(
+                        ACTIVITY_GENERATION_SYSTEM_PROMPT,
+                        session_type=session_type,
+                        family="activities",
+                    ),
+                },
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.4,
+            max_tokens=1400,
+            expect_json_object=True,
+            _caller="build_activities",
+        )
+        raw = _extract_message_text(response)
+        raw = _prepare_structured_output(raw, prefer="{")
+        parsed = _load_structured_json(raw)
+        return _parse_activity_list_payload(
+            parsed,
+            plan=plan,
+            diagnosis=diagnosis,
+            learner_state=learner_state,
+            knowledge_point_id=learner_state.unit_id,
+            evidence=evidence,
+        )
+    except Exception as exc:
+        if _is_provider_safety_error(exc):
+            logger.warning(
+                "LLM activity generation hit provider safety filter; falling back to template activities."
+            )
+            return None
+        logger.warning(
+            "LLM activity generation failed, falling back to template activities. raw preview: %r",
             raw[:160] if "raw" in locals() else "",
             exc_info=True,
         )

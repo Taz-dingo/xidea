@@ -58,13 +58,13 @@ def test_run_agent_v0_prefers_clarify_for_confusion() -> None:
     assert result.graph_state.diagnosis.primary_issue == "concept-confusion"
     assert result.graph_state.plan.selected_mode == "contrast-drill"
     assert result.graph_state.activity.kind == "quiz"
-    assert result.graph_state.activity.title == "先判断问题出在召回还是排序"
-    assert "什么时候需要重排" in result.graph_state.activity.prompt
+    assert result.graph_state.activity.title == "先判断什么时候该补重排"
+    assert "该补的是重排" in result.graph_state.activity.prompt
     assert len(result.graph_state.activities) == 2
     assert result.graph_state.activities[1].kind == "coach-followup"
     assert result.graph_state.activity.input.type == "choice"
     choice_labels = [choice.label for choice in result.graph_state.activity.input.choices]
-    assert any("top-k 里已经有相关文档" in label for label in choice_labels)
+    assert any("正确文档通常已经进 top-k" in label for label in choice_labels)
     assert all("最容易混淆的两个判断对象" not in label for label in choice_labels)
     assert result.graph_state.activity.input.choices[0].is_correct is True
     assert result.graph_state.activity.input.choices[1].is_correct is False
@@ -123,6 +123,43 @@ def test_iter_agent_v0_events_prefers_live_reply_stream_over_local_chunking() ->
                  "reason": "LLM-reason", "outcome": "LLM-outcome"},
             ],
         },
+        "activities": [
+            {
+                "title": "先判断问题更像召回缺口还是排序缺口",
+                "objective": "能识别什么时候该补重排。",
+                "prompt": "哪种现象最说明候选已召回到位，但前排排序不够对口？",
+                "support": "先把召回和排序边界拆开。",
+                "input": {
+                    "type": "choice",
+                    "choices": [
+                        {
+                            "id": "rerank",
+                            "label": "正确文档通常已经进 top-k，但前几条经常答非所问。",
+                            "detail": "这说明候选已在集合里，主要问题落在排序。",
+                            "is_correct": True,
+                            "feedback_layers": ["对，这更像该补重排。"],
+                            "analysis": "命中了“候选已在集合里但前排顺序不对”的信号。",
+                        },
+                        {
+                            "id": "recall",
+                            "label": "top-k 里经常完全找不到正确文档，所以先补重排。",
+                            "detail": "这更像召回覆盖不足。",
+                            "is_correct": False,
+                            "feedback_layers": ["如果文档没进候选集，重排没有对象可排。"],
+                            "analysis": "把召回缺口误判成排序缺口。",
+                        },
+                        {
+                            "id": "stuff",
+                            "label": "只要多塞上下文，就能替代重排。",
+                            "detail": "这会把排序问题伪装成堆料问题。",
+                            "is_correct": False,
+                            "feedback_layers": ["多塞内容不等于把最对口的证据排前面。"],
+                            "analysis": "把排序问题误写成覆盖率问题。",
+                        },
+                    ],
+                },
+            }
+        ],
     })
 
     def _response(content: str):
@@ -412,6 +449,43 @@ def test_iter_agent_v0_events_streams_reply_in_multiple_chunks() -> None:
                  "reason": "LLM-reason", "outcome": "LLM-outcome"},
             ],
         },
+        "activities": [
+            {
+                "title": "先判断哪一层在决定回答质量",
+                "objective": "能说明为什么 RAG 不只是检索加拼接。",
+                "prompt": "哪句最准确说明 RAG 里真正决定回答质量的额外控制层？",
+                "support": "先把检索命中和上下文构造拆开。",
+                "input": {
+                    "type": "choice",
+                    "choices": [
+                        {
+                            "id": "context",
+                            "label": "检索命中只是拿到候选，排序、筛选和上下文组织决定模型最终会不会抓对证据。",
+                            "detail": "这句直接点出上下文构造层。",
+                            "is_correct": True,
+                            "feedback_layers": ["对，这才是 RAG 相比“检索+拼接”多出来的关键控制层。"],
+                            "analysis": "准确指出上下文构造在回答质量里的作用。",
+                        },
+                        {
+                            "id": "concat",
+                            "label": "只要能检索到相关文档，把全文直接拼进 prompt 就够了。",
+                            "detail": "会忽略上下文构造和噪音控制。",
+                            "is_correct": False,
+                            "feedback_layers": ["命中不等于可用，上下文还需要组织。"],
+                            "analysis": "把 RAG 误简化成了机械拼接。",
+                        },
+                        {
+                            "id": "more",
+                            "label": "RAG 的核心只是让模型看到更多内容，所以内容越多越好。",
+                            "detail": "这会把证据质量控制偷换成覆盖率直觉。",
+                            "is_correct": False,
+                            "feedback_layers": ["更多内容不是目标，更对口的证据才是目标。"],
+                            "analysis": "忽略了排序、截断和噪音控制。",
+                        },
+                    ],
+                },
+            }
+        ],
     })
     long_reply = "这不是简单拼接，因为检索、筛选、重排和上下文压缩各自承担不同职责，需要一起控制噪声、相关性和可解释性。"
 
@@ -545,6 +619,43 @@ def test_run_agent_v0_reuses_preloaded_unit_detail_when_main_decision_requests_t
                  "reason": "先补结构化框架", "outcome": "能说清当前单元的关键判断"},
             ],
         },
+        "activities": [
+            {
+                "title": "先抓住这个单元的主判断",
+                "objective": "能说清当前单元最关键的结构判断。",
+                "prompt": "下面哪一句最准确概括当前单元里 retrieval 和 reranking 的分工？",
+                "support": "先把主框架搭起来，再进入细追问。",
+                "input": {
+                    "type": "choice",
+                    "choices": [
+                        {
+                            "id": "split",
+                            "label": "retrieval 先找候选，reranking 再把最对口的证据排前面。",
+                            "detail": "这句把两层职责拆清楚了。",
+                            "is_correct": True,
+                            "feedback_layers": ["对，先把这个总框架搭起来。"],
+                            "analysis": "准确概括了两阶段分工。",
+                        },
+                        {
+                            "id": "same",
+                            "label": "两者本质上都在做把漏掉的文档重新找回来。",
+                            "detail": "这把召回和排序混成同一件事。",
+                            "is_correct": False,
+                            "feedback_layers": ["这里把召回和排序的职责混在一起了。"],
+                            "analysis": "把两阶段职责错误地压成了同一个补漏动作。",
+                        },
+                        {
+                            "id": "model",
+                            "label": "主要还是看模型够不够强，链路分工不重要。",
+                            "detail": "这会绕开当前真正要建立的结构理解。",
+                            "is_correct": False,
+                            "feedback_layers": ["先别把焦点跳去模型强弱，当前更重要的是搞清链路分工。"],
+                            "analysis": "把结构理解问题偷换成模型能力问题。",
+                        },
+                    ],
+                },
+            }
+        ],
     })
 
     def _response(content: str):

@@ -831,6 +831,53 @@ def build_activity(
     return activities[0] if activities else None
 
 
+def resolve_activities(
+    diagnosis: Diagnosis,
+    plan: StudyPlan,
+    learner_state: LearnerUnitState,
+    learning_unit: LearningUnit | None,
+    llm: "LLMClient",
+    *,
+    topic: str,
+    user_message: str,
+    tool_result: ToolResult | None = None,
+    session_type: str = "study",
+    bundled_activities: list[Activity] | None = None,
+) -> tuple[list[Activity], str]:
+    if session_type == "project":
+        return [], "project"
+
+    if bundled_activities:
+        return bundled_activities, "LLM-bundled"
+
+    from xidea_agent.llm import llm_build_activities
+
+    llm_activities = llm_build_activities(
+        llm,
+        topic,
+        learning_unit.title if learning_unit is not None else topic,
+        diagnosis,
+        plan,
+        learner_state,
+        user_message,
+        tool_result=tool_result,
+        session_type=session_type,
+    )
+    if llm_activities:
+        return llm_activities, "LLM"
+
+    return (
+        build_activities(
+            diagnosis,
+            plan,
+            learner_state,
+            learning_unit,
+            session_type,
+        ),
+        "template",
+    )
+
+
 def _build_project_context_observations(project_context) -> list[Observation]:
     observations = [
         Observation(
@@ -2313,12 +2360,17 @@ def iter_agent_v0_events(
     events.append(plan_event)
     yield plan_event
 
-    state.activities = build_activities(
+    state.activities, activity_source = resolve_activities(
         state.diagnosis,
         state.plan,
         state.learner_unit_state,
         state.learning_unit,
-        state.request.session_type,
+        llm,
+        topic=project_topic,
+        user_message=user_msg,
+        tool_result=state.tool_result,
+        session_type=state.request.session_type,
+        bundled_activities=state.activities,
     )
     state.activity = state.activities[0] if state.activities else None
     if state.activities:
@@ -2336,7 +2388,8 @@ def iter_agent_v0_events(
 
     state.rationale.append(
         f"compose_response built a {len(state.plan.steps)}-step plan "
-        f"with mode {state.plan.selected_mode} (plan={plan_source}, reply={reply_source})."
+        f"with mode {state.plan.selected_mode} "
+        f"(plan={plan_source}, reply={reply_source}, activities={activity_source})."
     )
     if state.activities:
         state.rationale.append(
@@ -2612,7 +2665,8 @@ def main_decision_step(
         )
         return diagnose_step(state, llm=llm)
 
-    state.signals, llm_diag, bundled_reply, bundled_plan = bundled_main
+    state.signals, llm_diag, bundled_reply, bundled_plan, bundled_activities = bundled_main
+    llm_recommended_action = llm_diag.recommended_action
     state.learner_unit_state = estimate_learner_state(
         state.request.target_unit_id,
         state.signals,
@@ -2632,7 +2686,22 @@ def main_decision_step(
     ):
         state.assistant_message = bundled_reply
         state.plan = bundled_plan
-        state.rationale.append("main_decision_step bundled reply and plan into the same primary LLM call.")
+        state.activities = (
+            bundled_activities or []
+            if state.diagnosis.recommended_action == llm_recommended_action
+            else []
+        )
+        state.activity = state.activities[0] if state.activities else None
+        if state.activities:
+            state.rationale.append(
+                "main_decision_step bundled reply, plan, and activity deck into the same primary LLM call."
+            )
+        else:
+            if bundled_activities:
+                state.rationale.append(
+                    "main_decision_step discarded bundled activities because session correction changed the action."
+                )
+            state.rationale.append("main_decision_step bundled reply and plan into the same primary LLM call.")
     else:
         if bundled_reply is not None and bundled_plan is not None and state.request.session_type == "project":
             state.rationale.append(
@@ -2807,18 +2876,24 @@ def compose_response_step(
     user_msg = state.request.messages[-1].content if state.request.messages else project_topic
 
     if state.tool_intent == "none" and state.assistant_message is not None and state.plan is not None:
-        state.activities = build_activities(
+        state.activities, activity_source = resolve_activities(
             state.diagnosis,
             state.plan,
             state.learner_unit_state,
             state.learning_unit,
-            state.request.session_type,
+            llm,
+            topic=project_topic,
+            user_message=user_msg,
+            tool_result=state.tool_result,
+            session_type=state.request.session_type,
+            bundled_activities=state.activities,
         )
         state.activity = state.activities[0] if state.activities else None
         state.knowledge_point_suggestions = build_knowledge_point_suggestions(state, repository=repository)
         state.rationale.append(
             f"compose_response built a {len(state.plan.steps)}-step plan "
-            f"with mode {state.plan.selected_mode} (plan=LLM-main-decision, reply=LLM-main-decision)."
+            f"with mode {state.plan.selected_mode} "
+            f"(plan=LLM-main-decision, reply=LLM-main-decision, activities={activity_source})."
         )
         if state.activities:
             state.rationale.append(
@@ -2845,10 +2920,11 @@ def compose_response_step(
         tool_result=state.tool_result,
         session_type=state.request.session_type,
     )
+    bundled_activities: list[Activity] | None = None
     if bundled_response is not None and _should_accept_project_session_response(
         state, bundled_response[0], bundled_response[1]
     ):
-        state.assistant_message, state.plan = bundled_response
+        state.assistant_message, state.plan, bundled_activities = bundled_response
         reply_source = "LLM-bundled"
         plan_source = "LLM-bundled"
     else:
@@ -2917,18 +2993,24 @@ def compose_response_step(
                     "LLM plan generation looked too pedagogical for project session, using template plan."
                 )
 
-    state.activities = build_activities(
+    state.activities, activity_source = resolve_activities(
         state.diagnosis,
         state.plan,
         state.learner_unit_state,
         state.learning_unit,
-        state.request.session_type,
+        llm,
+        topic=project_topic,
+        user_message=user_msg,
+        tool_result=state.tool_result,
+        session_type=state.request.session_type,
+        bundled_activities=bundled_activities,
     )
     state.activity = state.activities[0] if state.activities else None
     state.knowledge_point_suggestions = build_knowledge_point_suggestions(state, repository=repository)
     state.rationale.append(
         f"compose_response built a {len(state.plan.steps)}-step plan "
-        f"with mode {state.plan.selected_mode} (plan={plan_source}, reply={reply_source})."
+        f"with mode {state.plan.selected_mode} "
+        f"(plan={plan_source}, reply={reply_source}, activities={activity_source})."
     )
     if state.activities:
         state.rationale.append(

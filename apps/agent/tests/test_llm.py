@@ -16,6 +16,7 @@ from xidea_agent.llm import (
     build_llm_client,
     enrich_plan_steps,
     generate_assistant_reply,
+    llm_build_activities,
     llm_build_reply_and_plan,
 )
 from xidea_agent.state import Diagnosis, LearnerUnitState, StudyPlan, StudyPlanStep
@@ -78,6 +79,46 @@ def _make_plan(**overrides) -> StudyPlan:
     }
     defaults.update(overrides)
     return StudyPlan(**defaults)
+
+
+def _make_activity_bundle() -> list[dict[str, object]]:
+    return [
+        {
+            "title": "先判断什么时候该补重排",
+            "objective": "能识别召回和排序分别在补什么缺口。",
+            "prompt": "哪种现象最说明候选已召回到位，但前排排序不够对口？",
+            "support": "先把召回和排序边界拆开。",
+            "input": {
+                "type": "choice",
+                "choices": [
+                    {
+                        "id": "rerank",
+                        "label": "正确文档通常已经进 top-k，但前几条经常答非所问。",
+                        "detail": "这说明候选已在集合里，主要问题落在排序。",
+                        "is_correct": True,
+                        "feedback_layers": ["对，这更像该补重排。"],
+                        "analysis": "命中了“候选已在集合里但前排顺序不对”的信号。",
+                    },
+                    {
+                        "id": "recall",
+                        "label": "top-k 里经常完全找不到正确文档，所以先补重排。",
+                        "detail": "这更像召回覆盖不足。",
+                        "is_correct": False,
+                        "feedback_layers": ["如果文档没进候选集，重排没有对象可排。"],
+                        "analysis": "把召回缺口误判成排序缺口。",
+                    },
+                    {
+                        "id": "stuff",
+                        "label": "只要多塞上下文，就能替代重排。",
+                        "detail": "这会把排序问题伪装成堆料问题。",
+                        "is_correct": False,
+                        "feedback_layers": ["多塞内容不等于把最对口的证据排前面。"],
+                        "analysis": "把排序问题误写成覆盖率问题。",
+                    },
+                ],
+            },
+        }
+    ]
 
 
 def _mock_openai_response(content: str) -> MagicMock:
@@ -252,6 +293,7 @@ def test_llm_build_reply_and_plan_uses_study_session_system_prompt() -> None:
                  "reason": "两个概念边界不清", "outcome": "能说清各自解决什么问题"},
             ],
         },
+        "activities": _make_activity_bundle(),
     })
     llm = _make_mock_llm(bundled_json)
 
@@ -267,6 +309,9 @@ def test_llm_build_reply_and_plan_uses_study_session_system_prompt() -> None:
     )
 
     assert result is not None
+    _, _, activities = result
+    assert activities is not None
+    assert activities[0].title == "先判断什么时候该补重排"
     call_args = llm.client.chat.completions.create.call_args
     system_msg = call_args.kwargs["messages"][0]["content"]
     assert "当前 session 类型：study" in system_msg
@@ -576,6 +621,46 @@ def test_compose_response_step_uses_llm_when_available() -> None:
              "reason": "LLM-reason-2", "outcome": "LLM-outcome-2"},
         ],
     })
+    activity_response = json.dumps({
+        "activities": [
+            _make_activity_bundle()[0],
+            {
+                "title": "再看你能不能反向诊断",
+                "objective": "确认你能区分召回缺口和排序缺口。",
+                "prompt": "如果正确文档根本没进 top-k，这更应该先排查哪一层？",
+                "support": "第二张卡用反向情形确认理解不是表面记忆。",
+                "input": {
+                    "type": "choice",
+                    "choices": [
+                        {
+                            "id": "retrieval",
+                            "label": "先看索引、召回策略或查询表达，确认为什么没进候选集。",
+                            "detail": "这才是在查召回覆盖不足。",
+                            "is_correct": True,
+                            "feedback_layers": ["对，这时先查召回覆盖。"],
+                            "analysis": "正确文档没进候选集时，先查的是召回层。",
+                        },
+                        {
+                            "id": "rerank",
+                            "label": "先加一层重排，看看能不能把正确文档提到前面。",
+                            "detail": "如果文档没被召回，重排没有对象可排。",
+                            "is_correct": False,
+                            "feedback_layers": ["重排不能排出不存在于候选集里的文档。"],
+                            "analysis": "把召回缺口误判成了排序缺口。",
+                        },
+                        {
+                            "id": "model",
+                            "label": "先换更强的模型，让模型自己在这些候选里理解问题。",
+                            "detail": "模型再强，也弥补不了正确文档没进候选集。",
+                            "is_correct": False,
+                            "feedback_layers": ["这里先要查的是召回，不是模型强弱。"],
+                            "analysis": "把链路缺口偷换成了模型能力问题。",
+                        },
+                    ],
+                },
+            },
+        ]
+    })
     reply_content = "LLM生成的教学回复内容"
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
@@ -583,6 +668,7 @@ def test_compose_response_step_uses_llm_when_available() -> None:
         RuntimeError("bundled response failed"),
         _mock_openai_response(reply_content),
         _mock_openai_response(plan_response),
+        _mock_openai_response(activity_response),
     ]
     llm = LLMClient(client=mock_client, model="gpt-4o-mini")
 
@@ -602,6 +688,7 @@ def test_compose_response_step_uses_llm_when_available() -> None:
     assert result.graph_state.plan.steps[0].reason == "LLM-reason"
     assert result.graph_state.plan.headline == "围绕 retrieval vs reranking 的辨析路径"
     assert any("plan=LLM" in item and "reply=LLM" in item for item in result.graph_state.rationale)
+    assert result.graph_state.activities[0].title == "先判断什么时候该补重排"
     assert any("compose_response emitted activity" in item for item in result.graph_state.rationale)
 
 
@@ -1232,6 +1319,44 @@ def test_llm_build_reply_and_plan_returns_valid_payload() -> None:
                  "reason": "确认理解真正稳定", "outcome": "能独立判断何时用哪个"},
             ],
         },
+        "activities": [
+            _make_activity_bundle()[0],
+            {
+                "title": "再验证你能不能反向诊断",
+                "objective": "确认你能区分召回缺口和排序缺口。",
+                "prompt": "如果 top-k 里根本没有正确文档，你下一步最该先检查哪一层？",
+                "support": "反向情形最能验证是否真的理解边界。",
+                "input": {
+                    "type": "choice",
+                    "choices": [
+                        {
+                            "id": "retrieval",
+                            "label": "先看索引、召回策略或查询表达，确认为什么没进候选集。",
+                            "detail": "这才是在查召回覆盖不足。",
+                            "is_correct": True,
+                            "feedback_layers": ["对，这时先查召回覆盖。"],
+                            "analysis": "正确文档没进候选集时，先查的是召回层。",
+                        },
+                        {
+                            "id": "rerank",
+                            "label": "先加一层重排，看看能不能把正确文档提到前面。",
+                            "detail": "如果文档没被召回，重排没有对象可排。",
+                            "is_correct": False,
+                            "feedback_layers": ["重排不能排出不存在于候选集里的文档。"],
+                            "analysis": "把召回缺口误判成了排序缺口。",
+                        },
+                        {
+                            "id": "model",
+                            "label": "先换更强的模型，让模型自己在这些候选里理解问题。",
+                            "detail": "模型再强，也弥补不了正确文档没进候选集。",
+                            "is_correct": False,
+                            "feedback_layers": ["这里先要查的是召回，不是模型强弱。"],
+                            "analysis": "把链路缺口偷换成了模型能力问题。",
+                        },
+                    ],
+                },
+            },
+        ],
     })
     mock_client = MagicMock()
     mock_client.chat.completions.create.return_value = _mock_openai_response(bundled_json)
@@ -1248,11 +1373,36 @@ def test_llm_build_reply_and_plan_returns_valid_payload() -> None:
     )
 
     assert result is not None
-    reply, plan = result
+    reply, plan, activities = result
     assert "retrieval" in reply
     assert plan.headline == "围绕 RAG 检索设计的辨析路径"
     assert len(plan.steps) == 2
     assert plan.steps[0].mode == "contrast-drill"
+    assert activities is not None
+    assert len(activities) == 2
+
+
+def test_llm_build_activities_uses_review_session_system_prompt() -> None:
+    activity_json = json.dumps({"activities": _make_activity_bundle()})
+    llm = _make_mock_llm(activity_json)
+
+    result = llm_build_activities(
+        llm,
+        "RAG",
+        "召回 vs 重排",
+        _make_diagnosis(recommended_action="review", primary_issue="weak-recall", reason="记忆走弱"),
+        _make_plan(),
+        _make_learner_state(memory_strength=32, confusion_level=30),
+        "我有点忘了两者区别",
+        session_type="review",
+    )
+
+    assert result is not None
+    assert result[0].kind == "quiz"
+    call_args = llm.client.chat.completions.create.call_args
+    system_msg = call_args.kwargs["messages"][0]["content"]
+    assert "当前 session 类型：review" in system_msg
+    assert "优先验证主动回忆是否还稳定" in system_msg
 
 
 def test_llm_build_reply_and_plan_returns_none_on_invalid_plan() -> None:
