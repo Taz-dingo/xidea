@@ -10,6 +10,7 @@ import type { ProjectStats } from "@/domain/project-workspace";
 import type { SourceAsset } from "@/domain/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { AssetListItem } from "@/components/workspace/core";
 import { InlineProjectMetaEditor } from "@/components/workspace/management";
 
 function ProjectInfoPill({
@@ -56,6 +57,7 @@ export function ProjectOverviewPanel({
   onUploadProjectMaterial,
   projectAssets,
   projectMaterialCount,
+  projectMaterials,
   projectMetaDraft,
   projectSessionCount,
   projectStats,
@@ -83,6 +85,7 @@ export function ProjectOverviewPanel({
   onUploadProjectMaterial: (file: File) => Promise<void>;
   projectAssets: ReadonlyArray<SourceAsset>;
   projectMaterialCount: number;
+  projectMaterials: ReadonlyArray<SourceAsset>;
   projectMetaDraft: {
     readonly topic: string;
     readonly description: string;
@@ -136,7 +139,7 @@ export function ProjectOverviewPanel({
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <ProjectInfoPill label="知识卡" value={`${projectStats.total} 张`} />
               <ProjectInfoPill label="待复习" value={`${projectStats.dueReview} 张`} />
-              <ProjectInfoPill label="材料" value={`${projectMaterialCount} 份`} />
+              <ProjectInfoPill label="会话" value={`${projectSessionCount} 个`} />
               <ProjectInfoPill label="最近更新" value={selectedProjectUpdatedAt} />
             </div>
           </div>
@@ -184,6 +187,23 @@ export function ProjectOverviewPanel({
                 </p>
               </div>
             </ActionModule>
+            <div className="space-y-3 rounded-[1.1rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] p-3 sm:col-span-3 xl:col-span-1">
+              <div className="space-y-1">
+                <p className="text-[11px] tracking-[0.1em] text-[var(--xidea-stone)]">项目材料</p>
+                <p className="text-sm text-[var(--xidea-charcoal)]">
+                  当前项目挂接的材料来源。
+                </p>
+              </div>
+              <div className="space-y-2">
+                {projectMaterials.length > 0 ? (
+                  projectMaterials.slice(0, 3).map((asset) => (
+                    <AssetListItem asset={asset} key={asset.id} />
+                  ))
+                ) : (
+                  <p className="text-sm text-[var(--xidea-stone)]">当前还没有项目材料。</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

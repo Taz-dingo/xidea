@@ -106,6 +106,7 @@ export function WorkspacePage(): ReactElement {
                     onUploadProjectMaterial={actions.handleUploadProjectMaterial}
                     projectAssets={data.selectedProjectAssets}
                     projectMaterialCount={model.projectMaterialCount}
+                    projectMaterials={data.selectedProjectMaterials}
                     projectMetaDraft={data.projectMetaDraft}
                     projectSessionCount={data.selectedProjectSessions.length}
                     projectStats={model.projectStats}
@@ -211,7 +212,7 @@ export function WorkspacePage(): ReactElement {
               onClick={actions.handleCloseKnowledgePointDialog}
             >
               <div
-                className="max-h-[88vh] w-full max-w-[1360px] overflow-y-auto"
+                className="xidea-modal-pop max-h-[88vh] w-full max-w-[1360px] overflow-y-auto"
                 onClick={(event) => event.stopPropagation()}
               >
                 <div className="mb-3 flex justify-end">

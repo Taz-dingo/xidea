@@ -4,7 +4,7 @@ import type { KnowledgePointItem, SessionItem } from "@/domain/project-workspace
 import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import type { SourceAsset } from "@/domain/types";
 import {
-  getAssetKindLabel,
+  AssetListItem,
   getKnowledgePointAccent,
   MetricTile,
   SessionCard,
@@ -142,35 +142,35 @@ export function KnowledgePointDetailScreen({
               {isEditing ? (
                 <>
                   <Button
-                    className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                    className="h-11 min-w-[110px] rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
                     disabled={draft.title.trim() === "" || draft.description.trim() === ""}
                     onClick={onSave}
                     type="button"
                   >
                     保存
                   </Button>
-                  <Button className="rounded-full" onClick={onCancelEditing} type="button" variant="outline">
+                  <Button className="h-11 min-w-[110px] rounded-full" onClick={onCancelEditing} type="button" variant="outline">
                     取消
                   </Button>
                 </>
               ) : (
                 <>
                   <Button
-                    className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                    className="h-11 min-w-[110px] rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
                     onClick={onStartStudy}
                     type="button"
                   >
                     加入学习
                   </Button>
-                  <Button className="rounded-full" onClick={onStartReview} type="button" variant="outline">
+                  <Button className="h-11 min-w-[110px] rounded-full" onClick={onStartReview} type="button" variant="outline">
                     加入复习
                   </Button>
-                  <Button className="rounded-full" onClick={onStartEditing} type="button" variant="outline">
+                  <Button className="h-11 min-w-[110px] rounded-full" onClick={onStartEditing} type="button" variant="outline">
                     编辑
                   </Button>
                   {knowledgePoint.status === "archived" ? (
                     <Button
-                      className="rounded-full"
+                      className="h-11 min-w-[110px] rounded-full"
                       onClick={onStartArchiveConfirmation}
                       type="button"
                       variant="outline"
@@ -179,7 +179,7 @@ export function KnowledgePointDetailScreen({
                     </Button>
                   ) : knowledgePoint.archiveSuggestion !== null ? (
                     <Button
-                      className="rounded-full"
+                      className="h-11 min-w-[140px] rounded-full"
                       onClick={onStartArchiveConfirmation}
                       type="button"
                       variant="outline"
@@ -221,14 +221,14 @@ export function KnowledgePointDetailScreen({
                   </p>
                   <div className="flex flex-wrap gap-3">
                     <Button
-                      className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                      className="h-11 min-w-[120px] rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
                       onClick={onConfirmArchive}
                       type="button"
                     >
                       {knowledgePoint.status === "archived" ? "确认恢复" : "确认接受建议"}
                     </Button>
                     <Button
-                      className="rounded-full"
+                      className="h-11 min-w-[110px] rounded-full"
                       onClick={onCancelArchiveConfirmation}
                       type="button"
                       variant="outline"
@@ -252,22 +252,7 @@ export function KnowledgePointDetailScreen({
           <CardContent className="space-y-3">
             {knowledgePointAssets.length > 0 ? (
               knowledgePointAssets.map((asset) => (
-                <div
-                  className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-4 py-3"
-                  key={asset.id}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                      {asset.title}
-                    </p>
-                    <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
-                      {getAssetKindLabel(asset.kind)}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                    {asset.topic}
-                  </p>
-                </div>
+                <AssetListItem asset={asset} key={asset.id} />
               ))
             ) : (
               <p className="text-sm text-[var(--xidea-stone)]">当前还没有挂接材料。</p>
@@ -281,7 +266,7 @@ export function KnowledgePointDetailScreen({
           description={reviewHistorySummary}
           title="复习热力图"
         >
-          <ReviewHeatmap weeks={reviewHeatmap} />
+          <ReviewHeatmap compact weeks={reviewHeatmap} />
         </InspectorCard>
 
         <InspectorCard description="这个知识卡在项目里是如何被继续推进的。" title="相关会话">

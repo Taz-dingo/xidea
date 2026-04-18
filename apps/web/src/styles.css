@@ -204,6 +204,17 @@ button:not(:disabled):active {
   }
 }
 
+@keyframes xidea-modal-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .xidea-card-motion {
   transition:
     width 220ms ease,
@@ -234,6 +245,11 @@ button:not(:disabled):active {
 .xidea-logo-breathe {
   transform-origin: 50% 50%;
   animation: xidea-logo-breathe 2.8s ease-in-out infinite;
+}
+
+.xidea-modal-pop {
+  transform-origin: top center;
+  animation: xidea-modal-pop 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @keyframes xidea-feedback-shake {
@@ -289,7 +305,8 @@ button:not(:disabled):active {
   .xidea-feedback-success,
   .xidea-dot-wave,
   .xidea-logo-spin,
-  .xidea-logo-breathe {
+  .xidea-logo-breathe,
+  .xidea-modal-pop {
     animation: none;
   }
 

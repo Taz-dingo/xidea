@@ -1,8 +1,13 @@
 import type { ReactElement } from "react";
 import {
+  FileImage,
+  FileText,
+  Globe,
   GraduationCap,
   MessagesSquare,
   RotateCcw,
+  Video,
+  Volume2,
 } from "lucide-react";
 import type { SourceAsset } from "@/domain/types";
 import type {
@@ -45,6 +50,23 @@ export function getAssetKindLabel(kind: SourceAsset["kind"]): string {
       return "视频";
     case "web":
       return "网页";
+  }
+}
+
+function getAssetKindIcon(kind: SourceAsset["kind"]): ReactElement {
+  switch (kind) {
+    case "audio":
+      return <Volume2 className="h-4 w-4" />;
+    case "image":
+      return <FileImage className="h-4 w-4" />;
+    case "note":
+      return <FileText className="h-4 w-4" />;
+    case "pdf":
+      return <FileText className="h-4 w-4" />;
+    case "video":
+      return <Video className="h-4 w-4" />;
+    case "web":
+      return <Globe className="h-4 w-4" />;
   }
 }
 
@@ -185,6 +207,33 @@ export function MetricTile({
       <p className="mt-2 min-w-0 break-words text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
         {value}
       </p>
+    </div>
+  );
+}
+
+export function AssetListItem({
+  asset,
+}: {
+  asset: SourceAsset;
+}): ReactElement {
+  return (
+    <div className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-3">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
+          {getAssetKindIcon(asset.kind)}
+        </div>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
+              {asset.title}
+            </p>
+            <span className="shrink-0 text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
+              {getAssetKindLabel(asset.kind)}
+            </span>
+          </div>
+          <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">{asset.topic}</p>
+        </div>
+      </div>
     </div>
   );
 }

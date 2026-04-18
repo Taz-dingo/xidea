@@ -73,59 +73,86 @@ export function HomeScreen({
         {continueProjectSummary ? (
           <Card className="rounded-[1.5rem] border-[var(--xidea-border)] bg-[linear-gradient(180deg,#fffaf4_0%,#f7efe6_100%)] shadow-none">
             <CardContent className="space-y-4 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="space-y-2">
-                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">继续推进</p>
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)]">
-                      <FolderKanban className="h-5 w-5" />
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="space-y-2">
+                      <p className="xidea-kicker text-[var(--xidea-selection-text)]">继续推进</p>
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)]">
+                          <FolderKanban className="h-5 w-5" />
+                        </div>
+                        <div className="space-y-1">
+                          <h2 className="text-lg font-medium text-[var(--xidea-near-black)]">
+                            {continueProjectSummary.project.name}
+                          </h2>
+                          <p className="text-sm text-[var(--xidea-charcoal)]">
+                            {continueProjectSummary.project.topic}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="max-w-3xl text-sm leading-6 text-[var(--xidea-charcoal)]">
+                        {continueProjectSummary.project.description}
+                      </p>
                     </div>
-                    <div className="space-y-1">
-                      <h2 className="text-lg font-medium text-[var(--xidea-near-black)]">
-                        {continueProjectSummary.project.name}
-                      </h2>
-                      <p className="text-sm text-[var(--xidea-charcoal)]">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)]">
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <MetricTile
+                      label="知识点"
+                      tone="amber"
+                      value={`${continueProjectSummary.stats.total} 个`}
+                    />
+                    <MetricTile
+                      label="待复习"
+                      tone="sky"
+                      value={`${continueProjectSummary.stats.dueReview} 个`}
+                    />
+                    <MetricTile
+                      label="已归档"
+                      tone="rose"
+                      value={`${continueProjectSummary.stats.archived} 个`}
+                    />
+                    <MetricTile
+                      label="最近更新"
+                      tone="emerald"
+                      value={continueProjectSummary.project.updatedAt}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] p-4">
+                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">当前建议</p>
+                  <div className="space-y-3">
+                    <div className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3">
+                      <p className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">下一步</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--xidea-near-black)]">
+                        {continueActionLabel ?? "继续当前研讨"}
+                      </p>
+                    </div>
+                    <div className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3">
+                      <p className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">当前主题</p>
+                      <p className="mt-1 text-sm text-[var(--xidea-charcoal)]">
                         {continueProjectSummary.project.topic}
                       </p>
                     </div>
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                        onClick={onContinueProject}
+                        type="button"
+                      >
+                        进入项目
+                      </Button>
+                      <Button className="rounded-full" onClick={onStartReview} type="button" variant="outline">
+                        <RefreshCcw className="h-4 w-4" />
+                        开始复习
+                      </Button>
+                    </div>
                   </div>
-                  <p className="max-w-3xl text-sm leading-6 text-[var(--xidea-charcoal)]">
-                    {continueActionLabel ?? "继续当前研讨"}
-                  </p>
                 </div>
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)]">
-                  <Sparkles className="h-5 w-5" />
-                </div>
-              </div>
-              <div className="grid gap-3 md:grid-cols-3">
-                <MetricTile
-                  label="知识点"
-                  tone="amber"
-                  value={`${continueProjectSummary.stats.total} 个`}
-                />
-                <MetricTile
-                  label="待复习"
-                  tone="sky"
-                  value={`${continueProjectSummary.stats.dueReview} 个`}
-                />
-                <MetricTile
-                  label="最近更新"
-                  tone="emerald"
-                  value={continueProjectSummary.project.updatedAt}
-                />
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  className="rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                  onClick={onContinueProject}
-                  type="button"
-                >
-                  进入项目
-                </Button>
-                <Button className="rounded-full" onClick={onStartReview} type="button" variant="outline">
-                  <RefreshCcw className="h-4 w-4" />
-                  开始复习
-                </Button>
               </div>
             </CardContent>
           </Card>
