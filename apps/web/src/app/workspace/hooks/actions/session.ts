@@ -2,7 +2,6 @@ import type {
   SessionItem,
   SessionType,
 } from "@/domain/project-workspace";
-import { getDefaultSourceAssetIds } from "@/domain/project-session-runtime";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useSessionActions(data: WorkspaceData) {
@@ -50,7 +49,7 @@ export function useSessionActions(data: WorkspaceData) {
     projectId: string,
     type: SessionType = "project",
     knowledgePointId: string | null = null,
-    initialSourceAssetIds: ReadonlyArray<string> = getDefaultSourceAssetIds(),
+    initialSourceAssetIds: ReadonlyArray<string> = [],
   ): SessionItem | null {
     const targetProject =
       data.projects.find((project) => project.id === projectId) ??

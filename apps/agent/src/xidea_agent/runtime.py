@@ -2123,7 +2123,11 @@ def load_context_step(
         else state.request.source_asset_ids
     )
     if source_asset_ids:
-        state.source_assets = retrieve_source_assets(source_asset_ids)
+        state.source_assets = retrieve_source_assets(
+            source_asset_ids,
+            repository=repository,
+            project_id=state.request.project_id,
+        )
         state.rationale.append(f"load_context attached {len(state.source_assets)} source assets.")
 
     topic = state.project_context.topic if state.project_context is not None else state.request.topic

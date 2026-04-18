@@ -1,11 +1,14 @@
 import json
 import os
+import base64
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter
 from starlette.responses import StreamingResponse
 
 from xidea_agent.consolidation import build_consolidation_preview
@@ -22,9 +25,16 @@ from xidea_agent.state import (
     StatePatch,
     StreamEvent,
     StudyPlan,
+    SourceAsset,
     build_initial_graph_state,
 )
 from xidea_agent.tools import build_asset_summary_payload, build_review_context_payload
+
+
+class ProjectMaterialUploadRequest(BaseModel):
+    filename: str = Field(min_length=1)
+    content_base64: str = Field(min_length=1)
+    topic: str | None = None
 
 
 def create_app(
@@ -99,10 +109,45 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project consolidation state not found")
         return preview
 
+    @app.get("/projects/{project_id}/materials", response_model=list[SourceAsset])
+    def list_project_materials(project_id: str) -> list[SourceAsset]:
+        repo = _require_repository(repository)
+        return repo.list_project_materials(project_id)
+
+    @app.post("/projects/{project_id}/materials/upload", response_model=SourceAsset)
+    def upload_project_material(
+        project_id: str,
+        payload: ProjectMaterialUploadRequest,
+    ) -> SourceAsset:
+        repo = _require_repository(repository)
+        try:
+            file_bytes = base64.b64decode(payload.content_base64.encode("utf-8"), validate=True)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid material content encoding") from exc
+
+        if len(file_bytes) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded material is empty")
+        if len(file_bytes) > 4 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Uploaded material exceeds 4MB limit")
+
+        material = _build_uploaded_material(
+            project_id=project_id,
+            filename=payload.filename,
+            topic=payload.topic,
+            file_bytes=file_bytes,
+            repository=repo,
+        )
+        repo.save_project_material(material, project_id=project_id)
+        return material
+
     @app.get("/assets/summary")
-    def asset_summary(asset_ids: str = "") -> dict[str, object]:
+    def asset_summary(asset_ids: str = "", project_id: str | None = None) -> dict[str, object]:
         asset_id_list = [asset_id.strip() for asset_id in asset_ids.split(",") if asset_id.strip()]
-        return build_asset_summary_payload(asset_id_list)
+        return build_asset_summary_payload(
+            asset_id_list,
+            repository=repository,
+            project_id=project_id,
+        )
 
     @app.get("/threads/{thread_id}/recent-messages")
     def recent_messages(thread_id: str, limit: int = 8) -> list[dict[str, str]]:
@@ -231,3 +276,62 @@ def _iter_agent_run_sse(
         payload = stream_event.model_dump(mode="json")
         data = json.dumps(payload, ensure_ascii=False)
         yield f"event: {event_type}\ndata: {data}\n\n"
+
+
+def _build_uploaded_material(
+    *,
+    project_id: str,
+    filename: str,
+    topic: str | None,
+    file_bytes: bytes,
+    repository: SQLiteRepository,
+) -> SourceAsset:
+    suffix = Path(filename).suffix.lower()
+    material_id = f"material-{uuid4().hex[:10]}"
+    stored_dir = repository.db_path.parent / "materials" / project_id
+    stored_dir.mkdir(parents=True, exist_ok=True)
+    stored_path = stored_dir / f"{material_id}{suffix}"
+    stored_path.write_bytes(file_bytes)
+
+    kind = _infer_material_kind(filename)
+    summary = _summarize_uploaded_material(filename, kind, file_bytes)
+    now = datetime.now(timezone.utc)
+    normalized_topic = (topic or "").strip() or Path(filename).stem or "新上传材料"
+
+    return SourceAsset(
+        id=material_id,
+        title=filename,
+        kind=kind,
+        topic=normalized_topic,
+        summary=summary,
+        source_uri=filename,
+        content_ref=str(stored_path),
+        status="ready",
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _infer_material_kind(filename: str) -> str:
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".pdf":
+        return "pdf"
+    if suffix in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
+        return "image"
+    if suffix in {".mp3", ".wav", ".m4a"}:
+        return "audio"
+    if suffix in {".mp4", ".mov", ".webm"}:
+        return "video"
+    if suffix in {".html", ".htm"}:
+        return "web"
+    return "note"
+
+
+def _summarize_uploaded_material(filename: str, kind: str, file_bytes: bytes) -> str:
+    if kind in {"note", "web"}:
+        decoded = file_bytes.decode("utf-8", errors="ignore").strip()
+        if decoded:
+            normalized = " ".join(decoded.split())
+            return normalized[:420]
+
+    return f"已上传材料《{filename}》，当前已接入 project 材料池，可用于后续上下文判断与知识点建议。"

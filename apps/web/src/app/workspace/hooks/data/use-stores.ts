@@ -41,10 +41,12 @@ export function useWorkspaceStores() {
   const entities = useWorkspaceEntitiesStore(
     useShallow((state) => ({
       knowledgePoints: state.knowledgePoints,
+      projectAssetsByProject: state.projectAssetsByProject,
       projectMaterialIdsByProject: state.projectMaterialIdsByProject,
       projects: state.projects,
       sessions: state.sessions,
       setKnowledgePoints: state.setKnowledgePoints,
+      setProjectAssetsByProject: state.setProjectAssetsByProject,
       setProjectMaterialIdsByProject: state.setProjectMaterialIdsByProject,
       setProjects: state.setProjects,
       setSessions: state.setSessions,

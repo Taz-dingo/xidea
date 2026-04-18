@@ -3,6 +3,25 @@
 只保留"当前仍生效、后续会反复影响协作或实现"的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-18 — `project materials` 已升成 backend 持久化对象；前端只消费真实上传结果，不再把材料上传继续做成 demo seed 选择
+
+### 决策
+
+- `project materials` 第一版正式收成 backend 持久化对象：agent repository 现在维护独立 `project_materials`，并提供 `list / upload` API
+- 前端当前允许在两个正式入口上传材料：`Edit Project Meta` 的材料池，以及 `project session` 里的材料 tray；上传成功后会立即回流到当前 project materials，并在 project session 下可直接附着到本轮上下文
+- agent 消费材料时，`source_asset_ids`、`/assets/summary` 和 runtime `retrieve_source_assets()` 都必须优先读取项目真实上传材料；只有找不到对应 project material 时，才回退到 demo catalog
+- `project session` 默认不再偷偷附加 demo 默认材料；只有项目池里的材料，或用户这轮显式挂进去的材料，才会进入 agent 上下文
+
+### 原因
+
+- 之前所谓“上传材料”本质只是前端在 demo `sourceAssets` 里做选择，既没有真实持久化，也不会在刷新后保留，更不会进入 agent 的真实材料读取链
+- 这会直接破坏比赛版要证明的那条链路：用户补材料 -> 系统基于材料讨论主题 / 提知识点更新建议 -> 后续 session 真正消费这批材料
+
+### 影响
+
+- 后续凡是涉及 project materials 的 UI，不得再直接从全局 demo `sourceAssets` 发明“上传结果”；必须消费 backend 返回的 `SourceAsset`
+- 当前第一版真实上传范围只覆盖已有 project 的材料池和 `project session` 附着；如果后续要支持“创建 Project 时直接上传本地文件”，需要单独补创建流程 contract，而不是继续在 UI 里偷偷混用 demo 资产
+
 ## 2026-04-18 — 学习卡的正确性与分层提示由 backend activity contract 显式提供，前端只负责即时反馈与整组回看
 
 ### 决策

@@ -5,11 +5,13 @@ import {
   initialProjects,
   initialSessions,
 } from "@/data/project-workspace-demo";
+import { sourceAssets } from "@/data/demo";
 import type {
   KnowledgePointItem,
   ProjectItem,
   SessionItem,
 } from "@/domain/project-workspace";
+import type { SourceAsset } from "@/domain/types";
 
 function resolveState<T>(
   nextState: SetStateAction<T>,
@@ -25,6 +27,7 @@ interface WorkspaceEntitiesState {
   readonly knowledgePoints: ReadonlyArray<KnowledgePointItem>;
   readonly sessions: ReadonlyArray<SessionItem>;
   readonly projectMaterialIdsByProject: Record<string, ReadonlyArray<string>>;
+  readonly projectAssetsByProject: Record<string, ReadonlyArray<SourceAsset>>;
   readonly setProjects: (
     nextState: SetStateAction<ReadonlyArray<ProjectItem>>,
   ) => void;
@@ -36,6 +39,9 @@ interface WorkspaceEntitiesState {
   ) => void;
   readonly setProjectMaterialIdsByProject: (
     nextState: SetStateAction<Record<string, ReadonlyArray<string>>>,
+  ) => void;
+  readonly setProjectAssetsByProject: (
+    nextState: SetStateAction<Record<string, ReadonlyArray<SourceAsset>>>,
   ) => void;
 }
 
@@ -52,11 +58,21 @@ const initialProjectMaterials = Object.fromEntries(
   ]),
 );
 
+const initialProjectAssets = Object.fromEntries(
+  initialProjects.map((project) => [
+    project.id,
+    sourceAssets.filter((asset) =>
+      (initialProjectMaterials[project.id] ?? []).includes(asset.id),
+    ),
+  ]),
+);
+
 export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()((set) => ({
   projects: initialProjects,
   knowledgePoints: initialKnowledgePoints,
   sessions: initialSessions,
   projectMaterialIdsByProject: initialProjectMaterials,
+  projectAssetsByProject: initialProjectAssets,
   setProjects: (nextState) =>
     set((state) => ({ projects: resolveState(nextState, state.projects) })),
   setKnowledgePoints: (nextState) =>
@@ -71,5 +87,9 @@ export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()((set) 
         nextState,
         state.projectMaterialIdsByProject,
       ),
+    })),
+  setProjectAssetsByProject: (nextState) =>
+    set((state) => ({
+      projectAssetsByProject: resolveState(nextState, state.projectAssetsByProject),
     })),
 }));

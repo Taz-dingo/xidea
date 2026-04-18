@@ -1,6 +1,6 @@
 import { useChat } from "@ai-sdk/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { learningUnits, sourceAssets } from "@/data/demo";
+import { learningUnits } from "@/data/demo";
 import { getTutorFixtureScenario } from "@/data/tutor-fixtures";
 import {
   type AgentActivityResult,
@@ -28,6 +28,7 @@ import { createAgentChatTransport } from "@/lib/agent-chat-transport";
 import { createSessionActions } from "@/app/workspace/agent/session-actions";
 import { useAgentHealth } from "@/app/workspace/agent/effects/use-agent-health";
 import { useFixtureSync } from "@/app/workspace/agent/effects/use-fixture-sync";
+import { useProjectMaterialsSync } from "@/app/workspace/agent/effects/use-project-materials-sync";
 import { useSessionDataSync } from "@/app/workspace/agent/effects/use-session-data-sync";
 import { useSessionRuntimeSync } from "@/app/workspace/agent/effects/use-session-runtime-sync";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
@@ -125,8 +126,8 @@ export function useSessionAgent({
     data.sessionSnapshots[data.selectedSession.id] === undefined &&
     data.draftPrompt.trim() === "";
   const activeSourceAssets = useMemo(
-    () => sourceAssets.filter((asset) => selectedSourceAssetIds.includes(asset.id)),
-    [selectedSourceAssetIds],
+    () => data.selectedProjectAssets.filter((asset) => selectedSourceAssetIds.includes(asset.id)),
+    [data.selectedProjectAssets, selectedSourceAssetIds],
   );
   const effectiveEntryMode =
     fallbackSessionType === "project" && selectedSourceAssetIds.length > 0
@@ -267,6 +268,11 @@ export function useSessionAgent({
   const activityInputDisabled =
     isAgentRunning || agentBaseUrl === null || isAwaitingActivityFollowup;
 
+  useProjectMaterialsSync({
+    data,
+    projectId: data.selectedProject.id,
+  });
+
   useEffect(() => {
     if (selectedSessionKey === null || activityBatchState === null || deckKey === null) {
       return;
@@ -367,6 +373,7 @@ export function useSessionAgent({
     data,
     isAgentRunning,
     messagesLength: messages.length,
+    projectId: data.selectedProject.id,
     requestSourceAssetIds,
     seedRuntime,
     selectedSessionKey,

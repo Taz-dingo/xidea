@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+import base64
 
 import pytest
 from fastapi.testclient import TestClient
@@ -161,6 +162,41 @@ def test_persisted_run_is_queryable_from_storage_endpoints(
     asset_payload = asset_response.json()
     assert asset_payload["assetIds"] == ["asset-1", "asset-2"]
     assert len(asset_payload["assets"]) == 2
+
+
+def test_project_material_upload_and_list_endpoint(persisted_client: TestClient) -> None:
+    encoded = base64.b64encode("retrieval 和 reranking 不是同一层判断".encode("utf-8")).decode("utf-8")
+
+    upload_response = persisted_client.post(
+        "/projects/rag-demo/materials/upload",
+        json={
+            "filename": "rag-notes.md",
+            "content_base64": encoded,
+            "topic": "RAG 边界判断",
+        },
+    )
+
+    assert upload_response.status_code == 200
+    upload_payload = upload_response.json()
+    assert upload_payload["title"] == "rag-notes.md"
+    assert upload_payload["kind"] == "note"
+    assert upload_payload["summary"]
+
+    list_response = persisted_client.get("/projects/rag-demo/materials")
+    assert list_response.status_code == 200
+    listed = list_response.json()
+    assert len(listed) == 1
+    assert listed[0]["id"] == upload_payload["id"]
+
+    summary_response = persisted_client.get(
+        "/assets/summary",
+        params={"asset_ids": upload_payload["id"], "project_id": "rag-demo"},
+    )
+    assert summary_response.status_code == 200
+    summary_payload = summary_response.json()
+    assert summary_payload["assetIds"] == [upload_payload["id"]]
+    assert summary_payload["assets"][0]["title"] == "rag-notes.md"
+    assert summary_payload["assets"][0]["contentExcerpt"]
 
 
 _SAMPLE_REQUEST = {

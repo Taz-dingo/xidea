@@ -18,6 +18,7 @@ from xidea_agent.state import (
     ProjectLearningProfile,
     ProjectMemory,
     ReviewPatch,
+    SourceAsset,
     StatePatch,
 )
 
@@ -153,6 +154,21 @@ CREATE TABLE IF NOT EXISTS project_learning_profiles (
   primary_weaknesses TEXT NOT NULL,
   learning_preferences TEXT NOT NULL,
   freshness TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(project_id)
+);
+
+CREATE TABLE IF NOT EXISTS project_materials (
+  material_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  topic TEXT NOT NULL,
+  source_uri TEXT,
+  content_ref TEXT,
+  summary TEXT,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY(project_id) REFERENCES projects(project_id)
 );
@@ -548,6 +564,53 @@ class SQLiteRepository:
         with self._connect() as connection:
             self._upsert_project_learning_profile(connection, project_learning_profile, now_value)
 
+    def save_project_material(self, material: SourceAsset, *, project_id: str) -> None:
+        self.initialize()
+        now_value = _utc_now()
+        with self._connect() as connection:
+            self._ensure_project(connection, project_id, material.topic, now_value)
+            self._upsert_project_material(connection, project_id, material, now_value)
+
+    def list_project_materials(self, project_id: str) -> list[SourceAsset]:
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM project_materials
+                WHERE project_id = ?
+                ORDER BY created_at DESC, material_id DESC
+                """,
+                (project_id,),
+            ).fetchall()
+
+        return [self._row_to_project_material(row) for row in rows]
+
+    def get_project_materials_by_ids(
+        self,
+        project_id: str,
+        material_ids: list[str],
+    ) -> list[SourceAsset]:
+        if not material_ids:
+            return []
+
+        self.initialize()
+        placeholders = ", ".join("?" for _ in material_ids)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT *
+                FROM project_materials
+                WHERE project_id = ? AND material_id IN ({placeholders})
+                """,
+                [project_id, *material_ids],
+            ).fetchall()
+
+        materials_by_id = {
+            material.id: material for material in (self._row_to_project_material(row) for row in rows)
+        }
+        return [materials_by_id[material_id] for material_id in material_ids if material_id in materials_by_id]
+
     def resolve_knowledge_point_suggestion(
         self,
         project_id: str,
@@ -746,6 +809,27 @@ class SQLiteRepository:
             VALUES (?, ?, ?, ?)
             """,
             [(thread_id, message.role, message.content, created_at) for message in messages],
+        )
+
+    def _ensure_project(
+        self,
+        connection: sqlite3.Connection,
+        project_id: str,
+        topic: str,
+        now_value: str,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO projects(project_id, topic, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(project_id) DO UPDATE SET
+              topic = CASE
+                WHEN excluded.topic != '' THEN excluded.topic
+                ELSE projects.topic
+              END,
+              updated_at = excluded.updated_at
+            """,
+            (project_id, topic, now_value, now_value),
         )
 
     def _upsert_thread_context(
@@ -1105,6 +1189,57 @@ class SQLiteRepository:
             ),
         )
 
+    def _upsert_project_material(
+        self,
+        connection: sqlite3.Connection,
+        project_id: str,
+        material: SourceAsset,
+        now_value: str,
+    ) -> None:
+        created_value = (
+            material.created_at.isoformat()
+            if hasattr(material.created_at, "isoformat")
+            else material.created_at
+            or now_value
+        )
+        updated_value = (
+            material.updated_at.isoformat()
+            if hasattr(material.updated_at, "isoformat")
+            else material.updated_at
+            or now_value
+        )
+        connection.execute(
+            """
+            INSERT INTO project_materials(
+              material_id, project_id, title, kind, topic, source_uri,
+              content_ref, summary, status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(material_id) DO UPDATE SET
+              title = excluded.title,
+              kind = excluded.kind,
+              topic = excluded.topic,
+              source_uri = excluded.source_uri,
+              content_ref = excluded.content_ref,
+              summary = excluded.summary,
+              status = excluded.status,
+              updated_at = excluded.updated_at
+            """,
+            (
+                material.id,
+                project_id,
+                material.title,
+                material.kind,
+                material.topic,
+                material.source_uri,
+                material.content_ref,
+                material.summary,
+                material.status or "ready",
+                created_value,
+                updated_value,
+            ),
+        )
+
     def _append_review_events(
         self,
         connection: sqlite3.Connection,
@@ -1216,6 +1351,20 @@ class SQLiteRepository:
             primary_weaknesses=json.loads(row["primary_weaknesses"]),
             learning_preferences=json.loads(row["learning_preferences"]),
             freshness=row["freshness"],
+            updated_at=row["updated_at"],
+        )
+
+    def _row_to_project_material(self, row: sqlite3.Row) -> SourceAsset:
+        return SourceAsset(
+            id=row["material_id"],
+            title=row["title"],
+            kind=row["kind"],
+            topic=row["topic"],
+            summary=row["summary"],
+            source_uri=row["source_uri"],
+            content_ref=row["content_ref"],
+            status=row["status"],
+            created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
 

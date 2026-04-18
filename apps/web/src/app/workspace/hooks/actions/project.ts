@@ -1,5 +1,6 @@
 import type { SessionItem } from "@/domain/project-workspace";
-import { getDefaultSourceAssetIds } from "@/domain/project-session-runtime";
+import { sourceAssets } from "@/data/demo";
+import { uploadProjectMaterial } from "@/lib/agent-client";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useProjectActions(data: WorkspaceData) {
@@ -50,8 +51,15 @@ export function useProjectActions(data: WorkspaceData) {
       updatedAt: "刚刚",
       status: "空白",
     };
+    const initialProjectAssets = sourceAssets.filter((asset) =>
+      data.projectDraft.initialMaterialIds.includes(asset.id),
+    );
 
     data.setProjects((current) => [createdProject, ...current]);
+    data.setProjectAssetsByProject((current) => ({
+      ...current,
+      [createdProject.id]: initialProjectAssets,
+    }));
     data.setProjectMaterialIdsByProject((current) => ({
       ...current,
       [createdProject.id]: data.projectDraft.initialMaterialIds,
@@ -63,7 +71,7 @@ export function useProjectActions(data: WorkspaceData) {
     }));
     data.setSessionSourceAssetIds((current) => ({
       ...current,
-      [createdSession.id]: getDefaultSourceAssetIds(),
+      [createdSession.id]: data.projectDraft.initialMaterialIds,
     }));
     data.setSelectedKnowledgePointId("");
     data.setSelectedProjectId(createdProject.id);
@@ -126,6 +134,72 @@ export function useProjectActions(data: WorkspaceData) {
     data.setIsEditingProjectMeta(false);
   }
 
+  async function uploadAndStoreProjectMaterial(file: File) {
+    const projectId = data.selectedProject.id;
+    const projectTopic = data.selectedProject.topic;
+    const uploadedAsset = await uploadProjectMaterial({
+      projectId,
+      file,
+      topic: projectTopic,
+    });
+
+    data.setProjectAssetsByProject((current) => {
+      const projectAssets = current[projectId] ?? [];
+      if (projectAssets.some((asset) => asset.id === uploadedAsset.id)) {
+        return current;
+      }
+      return {
+        ...current,
+        [projectId]: [uploadedAsset, ...projectAssets],
+      };
+    });
+    data.setProjectMaterialIdsByProject((current) => {
+      const currentIds = current[projectId] ?? [];
+      if (currentIds.includes(uploadedAsset.id)) {
+        return current;
+      }
+      return {
+        ...current,
+        [projectId]: [uploadedAsset.id, ...currentIds],
+      };
+    });
+    if (data.isEditingProjectMeta) {
+      data.setProjectMetaDraft((current) => ({
+        ...current,
+        materialIds: current.materialIds.includes(uploadedAsset.id)
+          ? current.materialIds
+          : [uploadedAsset.id, ...current.materialIds],
+      }));
+    }
+
+    return uploadedAsset;
+  }
+
+  async function handleUploadProjectMaterial(file: File): Promise<void> {
+    await uploadAndStoreProjectMaterial(file);
+  }
+
+  async function handleUploadProjectMaterialAndAttach(file: File): Promise<void> {
+    const selectedSessionId = data.selectedSession?.id ?? null;
+    const selectedSessionType = data.selectedSession?.type ?? null;
+    const uploadedAsset = await uploadAndStoreProjectMaterial(file);
+
+    if (selectedSessionId === null || selectedSessionType !== "project") {
+      return;
+    }
+
+    data.setSessionSourceAssetIds((current) => {
+      const currentIds = current[selectedSessionId] ?? [];
+      if (currentIds.includes(uploadedAsset.id)) {
+        return current;
+      }
+      return {
+        ...current,
+        [selectedSessionId]: [...currentIds, uploadedAsset.id],
+      };
+    });
+  }
+
   function handleCancelEditingProjectMeta(): void {
     data.setProjectMetaDraft({
       topic: data.selectedProject.topic,
@@ -143,6 +217,8 @@ export function useProjectActions(data: WorkspaceData) {
     handleOpenProjectMetaEditor,
     handleSaveProject,
     handleSaveProjectMeta,
+    handleUploadProjectMaterial,
+    handleUploadProjectMaterialAndAttach,
     handleStartCreatingProject,
     handleStartEditingProjectMeta,
     handleToggleProjectMeta: () =>

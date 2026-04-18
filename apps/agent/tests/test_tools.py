@@ -2,7 +2,7 @@ from pathlib import Path
 
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import run_agent_v0
-from xidea_agent.state import AgentRequest, ProjectLearningProfile, ProjectMemory
+from xidea_agent.state import AgentRequest, ProjectLearningProfile, ProjectMemory, SourceAsset
 from xidea_agent.tools import (
     build_project_context,
     describe_tool_registry,
@@ -201,6 +201,27 @@ def test_retrieve_source_assets_returns_all() -> None:
     assets = retrieve_source_assets(["asset-1", "asset-2", "asset-3"])
     assert len(assets) == 3
     assert all(a.id.startswith("asset-") for a in assets)
+
+
+def test_retrieve_source_assets_reads_uploaded_project_materials(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-1",
+            title="uploaded-notes.md",
+            kind="note",
+            topic="RAG 上传材料",
+            summary="记录了上传材料里的判断标准。",
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    assets = retrieve_source_assets(["material-1"], repository=repository, project_id="rag-demo")
+
+    assert len(assets) == 1
+    assert assets[0].title == "uploaded-notes.md"
+    assert assets[0].summary is not None
 
 
 def test_retrieve_learning_unit_fallback() -> None:

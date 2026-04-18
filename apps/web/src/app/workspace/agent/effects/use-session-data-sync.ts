@@ -24,6 +24,7 @@ export function useSessionDataSync({
   data,
   isAgentRunning,
   messagesLength,
+  projectId,
   requestSourceAssetIds,
   seedRuntime,
   selectedSessionKey,
@@ -34,6 +35,7 @@ export function useSessionDataSync({
   data: WorkspaceData;
   isAgentRunning: boolean;
   messagesLength: number;
+  projectId: string;
   requestSourceAssetIds: ReadonlyArray<string>;
   seedRuntime: ReturnType<typeof hydrateRuntimeSnapshotFromLearnerState>;
   selectedSessionKey: string | null;
@@ -134,7 +136,10 @@ export function useSessionDataSync({
       return;
     }
     const abortController = new AbortController();
-    void getAssetSummary(requestSourceAssetIds, { signal: abortController.signal })
+    void getAssetSummary(requestSourceAssetIds, {
+      signal: abortController.signal,
+      projectId,
+    })
       .then((summary) => {
         if (!abortController.signal.aborted) {
           setAssetSummaryByKey((current) =>
@@ -148,6 +153,7 @@ export function useSessionDataSync({
     agentConnectionState,
     assetSummaryByKey,
     assetSummaryKey,
+    projectId,
     requestSourceAssetIds,
     selectedSessionType,
     setAssetSummaryByKey,

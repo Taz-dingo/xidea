@@ -72,6 +72,12 @@ class SourceAsset(StrictModel):
     title: str = Field(min_length=1)
     kind: Literal["pdf", "web", "note", "audio", "video", "image"]
     topic: str = Field(min_length=1)
+    summary: str | None = None
+    source_uri: str | None = None
+    content_ref: str | None = None
+    status: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class LearningUnit(StrictModel):

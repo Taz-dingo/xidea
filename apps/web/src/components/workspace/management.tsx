@@ -1,4 +1,5 @@
 import type { ReactElement, ReactNode } from "react";
+import { MaterialUploadButton } from "@/components/material-upload-button";
 import type { SourceAsset } from "@/domain/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -197,12 +198,14 @@ export function EditMetaPanel({
   draft,
   onCancel,
   onChange,
+  onUploadMaterial,
   onSave,
 }: {
   assets: ReadonlyArray<SourceAsset>;
   draft: ProjectMetaDraftValue;
   onCancel: () => void;
   onChange: (draft: ProjectMetaDraftValue) => void;
+  onUploadMaterial: (file: File) => Promise<void>;
   onSave: () => void;
 }): ReactElement {
   const isDisabled =
@@ -242,7 +245,10 @@ export function EditMetaPanel({
         />
       </label>
       <div className="space-y-2 text-sm text-[var(--xidea-charcoal)]">
-        <span className="font-medium text-[var(--xidea-near-black)]">Materials</span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="font-medium text-[var(--xidea-near-black)]">Materials</span>
+          <MaterialUploadButton label="上传到材料池" onUpload={onUploadMaterial} />
+        </div>
         <AssetPicker
           assets={assets}
           onToggle={(assetId) =>

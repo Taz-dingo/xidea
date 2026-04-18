@@ -9,6 +9,9 @@
 - `apps/agent` 已把 choice activity contract 扩成 backend-owned 正确性结构：每个选项现在显式带 `is_correct / feedback_layers / analysis`，前端不再自己猜正确项或错误分析
 - `apps/web` 已把学习卡交互改成“点选即判、错了继续、对了自动进下一张”的强反馈节奏；多次纠偏轨迹会一并记进本轮 card deck，而不是中途反复触发 agent
 - `apps/web` 已把完成的 card deck 收进右侧 inspector，可回看每张卡的尝试次数、最终作答，以及错误选择对应的分析
+- `apps/agent` 已把 `project materials` 升成真实持久化对象：当前 repository 有独立 `project_materials` 表，FastAPI 已提供 `GET /projects/{project_id}/materials` 与 `POST /projects/{project_id}/materials/upload`
+- `apps/web` 已打通第一版真实材料上传：当前可在 `Edit Project Meta` 和 `project session` 材料 tray 中上传本地文件；上传结果会写回当前 project materials、在页面刷新后回流，并在 `project session` 里真正进入 `source_asset_ids` / asset summary / agent runtime
+- `apps/web` 已收正 `project session` 的默认材料语义：新建 `project session` 不再自动带 demo 默认材料；新建 Project 时选中的初始材料会进入该 Project 的材料池和初始 project session
 - `apps/web` 已把 session 边界继续收死：`project session` 才显示材料入口和 project 级 inspector，`study / review session` 不再支持挂 project materials，也不再在右栏展示 project chat 风格的“当前知识点 / 材料 / 复习”混合面板
 - `apps/web` 已把学习动作 loop 改成整组卡组节奏：当前会先在本地完成一组 `activities[]`，再把整组结果作为一次统一输入回传给 agent，不再“一做完一张卡就触发一轮新回复”
 - `apps/web` 已修正学习卡提前出现的问题：agent 回复未完成时，中栏只展示等待态和文本流，不再在 assistant 还没回完前提前把学习卡片插出来
@@ -213,6 +216,7 @@
 - agent owner 当前主改 `runtime.py / llm.py / tools.py / activity_results.py / review_engine.py / knowledge_points.py`，负责主决策链路、tool loop、知识点生命周期与 writeback
 - `state.py` 是当前共享热点文件，默认只由 backend owner 主改；agent owner 通过字段清单或小 PR 配合，避免两人同时大改 contract
 - 当前推荐落地顺序已收敛为：先 schema / repository / API，再 runtime / prompt / writeback，最后再接前端 `activity_result`
+- `project materials` 的真实上传当前已覆盖“已有 Project 的材料池 / project session 附着”这条主路径；创建 Project 时直接上传本地文件仍未接入，当前创建流仍是从 demo seed 材料里选初始项
 
 - 收敛 agent 主路径到"预取 project 证据上下文 -> 单次主决策调用 -> tool / session loop -> 状态回写"，优先解决当前回复过慢与首轮等待偏长问题
 - 将当前 operating docs 从"project / thread + activity-first"进一步收敛到"project-centric MVP"叙事

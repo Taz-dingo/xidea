@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import type { UIMessage } from "ai";
 import { FileInput, Settings2 } from "lucide-react";
 import { LearningActivityStack } from "@/components/learning-activity-stack";
+import { MaterialUploadButton } from "@/components/material-upload-button";
 import { MarkdownContent } from "@/components/markdown-content";
 import { getAssetKindLabel } from "@/components/workspace/core";
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +65,7 @@ export function SessionThreadPane({
   onSubmitPrompt,
   onToggleProjectMaterial,
   onToggleMaterialsTray,
+  onUploadMaterial,
   onUnsetSourceAsset,
   selectedProjectMaterials,
   selectedSessionId,
@@ -93,6 +95,7 @@ export function SessionThreadPane({
   onSubmitPrompt: () => void;
   onToggleProjectMaterial: (assetId: string) => void;
   onToggleMaterialsTray: () => void;
+  onUploadMaterial: (file: File) => Promise<void>;
   onUnsetSourceAsset: (assetId: string) => void;
   selectedProjectMaterials: ReadonlyArray<SourceAsset>;
   selectedSessionId: string;
@@ -206,6 +209,9 @@ export function SessionThreadPane({
                       这些材料只会在 project session 里作为本轮附加上下文送给 agent。
                     </p>
                   </div>
+                </div>
+                <div className="flex justify-end">
+                  <MaterialUploadButton label="上传新材料" onUpload={onUploadMaterial} />
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
                   {selectedProjectMaterials.map((asset) => {

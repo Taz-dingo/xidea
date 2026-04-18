@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { learnerProfiles, learningUnits, sourceAssets } from "@/data/demo";
+import { learnerProfiles, learningUnits } from "@/data/demo";
 import {
   initialKnowledgePoints,
   initialProjects,
@@ -44,6 +44,10 @@ export function useWorkspaceData() {
     stores.selectedProjectId,
     initialProject,
   );
+  const selectedProjectAssets = useMemo(
+    () => stores.projectAssetsByProject[selectedProject.id] ?? [],
+    [selectedProject.id, stores.projectAssetsByProject],
+  );
   const selectedProjectKnowledgePoints = useMemo(
     () => getSelectedProjectKnowledgePoints(stores.knowledgePoints, selectedProject.id),
     [selectedProject.id, stores.knowledgePoints],
@@ -57,8 +61,8 @@ export function useWorkspaceData() {
     [selectedProjectKnowledgePoints, stores.selectedKnowledgePointId],
   );
   const selectedKnowledgePointAssets = useMemo(
-    () => getSelectedKnowledgePointAssets(sourceAssets, selectedKnowledgePoint),
-    [selectedKnowledgePoint],
+    () => getSelectedKnowledgePointAssets(selectedProjectAssets, selectedKnowledgePoint),
+    [selectedKnowledgePoint, selectedProjectAssets],
   );
   const selectedProjectSessions = useMemo(
     () => getSelectedProjectSessions(stores.sessions, selectedProject.id),
@@ -79,10 +83,10 @@ export function useWorkspaceData() {
   const selectedProjectMaterials = useMemo(
     () =>
       getSelectedProjectMaterials(
-        sourceAssets,
+        selectedProjectAssets,
         stores.projectMaterialIdsByProject[selectedProject.id] ?? [],
       ),
-    [selectedProject.id, stores.projectMaterialIdsByProject],
+    [selectedProject.id, selectedProjectAssets, stores.projectMaterialIdsByProject],
   );
   const drafts = useWorkspaceDrafts({
     initialKnowledgePoint,
@@ -106,6 +110,7 @@ export function useWorkspaceData() {
     selectedKnowledgePoint,
     selectedKnowledgePointAssets,
     selectedProject,
+    selectedProjectAssets,
     selectedProjectKnowledgePoints,
     selectedProjectMaterials,
     selectedProjectSessions,

@@ -3,7 +3,13 @@ from datetime import datetime, timedelta, timezone
 
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import run_agent_v0
-from xidea_agent.state import AgentRequest, KnowledgePoint, KnowledgePointState, KnowledgePointSuggestion
+from xidea_agent.state import (
+    AgentRequest,
+    KnowledgePoint,
+    KnowledgePointState,
+    KnowledgePointSuggestion,
+    SourceAsset,
+)
 
 from conftest import build_mock_llm, build_mock_llm_for_review
 
@@ -214,3 +220,28 @@ def test_repository_persists_activity_result_writeback_to_project_level_state(tm
     assert project_context is not None
     assert project_context["project_memory"] is not None
     assert project_context["project_learning_profile"] is not None
+
+
+def test_repository_persists_project_materials(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    material = SourceAsset(
+        id="material-uploaded-1",
+        title="rag-notes.md",
+        kind="note",
+        topic="RAG 设计判断",
+        summary="记录了召回、重排和上下文构造的判断标准。",
+        source_uri="rag-notes.md",
+        content_ref=str(tmp_path / "rag-notes.md"),
+        status="ready",
+    )
+
+    repository.save_project_material(material, project_id="rag-demo")
+
+    materials = repository.list_project_materials("rag-demo")
+    selected_materials = repository.get_project_materials_by_ids("rag-demo", ["material-uploaded-1"])
+
+    assert len(materials) == 1
+    assert materials[0].id == "material-uploaded-1"
+    assert materials[0].summary is not None
+    assert len(selected_materials) == 1
+    assert selected_materials[0].title == "rag-notes.md"

@@ -75,6 +75,7 @@ export function SessionWorkspace({
   onSubmitPrompt,
   onToggleProjectMaterial,
   onToggleMaterialsTray,
+  onUploadMaterial,
   onUnsetSourceAsset,
   onWorkspaceSectionChange,
   projectStats,
@@ -129,6 +130,7 @@ export function SessionWorkspace({
   onSubmitPrompt: () => void;
   onToggleProjectMaterial: (assetId: string) => void;
   onToggleMaterialsTray: () => void;
+  onUploadMaterial: (file: File) => Promise<void>;
   onUnsetSourceAsset: (assetId: string) => void;
   onWorkspaceSectionChange: (section: WorkspaceSection) => void;
   projectStats: ProjectStats;
@@ -244,6 +246,7 @@ export function SessionWorkspace({
           onSubmitPrompt={onSubmitPrompt}
           onToggleMaterialsTray={onToggleMaterialsTray}
           onToggleProjectMaterial={onToggleProjectMaterial}
+          onUploadMaterial={onUploadMaterial}
           onUnsetSourceAsset={onUnsetSourceAsset}
           selectedProjectMaterials={selectedProjectMaterials}
           selectedSessionId={selectedSession.id}

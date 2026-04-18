@@ -11,6 +11,12 @@ export interface SourceAsset {
   readonly title: string;
   readonly kind: "pdf" | "web" | "note" | "audio" | "video" | "image";
   readonly topic: string;
+  readonly summary?: string | null;
+  readonly sourceUri?: string | null;
+  readonly contentRef?: string | null;
+  readonly status?: string | null;
+  readonly createdAt?: string | null;
+  readonly updatedAt?: string | null;
 }
 
 export interface ProjectContext {

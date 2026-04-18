@@ -142,6 +142,10 @@
   - owner: 前端 owner / 学习引擎 owner
   - 说明：
     - 前端入口可先完成，但知识点建议新增的最终判断权归 agent；当前前端本地启发式已移除，等待 backend suggestion 事件
+  - 当前进展：
+    - backend 已补 `project_materials` 持久化与 `list / upload` API
+    - frontend 已在 `Edit Project Meta` 和 `project session` 材料 tray 接入真实本地文件上传；上传结果会回流到当前 project materials，并可直接附着到当前 `project session`
+    - 当前剩余缺口是“创建 Project 时直接上传本地文件”这条创建流；第一版仍沿用 demo seed 材料选择
 - [x] 将学习 / 复习 session 第一版限制为选择题，不先接入简答题与开放式对练
   - owner: 产品 owner / 前端 owner / 学习引擎 owner
 - [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环，让学习/复习结果真正影响知识点状态与 project learning profile

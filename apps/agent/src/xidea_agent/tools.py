@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from xidea_agent.repository import SQLiteRepository
@@ -166,7 +167,18 @@ _UNIT_ENRICHMENT: dict[str, dict[str, Any]] = {
 }
 
 
-def retrieve_source_assets(asset_ids: list[str]) -> list[SourceAsset]:
+def retrieve_source_assets(
+    asset_ids: list[str],
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+) -> list[SourceAsset]:
+    if repository is not None and project_id is not None:
+        materials = repository.get_project_materials_by_ids(project_id, asset_ids)
+        materials_by_id = {material.id: material for material in materials}
+        resolved_assets = [materials_by_id[asset_id] for asset_id in asset_ids if asset_id in materials_by_id]
+        if len(resolved_assets) == len(asset_ids):
+            return resolved_assets
+
     assets: list[SourceAsset] = []
 
     for asset_id in asset_ids:
@@ -210,7 +222,11 @@ def resolve_tool_result(
     if tool_intent == "asset-summary":
         return ToolResult(
             kind=tool_intent,
-            payload=_build_asset_summary_payload(request.source_asset_ids),
+            payload=_build_asset_summary_payload(
+                request.source_asset_ids,
+                repository=repository,
+                project_id=request.project_id,
+            ),
         )
 
     if tool_intent == "thread-memory":
@@ -288,28 +304,32 @@ def describe_tool_registry() -> dict[str, dict[str, Any]]:
     }
 
 
-def _build_asset_summary_payload(asset_ids: list[str]) -> dict[str, Any]:
-    assets = retrieve_source_assets(asset_ids)
+def _build_asset_summary_payload(
+    asset_ids: list[str],
+    *,
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+) -> dict[str, Any]:
+    assets = retrieve_source_assets(asset_ids, repository=repository, project_id=project_id)
     asset_details: list[dict[str, Any]] = []
     all_concepts: list[str] = []
 
     for asset in assets:
         enrichment = _ASSET_ENRICHMENT.get(asset.id, {})
-        concepts = enrichment.get("keyConcepts", [])
+        uploaded_summary = asset.summary.strip() if isinstance(asset.summary, str) else ""
+        concepts = enrichment.get("keyConcepts") or _extract_key_concepts(uploaded_summary)
         all_concepts.extend(concepts)
         asset_details.append({
             "id": asset.id,
             "title": asset.title,
             "kind": asset.kind,
             "topic": asset.topic,
-            "contentExcerpt": enrichment.get(
-                "contentExcerpt",
-                f"材料「{asset.title}」的内容摘要暂未提取，后续接入解析后自动补充。",
-            ),
+            "contentExcerpt": enrichment.get("contentExcerpt", uploaded_summary)
+            or f"材料「{asset.title}」的内容摘要暂未提取，后续接入解析后自动补充。",
             "keyConcepts": concepts,
             "relevanceHint": enrichment.get(
                 "relevanceHint",
-                "该材料与当前学习主题的关联度待评估。",
+                "该材料已进入当前 project 材料池，可作为这轮 project 判断与知识点建议的上下文。",
             ),
         })
 
@@ -326,8 +346,17 @@ def _build_asset_summary_payload(asset_ids: list[str]) -> dict[str, Any]:
     }
 
 
-def build_asset_summary_payload(asset_ids: list[str]) -> dict[str, Any]:
-    return _build_asset_summary_payload(asset_ids)
+def build_asset_summary_payload(
+    asset_ids: list[str],
+    *,
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+) -> dict[str, Any]:
+    return _build_asset_summary_payload(
+        asset_ids,
+        repository=repository,
+        project_id=project_id,
+    )
 
 
 def build_project_context(
@@ -376,7 +405,13 @@ def build_project_context(
         recent_messages = request.messages[-5:]
 
     asset_summary = (
-        _build_asset_summary_payload(source_asset_ids) if source_asset_ids else None
+        _build_asset_summary_payload(
+            source_asset_ids,
+            repository=repository,
+            project_id=request.project_id,
+        )
+        if source_asset_ids
+        else None
     )
     thread_memory = _build_thread_memory_payload(
         request.thread_id,
@@ -436,6 +471,22 @@ def build_project_context(
         source=source,
         summary="；".join(item for item in summary_parts if item) + "。",
     )
+
+
+def _extract_key_concepts(summary: str) -> list[str]:
+    if summary.strip() == "":
+        return []
+
+    fragments = re.split(r"[。；;，,\n]+", summary)
+    concepts: list[str] = []
+    for fragment in fragments:
+        cleaned = fragment.strip(" ：:-")
+        if len(cleaned) < 4:
+            continue
+        concepts.append(cleaned[:28])
+        if len(concepts) >= 4:
+            break
+    return concepts
 
 
 def _summarize_project_memory(project_memory: object | None) -> str | None:

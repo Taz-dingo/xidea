@@ -139,10 +139,11 @@ export function WorkspacePage(): ReactElement {
 
                   {data.isEditingProjectMeta ? (
                     <EditMetaPanel
-                      assets={sourceAssets}
+                      assets={data.selectedProjectAssets}
                       draft={data.projectMetaDraft}
                       onCancel={actions.handleCancelEditingProjectMeta}
                       onChange={data.setProjectMetaDraft}
+                      onUploadMaterial={actions.handleUploadProjectMaterial}
                       onSave={actions.handleSaveProjectMeta}
                     />
                   ) : null}
@@ -259,6 +260,7 @@ export function WorkspacePage(): ReactElement {
                   onSubmitPrompt={session.handleSubmitPrompt}
                   onToggleMaterialsTray={session.handleToggleMaterialsTray}
                   onToggleProjectMaterial={session.handleToggleProjectMaterial}
+                  onUploadMaterial={actions.handleUploadProjectMaterialAndAttach}
                   onUnsetSourceAsset={session.handleUnsetSourceAsset}
                   onWorkspaceSectionChange={actions.handleSessionWorkspaceSectionChange}
                   projectStats={model.projectStats}
