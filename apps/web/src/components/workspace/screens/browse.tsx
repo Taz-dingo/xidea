@@ -180,7 +180,7 @@ export function WorkspaceBrowseScreen({
       <div className="space-y-4">
         <Card className="xidea-card-motion rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
           <CardContent className="space-y-5 p-5">
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.56fr)]">
               <div className="space-y-4">
                 <div className="space-y-2">
                   <p className="xidea-kicker text-[var(--xidea-selection-text)]">学习画像</p>
@@ -208,7 +208,7 @@ export function WorkspaceBrowseScreen({
                     悬停查看每天做了哪些学习或复习动作。
                   </p>
                 </div>
-                <ReviewHeatmap weeks={projectReviewHeatmap} />
+                <ReviewHeatmap compact weeks={projectReviewHeatmap} />
               </div>
             </div>
           </CardContent>

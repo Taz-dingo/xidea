@@ -183,6 +183,27 @@ button:not(:disabled):active {
   }
 }
 
+@keyframes xidea-logo-orbit {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes xidea-logo-breathe {
+  0%,
+  100% {
+    opacity: 0.82;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
 .xidea-card-motion {
   transition:
     width 220ms ease,
@@ -203,6 +224,16 @@ button:not(:disabled):active {
 .xidea-dot-wave {
   animation: xidea-dot-wave 1s ease-in-out infinite;
   animation-delay: var(--xidea-dot-delay, 0s);
+}
+
+.xidea-logo-spin {
+  transform-origin: 50% 50%;
+  animation: xidea-logo-orbit 7.6s linear infinite;
+}
+
+.xidea-logo-breathe {
+  transform-origin: 50% 50%;
+  animation: xidea-logo-breathe 2.8s ease-in-out infinite;
 }
 
 @keyframes xidea-feedback-shake {
@@ -256,7 +287,9 @@ button:not(:disabled):active {
 @media (prefers-reduced-motion: reduce) {
   .xidea-feedback-shake,
   .xidea-feedback-success,
-  .xidea-dot-wave {
+  .xidea-dot-wave,
+  .xidea-logo-spin,
+  .xidea-logo-breathe {
     animation: none;
   }
 

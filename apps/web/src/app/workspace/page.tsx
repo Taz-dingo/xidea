@@ -3,6 +3,7 @@ import { tutorFixtureScenarios } from "@/data/tutor-fixtures";
 import { sourceAssets } from "@/data/demo";
 import { X } from "lucide-react";
 import { WorkspaceHeader } from "@/app/workspace/ui/header";
+import { ProjectOverviewPanel } from "@/app/workspace/ui/project-overview";
 import { useSessionAgent } from "@/app/workspace/agent/use-session-agent";
 import { useWorkspaceActions } from "@/app/workspace/hooks/use-actions";
 import { useWorkspaceData } from "@/app/workspace/hooks/use-data";
@@ -31,47 +32,13 @@ export function WorkspacePage(): ReactElement {
       <div className="relative mx-auto min-h-screen max-w-[1520px] px-3 py-3 lg:px-4 lg:py-4">
         <div className="space-y-4">
           <WorkspaceHeader
-            isProjectMetaEditing={data.isEditingProjectMeta}
-            onCancelProjectMetaEditing={actions.handleCancelEditingProjectMeta}
-            onChangeProjectMetaDraft={data.setProjectMetaDraft}
             onCreateProject={actions.handleStartCreatingProject}
-            onEditProject={actions.handleOpenProjectMetaEditor}
             onGoHome={actions.handleGoHome}
             onGoWorkspace={() => actions.handleSelectProject(data.selectedProject.id)}
-            onSaveProjectMeta={actions.handleSaveProjectMeta}
             onSearchChange={data.setSearchQuery}
-            onStartProjectSession={() =>
-              actions.handleCreateSession(data.selectedProject.id, "project")
-            }
-            onStartReview={() =>
-              actions.handlePrepareSessionStart(
-                data.selectedProject.id,
-                "review",
-                model.reviewTargetPoint?.id ?? null,
-              )
-            }
-            onStartStudy={() =>
-              actions.handlePrepareSessionStart(
-                data.selectedProject.id,
-                "study",
-                model.studyTargetPoint?.id ?? null,
-              )
-            }
-            onUploadProjectMaterial={actions.handleUploadProjectMaterial}
-            projectAssets={data.selectedProjectAssets}
-            projectMaterialCount={model.projectMaterialCount}
-            projectMetaDraft={data.projectMetaDraft}
-            projectSessionCount={data.selectedProjectSessions.length}
-            projectStats={model.projectStats}
-            reviewDisabled={model.reviewTargetPoint === null}
             screen={data.screen}
             searchQuery={data.searchQuery}
-            selectedProjectDescription={data.selectedProject.description}
             selectedProjectName={data.selectedProject.name}
-            selectedProjectRules={data.selectedProject.specialRules}
-            selectedProjectTopic={data.selectedProject.topic}
-            selectedProjectUpdatedAt={data.selectedProject.updatedAt}
-            studyDisabled={model.studyTargetPoint === null}
           />
 
           {data.isCreatingProject ? (
@@ -112,29 +79,68 @@ export function WorkspacePage(): ReactElement {
           ) : (
             <div className="space-y-4">
               {data.selectedSession === undefined ? (
-                <WorkspaceBrowseScreen
-                  filteredKnowledgePoints={model.filteredKnowledgePoints}
-                  normalizedSearchQuery={model.normalizedSearchQuery}
-                  onCancelPendingSession={() => {
-                    data.setPendingSessionIntent(null);
-                    data.setDraftPrompt("");
-                  }}
-                  onChangePendingPrompt={session.handleChangeDraftPrompt}
-                  onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
-                  onOpenSession={(sessionId) => {
-                    data.setPendingSessionIntent(null);
-                    data.setSelectedSessionId(sessionId);
-                  }}
-                  onSubmitPendingPrompt={session.handleSubmitPrompt}
-                  onWorkspaceSectionChange={data.setWorkspaceSection}
-                  pendingPrompt={data.draftPrompt}
-                  pendingSessionIntent={data.pendingSessionIntent}
-                  profileSummary={model.browseProfileSummary}
-                  projectReviewHeatmap={model.projectReviewHeatmap}
-                  projectStats={model.projectStats}
-                  selectedProjectSessions={data.selectedProjectSessions}
-                  workspaceSection={data.workspaceSection}
-                />
+                <>
+                  <ProjectOverviewPanel
+                    isEditing={data.isEditingProjectMeta}
+                    onCancelEditing={actions.handleCancelEditingProjectMeta}
+                    onChangeDraft={data.setProjectMetaDraft}
+                    onEditProject={actions.handleOpenProjectMetaEditor}
+                    onSaveProjectMeta={actions.handleSaveProjectMeta}
+                    onStartProjectSession={() =>
+                      actions.handleCreateSession(data.selectedProject.id, "project")
+                    }
+                    onStartReview={() =>
+                      actions.handlePrepareSessionStart(
+                        data.selectedProject.id,
+                        "review",
+                        model.reviewTargetPoint?.id ?? null,
+                      )
+                    }
+                    onStartStudy={() =>
+                      actions.handlePrepareSessionStart(
+                        data.selectedProject.id,
+                        "study",
+                        model.studyTargetPoint?.id ?? null,
+                      )
+                    }
+                    onUploadProjectMaterial={actions.handleUploadProjectMaterial}
+                    projectAssets={data.selectedProjectAssets}
+                    projectMaterialCount={model.projectMaterialCount}
+                    projectMetaDraft={data.projectMetaDraft}
+                    projectSessionCount={data.selectedProjectSessions.length}
+                    projectStats={model.projectStats}
+                    reviewDisabled={model.reviewTargetPoint === null}
+                    selectedProjectDescription={data.selectedProject.description}
+                    selectedProjectName={data.selectedProject.name}
+                    selectedProjectRules={data.selectedProject.specialRules}
+                    selectedProjectTopic={data.selectedProject.topic}
+                    selectedProjectUpdatedAt={data.selectedProject.updatedAt}
+                    studyDisabled={model.studyTargetPoint === null}
+                  />
+                  <WorkspaceBrowseScreen
+                    filteredKnowledgePoints={model.filteredKnowledgePoints}
+                    normalizedSearchQuery={model.normalizedSearchQuery}
+                    onCancelPendingSession={() => {
+                      data.setPendingSessionIntent(null);
+                      data.setDraftPrompt("");
+                    }}
+                    onChangePendingPrompt={session.handleChangeDraftPrompt}
+                    onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
+                    onOpenSession={(sessionId) => {
+                      data.setPendingSessionIntent(null);
+                      data.setSelectedSessionId(sessionId);
+                    }}
+                    onSubmitPendingPrompt={session.handleSubmitPrompt}
+                    onWorkspaceSectionChange={data.setWorkspaceSection}
+                    pendingPrompt={data.draftPrompt}
+                    pendingSessionIntent={data.pendingSessionIntent}
+                    profileSummary={model.browseProfileSummary}
+                    projectReviewHeatmap={model.projectReviewHeatmap}
+                    projectStats={model.projectStats}
+                    selectedProjectSessions={data.selectedProjectSessions}
+                    workspaceSection={data.workspaceSection}
+                  />
+                </>
               ) : (
                 <SessionWorkspace
                   activeAssetSummary={session.activeAssetSummary}

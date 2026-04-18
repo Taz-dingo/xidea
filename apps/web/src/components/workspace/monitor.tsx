@@ -82,8 +82,10 @@ function getHeatmapCellClass(intensity: ReviewHeatmapCell["intensity"]): string 
 }
 
 export function ReviewHeatmap({
+  compact = false,
   weeks,
 }: {
+  compact?: boolean;
   weeks: ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>>;
 }): ReactElement {
   const [activeCell, setActiveCell] = useState<ReviewHeatmapCell | null>(null);
@@ -99,7 +101,7 @@ export function ReviewHeatmap({
           <div className="grid gap-1.5" key={`review-week-${weekIndex}`}>
             {week.map((cell) => (
               <div
-                className={`h-4 w-4 rounded-[4px] border border-[var(--xidea-border)] ${getHeatmapCellClass(cell.intensity)}`}
+                className={`${compact ? "h-3 w-3 rounded-[3px]" : "h-4 w-4 rounded-[4px]"} border border-[var(--xidea-border)] ${getHeatmapCellClass(cell.intensity)}`}
                 key={cell.dateKey}
                 onMouseEnter={() => setActiveCell(cell)}
                 onMouseLeave={() => setActiveCell(null)}
@@ -114,7 +116,7 @@ export function ReviewHeatmap({
           <span>低</span>
           {[0, 1, 2, 3, 4].map((intensity) => (
             <span
-              className={`h-3 w-3 rounded-[3px] border border-[var(--xidea-border)] ${getHeatmapCellClass(intensity as ReviewHeatmapCell["intensity"])}`}
+              className={`${compact ? "h-2.5 w-2.5 rounded-[2px]" : "h-3 w-3 rounded-[3px]"} border border-[var(--xidea-border)] ${getHeatmapCellClass(intensity as ReviewHeatmapCell["intensity"])}`}
               key={`review-legend-${intensity}`}
             />
           ))}
