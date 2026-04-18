@@ -60,6 +60,44 @@ def test_asset_summary_handles_unknown_asset() -> None:
     assert payload["assets"][0]["keyConcepts"] == []
 
 
+def test_asset_summary_strips_markdown_frontmatter_from_uploaded_material(tmp_path: Path) -> None:
+    material_path = tmp_path / "material.md"
+    material_path.write_text(
+        "---\ncreated: 2026-04-19\nmodified: 2026-04-20\n---\n"
+        "# 多模态编排\n\n"
+        "- 核心概念一：音视频联合检索\n"
+        "- 核心概念二：具身交互反馈\n",
+        encoding="utf-8",
+    )
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-1",
+            title="multimodal.md",
+            kind="note",
+            topic="多模态学习编排",
+            summary="frontmatter 不该进入正文摘要",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = _build_request(
+        entry_mode="material-import",
+        source_asset_ids=["material-1"],
+    )
+    result = resolve_tool_result("asset-summary", request, repository=repository)
+
+    assert result is not None
+    excerpt = result.payload["assets"][0]["contentExcerpt"]
+    concepts = result.payload["assets"][0]["keyConcepts"]
+    assert "created:" not in excerpt.lower()
+    assert "modified:" not in excerpt.lower()
+    assert "音视频联合检索" in excerpt
+    assert all("created:" not in concept.lower() for concept in concepts)
+
+
 def test_unit_detail_includes_enrichment() -> None:
     request = _build_request(target_unit_id="unit-rag-retrieval")
     result = resolve_tool_result("unit-detail", request)

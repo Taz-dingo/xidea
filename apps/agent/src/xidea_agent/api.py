@@ -14,6 +14,7 @@ from starlette.responses import StreamingResponse
 from xidea_agent.consolidation import build_consolidation_preview
 from xidea_agent.graph import describe_graph
 from xidea_agent.llm import LLMClient, build_llm_client
+from xidea_agent.material_content import summarize_uploaded_material
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import iter_agent_v0_events, run_agent_v0
 from xidea_agent.state import (
@@ -35,6 +36,21 @@ class ProjectMaterialUploadRequest(BaseModel):
     filename: str = Field(min_length=1)
     content_base64: str = Field(min_length=1)
     topic: str | None = None
+
+
+class ThreadRecordResponse(BaseModel):
+    thread_id: str
+    project_id: str
+    topic: str
+    session_type: str
+    knowledge_point_id: str | None = None
+    title: str
+    summary: str
+    status: str
+    entry_mode: str
+    source_asset_ids: list[str] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
 
 
 def create_app(
@@ -114,6 +130,11 @@ def create_app(
         repo = _require_repository(repository)
         return repo.list_project_materials(project_id)
 
+    @app.get("/projects/{project_id}/threads", response_model=list[ThreadRecordResponse])
+    def list_project_threads(project_id: str) -> list[dict[str, object]]:
+        repo = _require_repository(repository)
+        return repo.list_project_threads(project_id)
+
     @app.post("/projects/{project_id}/materials/upload", response_model=SourceAsset)
     def upload_project_material(
         project_id: str,
@@ -153,6 +174,14 @@ def create_app(
     def recent_messages(thread_id: str, limit: int = 8) -> list[dict[str, str]]:
         repo = _require_repository(repository)
         return [message.model_dump() for message in repo.list_recent_messages(thread_id, limit)]
+
+    @app.get("/threads/{thread_id}/messages")
+    def thread_messages(thread_id: str, limit: int | None = None) -> list[dict[str, str]]:
+        repo = _require_repository(repository)
+        return [
+            message.model_dump()
+            for message in repo.list_thread_messages(thread_id, limit=limit)
+        ]
 
     @app.get("/threads/{thread_id}/context", response_model=None)
     def thread_context(thread_id: str) -> dict[str, object] | Response:
@@ -294,7 +323,7 @@ def _build_uploaded_material(
     stored_path.write_bytes(file_bytes)
 
     kind = _infer_material_kind(filename)
-    summary = _summarize_uploaded_material(filename, kind, file_bytes)
+    summary = summarize_uploaded_material(filename, kind, file_bytes)
     now = datetime.now(timezone.utc)
     normalized_topic = (topic or "").strip() or Path(filename).stem or "新上传材料"
 
@@ -325,13 +354,3 @@ def _infer_material_kind(filename: str) -> str:
     if suffix in {".html", ".htm"}:
         return "web"
     return "note"
-
-
-def _summarize_uploaded_material(filename: str, kind: str, file_bytes: bytes) -> str:
-    if kind in {"note", "web"}:
-        decoded = file_bytes.decode("utf-8", errors="ignore").strip()
-        if decoded:
-            normalized = " ".join(decoded.split())
-            return normalized[:420]
-
-    return f"已上传材料《{filename}》，当前已接入 project 材料池，可用于后续上下文判断与知识点建议。"

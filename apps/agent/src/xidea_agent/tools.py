@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
+from xidea_agent.material_content import normalize_material_text
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.state import (
     AgentRequest,
@@ -316,15 +318,20 @@ def _build_asset_summary_payload(
 
     for asset in assets:
         enrichment = _ASSET_ENRICHMENT.get(asset.id, {})
+        extracted_text = _read_asset_text(asset)
+        normalized_excerpt = _normalize_asset_text(extracted_text)
         uploaded_summary = asset.summary.strip() if isinstance(asset.summary, str) else ""
-        concepts = enrichment.get("keyConcepts") or _extract_key_concepts(uploaded_summary)
+        concept_source = normalized_excerpt or uploaded_summary
+        extracted_concepts = enrichment.get("keyConcepts") or _extract_key_concepts(concept_source)
+        title_concepts = _extract_title_concepts(asset.title)
+        concepts = list(dict.fromkeys([*title_concepts, *extracted_concepts]))[:4]
         all_concepts.extend(concepts)
         asset_details.append({
             "id": asset.id,
             "title": asset.title,
             "kind": asset.kind,
             "topic": asset.topic,
-            "contentExcerpt": enrichment.get("contentExcerpt", uploaded_summary)
+            "contentExcerpt": enrichment.get("contentExcerpt", normalized_excerpt or uploaded_summary)
             or f"材料「{asset.title}」的内容摘要暂未提取，后续接入解析后自动补充。",
             "keyConcepts": concepts,
             "relevanceHint": enrichment.get(
@@ -334,14 +341,16 @@ def _build_asset_summary_payload(
         })
 
     unique_concepts = list(dict.fromkeys(all_concepts))
+    visible_titles = "、".join(asset["title"] for asset in asset_details[:3])
+    visible_concepts = "、".join(unique_concepts[:6])
     return {
         "assetIds": [asset.id for asset in assets],
         "assets": asset_details,
         "keyConcepts": unique_concepts,
         "summary": (
-            f"已读取 {len(assets)} 份材料，"
-            f"提取到 {len(unique_concepts)} 个核心概念。"
-            "建议围绕这些概念验证学习者的理解深度和迁移能力。"
+            f"已读取 {len(assets)} 份材料：{visible_titles or '暂无标题'}。"
+            f"核心概念包括：{visible_concepts or '待补充解析'}。"
+            "建议直接围绕这些材料判断学习主题、概念边界和可沉淀的知识点。"
         ),
     }
 
@@ -451,7 +460,7 @@ def build_project_context(
     recent_message_summary = _summarize_recent_messages(recent_messages)
     if recent_message_summary is not None:
         summary_parts.append(f"最近会话摘要：{recent_message_summary}")
-    if source == "request" and request.context_hint:
+    if request.context_hint:
         summary_parts.append(f"请求上下文提示：{request.context_hint}")
 
     return ProjectContext(
@@ -483,10 +492,76 @@ def _extract_key_concepts(summary: str) -> list[str]:
         cleaned = fragment.strip(" ：:-")
         if len(cleaned) < 4:
             continue
+        lowered = cleaned.lower()
+        if lowered.startswith(("created:", "modified:", "updated:", "date:", "tags:")):
+            continue
+        if re.fullmatch(r"[\d\s:,-]+", cleaned):
+            continue
         concepts.append(cleaned[:28])
         if len(concepts) >= 4:
             break
     return concepts
+
+
+def _extract_title_concepts(title: str) -> list[str]:
+    stem = re.sub(r"\.[^.]+$", "", title).strip()
+    if stem == "":
+        return []
+    if stem.lower().startswith("imported asset "):
+        return []
+
+    split_parts = [
+        part.strip(" ：:-")
+        for part in re.split(r"[、/,，；;｜|]+", stem)
+        if part.strip(" ：:-")
+    ]
+    if len(split_parts) >= 2:
+        return split_parts[:4]
+
+    lowered = stem.lower()
+    if lowered.endswith(("笔记", "记录", "网页", "方案", "文档", "材料")) and len(stem) > 4:
+        stem = re.sub(r"(笔记|记录|网页|方案|文档|材料)$", "", stem).strip(" ：:-")
+
+    return [stem[:24]] if len(stem) >= 2 else []
+
+
+def _read_asset_text(asset: SourceAsset) -> str:
+    content_ref = getattr(asset, "content_ref", None)
+    if not isinstance(content_ref, str) or not content_ref.strip():
+        return asset.summary or ""
+
+    path = Path(content_ref)
+    if not path.exists() or not path.is_file():
+        return asset.summary or ""
+
+    if asset.kind in {"note", "web"}:
+        try:
+            return path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return asset.summary or ""
+
+    if asset.kind == "pdf":
+        try:
+            from pypdf import PdfReader  # type: ignore
+        except Exception:
+            return asset.summary or ""
+
+        try:
+            reader = PdfReader(str(path))
+            page_text = []
+            for page in reader.pages[:3]:
+                extracted = page.extract_text() or ""
+                if extracted.strip():
+                    page_text.append(extracted)
+            return "\n".join(page_text) if page_text else (asset.summary or "")
+        except Exception:
+            return asset.summary or ""
+
+    return asset.summary or ""
+
+
+def _normalize_asset_text(text: str, limit: int = 900) -> str:
+    return normalize_material_text(text, limit=limit)
 
 
 def _summarize_project_memory(project_memory: object | None) -> str | None:

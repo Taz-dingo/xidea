@@ -54,6 +54,7 @@ from xidea_agent.state import (
     build_initial_graph_state,
 )
 from xidea_agent.tools import (
+    build_asset_summary_payload,
     build_project_context,
     resolve_tool_result,
     retrieve_learning_unit,
@@ -1935,6 +1936,167 @@ def _build_create_knowledge_point_suggestion(
     )
 
 
+def _build_material_import_knowledge_point_suggestion(
+    state: GraphState,
+    repository: SQLiteRepository | None,
+    timestamp: datetime,
+) -> KnowledgePointSuggestion | None:
+    if state.project_context is None or not state.project_context.source_asset_ids:
+        return None
+
+    asset_summary = build_asset_summary_payload(
+        list(state.project_context.source_asset_ids),
+        repository=repository,
+        project_id=state.request.project_id,
+    )
+    assets = asset_summary.get("assets", [])
+    if not isinstance(assets, list) or not assets:
+        return None
+
+    existing_keys: set[str] = set()
+    existing_pending_by_key: dict[str, KnowledgePointSuggestion] = {}
+    if repository is not None:
+        existing_keys.update(
+            knowledge_point_identity_key(point.title)
+            for point in repository.list_project_knowledge_points(state.request.project_id)
+        )
+        for suggestion in repository.list_knowledge_point_suggestions(
+            state.request.project_id,
+            statuses=["pending", "accepted"],
+        ):
+            if suggestion.kind != "create":
+                continue
+            suggestion_key = knowledge_point_identity_key(suggestion.title)
+            existing_keys.add(suggestion_key)
+            if suggestion.status == "pending":
+                existing_pending_by_key[suggestion_key] = suggestion
+
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        title = _build_material_import_suggestion_title(asset)
+        candidate_key = knowledge_point_identity_key(title)
+        if candidate_key in existing_pending_by_key:
+            return existing_pending_by_key[candidate_key]
+        if candidate_key in existing_keys:
+            continue
+
+        asset_title = str(asset.get("title") or "当前材料").strip()
+        key_concepts = asset.get("keyConcepts") or []
+        if not isinstance(key_concepts, list):
+            key_concepts = []
+        concept_hint = "、".join(str(item) for item in key_concepts[:3] if str(item).strip())
+        topic_hint = str(asset.get("topic") or "").strip()
+        description = (
+            f"围绕材料《{asset_title}》沉淀一条可独立推进的知识点，"
+            f"优先聚焦 {concept_hint or topic_hint or '这份材料里的核心判断'}。"
+        )
+        reason = (
+            f"这轮 project 研讨挂入了材料《{asset_title}》，"
+            f"其中暴露出的重点是 {concept_hint or topic_hint or '当前主题边界'}，"
+            "建议先沉淀成知识点，再继续学习编排和复习安排。"
+        )
+        return KnowledgePointSuggestion(
+            id=build_suggestion_id(
+                state.request.project_id,
+                state.request.thread_id,
+                title,
+            ),
+            kind="create",
+            project_id=state.request.project_id,
+            session_id=state.request.thread_id,
+            title=title,
+            description=description,
+            reason=reason,
+            source_material_refs=list(state.project_context.source_asset_ids),
+            status="pending",
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+
+    return None
+
+
+def _build_material_import_suggestion_title(asset_payload: dict[str, object]) -> str:
+    asset_title = str(asset_payload.get("title") or "新材料").strip()
+    normalized_title = re.sub(r"\.[^.]+$", "", asset_title)
+    title_parts = [
+        part.strip(" ：:-")
+        for part in re.split(r"[、/,，；;｜|]+", normalized_title)
+        if part.strip(" ：:-")
+    ]
+    if len(title_parts) >= 3:
+        return f"{title_parts[0]}、{title_parts[1]}、{title_parts[2]} 的关系"[:40]
+    if len(title_parts) == 2:
+        return f"{title_parts[0]} 与 {title_parts[1]}"[:40]
+    if normalized_title:
+        return normalized_title[:40]
+
+    key_concepts = asset_payload.get("keyConcepts")
+    if isinstance(key_concepts, list):
+        visible = [str(item).strip() for item in key_concepts if str(item).strip()]
+        if len(visible) >= 2:
+            combined = f"{visible[0]} 与 {visible[1]}"
+            return combined[:40]
+        if visible:
+            return visible[0][:40]
+
+    topic = str(asset_payload.get("topic") or "").strip()
+    if topic:
+        return topic[:40]
+
+    return normalized_title[:40] or "新材料要点"
+
+
+def _compose_material_import_project_reply(
+    state: GraphState,
+    *,
+    fallback_message: str,
+) -> str:
+    if state.tool_result is None or state.tool_result.kind != "asset-summary":
+        return fallback_message
+
+    payload = state.tool_result.payload
+    assets = payload.get("assets")
+    if not isinstance(assets, list) or not assets:
+        return fallback_message
+
+    asset = assets[0] if isinstance(assets[0], dict) else None
+    if asset is None:
+        return fallback_message
+
+    asset_title = str(asset.get("title") or "当前材料").strip() or "当前材料"
+    key_concepts = asset.get("keyConcepts")
+    visible_concepts = (
+        [str(item).strip() for item in key_concepts if str(item).strip()]
+        if isinstance(key_concepts, list)
+        else []
+    )
+    suggestion_title = (
+        state.knowledge_point_suggestions[0].title
+        if state.knowledge_point_suggestions
+        else _build_material_import_suggestion_title(asset)
+    )
+    concept_line = (
+        f"我先抓到两个核心概念：{visible_concepts[0]}、{visible_concepts[1]}。"
+        if len(visible_concepts) >= 2
+        else f"我先抓到一个核心概念：{visible_concepts[0]}。"
+        if visible_concepts
+        else ""
+    )
+
+    return " ".join(
+        part
+        for part in [
+            f"我能看到你这轮挂载的材料《{asset_title}》。",
+            concept_line,
+            f"如果先沉淀一条知识点，我建议先收成「{suggestion_title}」。",
+            "接下来我可以继续围绕这条知识点拆边界、补材料线索，或者按你的目标接着编排下一步。",
+        ]
+        if part
+    )
+
+
 def _is_archive_ready(now: datetime, point: KnowledgePoint, point_state: KnowledgePointState) -> bool:
     if point.status != "active":
         return False
@@ -2006,12 +2168,23 @@ def build_knowledge_point_suggestions(
         return []
     if state.request.session_type != "project":
         return []
-    if state.request.entry_mode != "chat-question":
-        return []
     if state.request.target_unit_id is not None:
         return []
 
     timestamp = datetime.now(UTC)
+    if state.request.entry_mode == "material-import":
+        material_suggestion = _build_material_import_knowledge_point_suggestion(
+            state,
+            repository,
+            timestamp,
+        )
+        if material_suggestion is not None:
+            return [material_suggestion]
+        return []
+
+    if state.request.entry_mode != "chat-question":
+        return []
+
     create_suggestion = _build_create_knowledge_point_suggestion(state, repository, timestamp)
     if create_suggestion is not None:
         return [create_suggestion]
@@ -2335,6 +2508,11 @@ def iter_agent_v0_events(
                     state.tool_result,
                     state.request.session_type,
                 )
+                if state.request.entry_mode == "material-import":
+                    state.assistant_message = _compose_material_import_project_reply(
+                        state,
+                        fallback_message=state.assistant_message,
+                    )
                 reply_source = "template"
                 for chunk in _chunk_text_for_ui_local(state.assistant_message):
                     text_event = TextDeltaEvent(event="text-delta", delta=chunk)
@@ -2541,26 +2719,35 @@ def _commit_llm_diagnosis(
     signal_source: str,
     diag_source: str,
 ) -> GraphState:
-    if llm_diag is not None:
-        violations = validate_diagnosis(llm_diag, state.learner_unit_state)
-        if violations:
-            names = ", ".join(f"{violation.rule_id}({violation.rule_name})" for violation in violations)
-            state.rationale.append(
-                f"LLM diagnosis rejected by guardrails: {names}. "
-                "Applying guardrail corrections."
-            )
-            _apply_diagnosis_guardrail_corrections(llm_diag, state, violations)
-        if _apply_session_type_diagnosis_corrections(llm_diag, state):
-            state.rationale.append(
-                f"session_type corrected diagnosis to {llm_diag.recommended_action} "
-                f"for {state.request.session_type} session."
-            )
-        state.diagnosis = llm_diag
-    else:
-        raise RuntimeError(
-            "LLM diagnosis returned None. The LLM is the core decision-maker "
-            "and cannot be bypassed."
+    if llm_diag is None:
+        if state.learner_unit_state is None:
+            raise RuntimeError("Cannot build a fallback diagnosis without learner state.")
+        llm_diag = diagnose_state(
+            state.request.entry_mode,
+            state.request.target_unit_id,
+            state.learner_unit_state,
+            prior_state=state.prior_learner_unit_state,
+            next_review_at=state.prior_next_review_at,
         )
+        state.rationale.append(
+            "LLM diagnosis unavailable, using rule-based fallback diagnosis so the session can continue."
+        )
+        diag_source = "rules-fallback"
+
+    violations = validate_diagnosis(llm_diag, state.learner_unit_state)
+    if violations:
+        names = ", ".join(f"{violation.rule_id}({violation.rule_name})" for violation in violations)
+        state.rationale.append(
+            f"LLM diagnosis rejected by guardrails: {names}. "
+            "Applying guardrail corrections."
+        )
+        _apply_diagnosis_guardrail_corrections(llm_diag, state, violations)
+    if _apply_session_type_diagnosis_corrections(llm_diag, state):
+        state.rationale.append(
+            f"session_type corrected diagnosis to {llm_diag.recommended_action} "
+            f"for {state.request.session_type} session."
+        )
+    state.diagnosis = llm_diag
 
     state.learner_unit_state.recommended_action = state.diagnosis.recommended_action
     state.rationale.append(
@@ -3050,6 +3237,11 @@ def compose_response_step(
     )
     state.activity = state.activities[0] if state.activities else None
     state.knowledge_point_suggestions = build_knowledge_point_suggestions(state, repository=repository)
+    if reply_source == "template":
+        state.assistant_message = _compose_material_import_project_reply(
+            state,
+            fallback_message=state.assistant_message or "",
+        )
     state.rationale.append(
         f"compose_response built a {len(state.plan.steps)}-step plan "
         f"with mode {state.plan.selected_mode} "

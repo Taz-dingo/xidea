@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from xidea_agent.knowledge_points import build_knowledge_point_id
 from xidea_agent.state import (
@@ -35,6 +35,11 @@ CREATE TABLE IF NOT EXISTS threads (
   thread_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
   topic TEXT NOT NULL,
+  session_type TEXT NOT NULL DEFAULT 'project',
+  knowledge_point_id TEXT,
+  title TEXT,
+  summary TEXT,
+  status TEXT NOT NULL DEFAULT '活跃',
   entry_mode TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -174,6 +179,14 @@ CREATE TABLE IF NOT EXISTS project_materials (
 );
 """
 
+THREAD_COLUMN_MIGRATIONS: dict[str, str] = {
+    "session_type": "ALTER TABLE threads ADD COLUMN session_type TEXT NOT NULL DEFAULT 'project'",
+    "knowledge_point_id": "ALTER TABLE threads ADD COLUMN knowledge_point_id TEXT",
+    "title": "ALTER TABLE threads ADD COLUMN title TEXT",
+    "summary": "ALTER TABLE threads ADD COLUMN summary TEXT",
+    "status": "ALTER TABLE threads ADD COLUMN status TEXT NOT NULL DEFAULT '活跃'",
+}
+
 
 class SQLiteRepository:
     def __init__(self, db_path: str | Path):
@@ -183,12 +196,17 @@ class SQLiteRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.executescript(SCHEMA_SQL)
+            self._apply_schema_migrations(connection)
 
     def save_run(self, request: AgentRequest, run_result: AgentRunResult) -> None:
         self.initialize()
         state = run_result.graph_state
         now = state.learner_unit_state.updated_at if state.learner_unit_state else None
         now_value = now.isoformat() if now else _utc_now()
+        thread_title = _resolve_thread_title(request)
+        thread_summary = _resolve_thread_summary(request, state.assistant_message)
+        thread_status = _resolve_thread_status(state.assistant_message)
+        knowledge_point_id = request.knowledge_point_id or request.target_unit_id
 
         with self._connect() as connection:
             connection.execute(
@@ -203,10 +221,18 @@ class SQLiteRepository:
             )
             connection.execute(
                 """
-                INSERT INTO threads(thread_id, project_id, topic, entry_mode, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO threads(
+                  thread_id, project_id, topic, session_type, knowledge_point_id,
+                  title, summary, status, entry_mode, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(thread_id) DO UPDATE SET
                   topic = excluded.topic,
+                  session_type = excluded.session_type,
+                  knowledge_point_id = excluded.knowledge_point_id,
+                  title = excluded.title,
+                  summary = excluded.summary,
+                  status = excluded.status,
                   entry_mode = excluded.entry_mode,
                   updated_at = excluded.updated_at
                 """,
@@ -214,6 +240,11 @@ class SQLiteRepository:
                     request.thread_id,
                     request.project_id,
                     request.topic,
+                    request.session_type,
+                    knowledge_point_id,
+                    thread_title,
+                    thread_summary,
+                    thread_status,
                     request.entry_mode,
                     now_value,
                     now_value,
@@ -285,19 +316,80 @@ class SQLiteRepository:
                 )
 
     def list_recent_messages(self, thread_id: str, limit: int = 8) -> list[Message]:
+        return self.list_thread_messages(thread_id, limit=limit)
+
+    def list_thread_messages(self, thread_id: str, limit: int | None = None) -> list[Message]:
+        self.initialize()
+        with self._connect() as connection:
+            if limit is None:
+                rows = connection.execute(
+                    """
+                    SELECT role, content
+                    FROM thread_messages
+                    WHERE thread_id = ?
+                    ORDER BY message_id ASC
+                    """,
+                    (thread_id,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT role, content
+                    FROM thread_messages
+                    WHERE thread_id = ?
+                    ORDER BY message_id DESC
+                    LIMIT ?
+                    """,
+                    (thread_id, limit),
+                ).fetchall()
+                rows = list(reversed(rows))
+
+        return [Message(role=row["role"], content=row["content"]) for row in rows]
+
+    def list_project_threads(self, project_id: str) -> list[dict[str, Any]]:
+        self.initialize()
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT role, content
-                FROM thread_messages
-                WHERE thread_id = ?
-                ORDER BY message_id DESC
-                LIMIT ?
+                SELECT
+                  threads.thread_id,
+                  threads.project_id,
+                  threads.topic,
+                  threads.session_type,
+                  threads.knowledge_point_id,
+                  threads.title,
+                  threads.summary,
+                  threads.status,
+                  threads.entry_mode,
+                  threads.created_at,
+                  threads.updated_at,
+                  thread_context.source_asset_ids
+                FROM threads
+                LEFT JOIN thread_context
+                  ON thread_context.thread_id = threads.thread_id
+                WHERE threads.project_id = ?
+                ORDER BY threads.updated_at DESC, threads.created_at DESC, threads.thread_id DESC
                 """,
-                (thread_id, limit),
+                (project_id,),
             ).fetchall()
 
-        return [Message(role=row["role"], content=row["content"]) for row in reversed(rows)]
+        return [
+            {
+                "thread_id": row["thread_id"],
+                "project_id": row["project_id"],
+                "topic": row["topic"],
+                "session_type": row["session_type"] or "project",
+                "knowledge_point_id": row["knowledge_point_id"],
+                "title": row["title"] or _default_thread_title(row["session_type"] or "project", row["topic"]),
+                "summary": row["summary"] or "",
+                "status": row["status"] or "已更新",
+                "entry_mode": row["entry_mode"],
+                "source_asset_ids": json.loads(row["source_asset_ids"]) if row["source_asset_ids"] else [],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
 
     def get_learner_unit_state(self, thread_id: str, unit_id: str) -> LearnerUnitState | None:
         with self._connect() as connection:
@@ -795,6 +887,16 @@ class SQLiteRepository:
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
         return connection
+
+    def _apply_schema_migrations(self, connection: sqlite3.Connection) -> None:
+        existing_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(threads)").fetchall()
+        }
+        for column_name, statement in THREAD_COLUMN_MIGRATIONS.items():
+            if column_name not in existing_columns:
+                connection.execute(statement)
+                existing_columns.add(column_name)
 
     def _append_messages(
         self,
@@ -1403,6 +1505,37 @@ class SQLiteRepository:
             knowledge_point=knowledge_point,
             knowledge_point_state=knowledge_point_state,
         )
+
+
+def _default_thread_title(session_type: str, topic: str) -> str:
+    normalized_topic = topic.strip()
+    if session_type == "project":
+        return "当前研讨"
+    if session_type == "review":
+        return normalized_topic if normalized_topic else "复习会话"
+    return normalized_topic if normalized_topic else "学习会话"
+
+
+def _resolve_thread_title(request: AgentRequest) -> str:
+    title = (request.session_title or "").strip()
+    if title:
+        return title
+    return _default_thread_title(request.session_type, request.topic)
+
+
+def _resolve_thread_summary(request: AgentRequest, assistant_message: str | None) -> str:
+    summary = (request.session_summary or "").strip()
+    if summary:
+        return summary
+    if assistant_message and assistant_message.strip():
+        return assistant_message.strip()[:140]
+    if request.messages:
+        return request.messages[-1].content.strip()[:140]
+    return ""
+
+
+def _resolve_thread_status(assistant_message: str | None) -> str:
+    return "已更新" if assistant_message and assistant_message.strip() else "活跃"
 
 
 def _utc_now() -> str:

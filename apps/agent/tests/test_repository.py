@@ -36,15 +36,30 @@ def test_repository_initializes_and_persists_run(tmp_path: Path) -> None:
 
     repository.save_run(request, run_result)
 
+    thread_messages = repository.list_thread_messages("thread-1")
+    project_threads = repository.list_project_threads("rag-demo")
     recent_messages = repository.list_recent_messages("thread-1")
     learner_state = repository.get_learner_unit_state("thread-1", "unit-rag-retrieval")
     review_state = repository.get_review_state("thread-1", "unit-rag-retrieval")
     thread_context = repository.get_thread_context("thread-1")
     review_events = repository.list_review_events("thread-1", "unit-rag-retrieval")
 
+    assert len(thread_messages) == 2
+    assert thread_messages[0].role == "user"
+    assert thread_messages[1].role == "assistant"
+
     assert len(recent_messages) == 2
     assert recent_messages[0].role == "user"
     assert recent_messages[1].role == "assistant"
+
+    assert len(project_threads) == 1
+    assert project_threads[0]["thread_id"] == "thread-1"
+    assert project_threads[0]["session_type"] == "study"
+    assert project_threads[0]["knowledge_point_id"] == "unit-rag-retrieval"
+    assert project_threads[0]["entry_mode"] == "chat-question"
+    assert project_threads[0]["title"] == "RAG retrieval design"
+    assert isinstance(project_threads[0]["summary"], str)
+    assert project_threads[0]["status"] == "已更新"
 
     assert learner_state is not None
     assert learner_state.recommended_action == "review"

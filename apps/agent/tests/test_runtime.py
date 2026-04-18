@@ -22,6 +22,7 @@ from xidea_agent.state import (
     ProjectLearningProfile,
     ProjectMemory,
     Signal,
+    SourceAsset,
 )
 
 from conftest import (
@@ -78,6 +79,31 @@ def test_run_agent_v0_prefers_clarify_for_confusion() -> None:
         "state-patch",
         "done",
     ]
+
+
+def test_run_agent_v0_falls_back_to_rule_diagnosis_when_llm_unavailable() -> None:
+    result = run_agent_v0(
+        build_request(
+            session_type="project",
+            entry_mode="material-import",
+            target_unit_id=None,
+            topic="围绕材料推进多模态学习编排",
+            source_asset_ids=["asset-2"],
+            messages=[{"role": "user", "content": "请根据材料帮我沉淀一个知识点"}],
+        ),
+        llm=build_mock_llm(side_effect=RuntimeError("401 auth failed")),
+    )
+
+    assert result.graph_state.diagnosis is not None
+    assert result.graph_state.diagnosis.recommended_action == "clarify"
+    assert result.graph_state.plan is not None
+    assert result.graph_state.activity is None
+    assert len(result.graph_state.knowledge_point_suggestions) == 1
+    assert "asset-2" in (result.graph_state.assistant_message or "") or "检索召回与重排对比笔记" in (
+        result.graph_state.assistant_message or ""
+    )
+    assert "知识点" in (result.graph_state.assistant_message or "")
+    assert any("rule-based fallback diagnosis" in item for item in result.graph_state.rationale)
 
 
 def test_iter_agent_v0_events_yields_incrementally() -> None:
@@ -235,6 +261,117 @@ def test_run_agent_v0_emits_knowledge_point_suggestion_for_project_chat() -> Non
         "state-patch",
         "done",
     ]
+
+
+def test_material_import_project_session_emits_knowledge_point_suggestion(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "materials.md"
+    material_path.write_text(
+        "视频理解 pipeline。音频时间对齐。具身交互反馈。",
+        encoding="utf-8",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-1",
+            title="llm-multimodal-notes.md",
+            kind="note",
+            topic="LLM、音视频、具身智能",
+            summary="视频理解、音频时间对齐与具身交互反馈。",
+            source_uri="llm-multimodal-notes.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = build_request(
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-1"],
+        messages=[{"role": "user", "content": "我想学这个，你帮我编排下吧"}],
+    )
+
+    result = run_agent_v0(
+        request,
+        repository=repository,
+        llm=build_mock_llm_for_material_import(),
+    )
+
+    assert len(result.graph_state.knowledge_point_suggestions) == 1
+    suggestion = result.graph_state.knowledge_point_suggestions[0]
+    assert suggestion.kind == "create"
+    assert suggestion.status == "pending"
+    assert suggestion.source_material_refs == ["material-uploaded-1"]
+    assert suggestion.title == "llm-multimodal-notes"
+    assert "llm-multimodal-notes.md" in suggestion.reason
+
+
+def test_iter_agent_v0_events_reuses_existing_material_suggestion_and_reply(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "materials.md"
+    material_path.write_text(
+        "视频理解 pipeline。音频时间对齐。具身交互反馈。",
+        encoding="utf-8",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-1",
+            title="LLM、音视频、具身智能.md",
+            kind="note",
+            topic="LLM、音视频、具身智能",
+            summary="视频理解、音频时间对齐与具身交互反馈。",
+            source_uri="LLM、音视频、具身智能.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    initial_request = build_request(
+        thread_id="material-thread-1",
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-1"],
+        messages=[{"role": "user", "content": "请根据材料帮我沉淀一个知识点"}],
+    )
+    initial_result = run_agent_v0(
+        initial_request,
+        repository=repository,
+        llm=build_mock_llm(side_effect=RuntimeError("401 auth failed")),
+    )
+    repository.save_run(initial_request, initial_result)
+    existing_suggestion = initial_result.graph_state.knowledge_point_suggestions[0]
+
+    followup_request = build_request(
+        thread_id="material-thread-2",
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-1"],
+        messages=[{"role": "user", "content": "继续根据这份材料给我一个知识点方向"}],
+    )
+    events = list(
+        iter_agent_v0_events(
+            followup_request,
+            repository=repository,
+            llm=build_mock_llm(side_effect=RuntimeError("401 auth failed")),
+        )
+    )
+
+    text_deltas = [event.delta for event in events if event.event == "text-delta"]
+    suggestion_event = next(event for event in events if event.event == "knowledge-point-suggestion")
+
+    assert "LLM、音视频、具身智能.md" in "".join(text_deltas)
+    assert "LLM、音视频" in "".join(text_deltas)
+    assert suggestion_event.suggestions[0].id == existing_suggestion.id
+    assert suggestion_event.suggestions[0].title == existing_suggestion.title
 
 
 def test_project_session_never_emits_activity_even_with_target_unit() -> None:

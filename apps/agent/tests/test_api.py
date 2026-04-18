@@ -122,6 +122,8 @@ def test_persisted_run_is_queryable_from_storage_endpoints(
     assert run_response.status_code == 200
 
     storage_response = persisted_client.get("/storage/status")
+    project_threads_response = persisted_client.get("/projects/rag-demo/threads")
+    full_messages_response = persisted_client.get("/threads/thread-1/messages")
     messages_response = persisted_client.get("/threads/thread-1/recent-messages")
     state_response = persisted_client.get("/threads/thread-1/units/unit-rag-retrieval")
     context_response = persisted_client.get("/threads/thread-1/context")
@@ -134,6 +136,21 @@ def test_persisted_run_is_queryable_from_storage_endpoints(
 
     assert storage_response.status_code == 200
     assert storage_response.json()["enabled"] is True
+
+    assert project_threads_response.status_code == 200
+    thread_records = project_threads_response.json()
+    assert len(thread_records) == 1
+    assert thread_records[0]["thread_id"] == "thread-1"
+    assert thread_records[0]["session_type"] == "study"
+    assert thread_records[0]["knowledge_point_id"] == "unit-rag-retrieval"
+    assert thread_records[0]["entry_mode"] == "chat-question"
+    assert thread_records[0]["source_asset_ids"] == []
+
+    assert full_messages_response.status_code == 200
+    full_messages = full_messages_response.json()
+    assert len(full_messages) == 2
+    assert full_messages[0]["role"] == "user"
+    assert full_messages[1]["role"] == "assistant"
 
     assert messages_response.status_code == 200
     messages = messages_response.json()
@@ -197,6 +214,7 @@ def test_project_material_upload_and_list_endpoint(persisted_client: TestClient)
     assert summary_payload["assetIds"] == [upload_payload["id"]]
     assert summary_payload["assets"][0]["title"] == "rag-notes.md"
     assert summary_payload["assets"][0]["contentExcerpt"]
+    assert "retrieval 和 reranking" in summary_payload["assets"][0]["contentExcerpt"]
 
 
 _SAMPLE_REQUEST = {

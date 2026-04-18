@@ -323,6 +323,9 @@ class AgentRequest(StrictModel):
     project_id: str = Field(min_length=1)
     thread_id: str = Field(min_length=1)
     session_type: SessionType = "study"
+    session_title: str | None = None
+    session_summary: str | None = None
+    knowledge_point_id: str | None = None
     entry_mode: EntryMode
     topic: str = Field(min_length=1)
     messages: list[Message] = Field(min_length=1)
