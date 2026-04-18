@@ -94,6 +94,13 @@ export function getSessionTypeAccent(type: SessionType): string {
   }
 }
 
+export function getSessionDisplayTitle(title: string, type: SessionType): string {
+  const label = getSessionTypeLabel(type);
+  const normalized = title.trim();
+  const colonPrefix = new RegExp(`^${label}[：:]\\s*`);
+  return normalized.replace(colonPrefix, "").trim() || normalized;
+}
+
 function getReviewTimingAccent(label: string): string {
   if (label.includes("今日") || label.includes("到期")) {
     return "border-[#e1c5bb] bg-[#f8ece7] text-[#9d5b43]";
@@ -153,6 +160,8 @@ export function SessionCard({
   updatedAt: string;
   onClick: () => void;
 }): ReactElement {
+  const visibleTitle = getSessionDisplayTitle(title, type);
+
   return (
     <button
       className={
@@ -168,7 +177,7 @@ export function SessionCard({
           <span className={active ? "text-[var(--xidea-selection-text)]" : "text-[var(--xidea-stone)]"}>
             {getSessionTypeIcon(type)}
           </span>
-          <p className="truncate text-sm font-medium">{title}</p>
+          <p className="truncate text-sm font-medium">{visibleTitle}</p>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <SessionTypeBadge compact type={type} />
@@ -213,28 +222,46 @@ export function MetricTile({
 
 export function AssetListItem({
   asset,
+  selected = false,
+  onClick,
 }: {
   asset: SourceAsset;
+  selected?: boolean;
+  onClick?: () => void;
 }): ReactElement {
-  return (
-    <div className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-3">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
+  const content = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
           {getAssetKindIcon(asset.kind)}
         </div>
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
-              {asset.title}
-            </p>
-            <span className="shrink-0 text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
-              {getAssetKindLabel(asset.kind)}
-            </span>
-          </div>
-          <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">{asset.topic}</p>
-        </div>
+        <span className="shrink-0 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-2 py-0.5 text-[10px] tracking-[0.08em] text-[var(--xidea-stone)]">
+          {getAssetKindLabel(asset.kind)}
+        </span>
       </div>
-    </div>
+      <div className="space-y-1">
+        <p className="line-clamp-2 text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
+          {asset.title}
+        </p>
+        <p className="line-clamp-2 text-sm leading-6 text-[var(--xidea-charcoal)]">{asset.topic}</p>
+      </div>
+    </>
+  );
+
+  const className = selected
+    ? "flex h-full min-h-[148px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] p-3 text-left transition-colors"
+    : "flex h-full min-h-[148px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef]";
+
+  if (onClick) {
+    return (
+      <button className={className} onClick={onClick} type="button">
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={className}>{content}</div>
   );
 }
 

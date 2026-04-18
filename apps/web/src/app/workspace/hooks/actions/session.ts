@@ -60,17 +60,23 @@ export function useSessionActions(data: WorkspaceData) {
       return null;
     }
 
+    const targetPoint =
+      knowledgePointId === null
+        ? null
+        : (data.knowledgePoints.find((point) => point.id === knowledgePointId) ?? null);
+
     const nextIndex =
       data.sessions.filter((session) => session.projectId === targetProject.id)
         .length + 1;
-    const titlePrefix =
-      type === "study" ? "学习" : type === "review" ? "复习" : "研讨";
     const createdSession: SessionItem = {
       id: `session-${Date.now()}`,
       projectId: targetProject.id,
       type,
       knowledgePointId,
-      title: `${titlePrefix} ${nextIndex}`,
+      title:
+        type === "project"
+          ? `研讨 ${nextIndex}`
+          : targetPoint?.title ?? `第 ${nextIndex} 轮`,
       summary:
         type === "study"
           ? "围绕未学知识点启动一轮学习。"

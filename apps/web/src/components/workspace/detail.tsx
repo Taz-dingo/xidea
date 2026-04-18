@@ -5,6 +5,7 @@ import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import type { SourceAsset } from "@/domain/types";
 import {
   AssetListItem,
+  getSessionDisplayTitle,
   getKnowledgePointAccent,
   MetricTile,
   SessionCard,
@@ -249,11 +250,13 @@ export function KnowledgePointDetailScreen({
             </CardTitle>
             <CardDescription>当前知识卡关联的项目材料。</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent>
             {knowledgePointAssets.length > 0 ? (
-              knowledgePointAssets.map((asset) => (
-                <AssetListItem asset={asset} key={asset.id} />
-              ))
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {knowledgePointAssets.map((asset) => (
+                  <AssetListItem asset={asset} key={asset.id} />
+                ))}
+              </div>
             ) : (
               <p className="text-sm text-[var(--xidea-stone)]">当前还没有挂接材料。</p>
             )}
@@ -276,7 +279,7 @@ export function KnowledgePointDetailScreen({
                 active={session.id === selectedSessionId}
                 key={session.id}
                 onClick={() => onOpenSession(session.id)}
-                title={session.title}
+                title={getSessionDisplayTitle(session.title, session.type)}
                 type={session.type}
                 updatedAt={session.updatedAt}
               />

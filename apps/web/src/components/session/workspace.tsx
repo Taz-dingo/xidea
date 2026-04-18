@@ -4,6 +4,7 @@ import { CompletedDeckRail } from "@/components/session/deck-rail";
 import { SessionThreadPane } from "@/components/session/thread-pane";
 import { SessionInspector } from "@/components/session/inspector";
 import {
+  getSessionDisplayTitle,
   SessionCard,
   SessionTypeBadge,
 } from "@/components/workspace/core";
@@ -187,7 +188,7 @@ export function SessionWorkspace({
                 active={session.id === selectedSession.id}
                 key={session.id}
                 onClick={() => onOpenSession(session.id)}
-                title={session.title}
+                title={getSessionDisplayTitle(session.title, session.type)}
                 type={session.type}
                 updatedAt={session.updatedAt}
               />
@@ -206,7 +207,7 @@ export function SessionWorkspace({
                 active={session.id === selectedSession.id}
                 key={session.id}
                 onClick={() => onOpenSession(session.id)}
-                title={session.title}
+                title={getSessionDisplayTitle(session.title, session.type)}
                 type={session.type}
                 updatedAt={session.updatedAt}
               />
@@ -220,7 +221,7 @@ export function SessionWorkspace({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <CardTitle className="truncate text-sm font-medium text-[var(--xidea-near-black)]">
-                {selectedSession.title}
+                {getSessionDisplayTitle(selectedSession.title, selectedSession.type)}
               </CardTitle>
               <CardDescription className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--xidea-stone)]">
                 <SessionTypeBadge type={selectedSession.type} />

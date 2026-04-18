@@ -4,7 +4,7 @@ import { FileInput, Settings2 } from "lucide-react";
 import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MaterialUploadButton } from "@/components/material-upload-button";
 import { MarkdownContent } from "@/components/markdown-content";
-import { getAssetKindLabel } from "@/components/workspace/core";
+import { AssetListItem } from "@/components/workspace/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -236,28 +236,12 @@ export function SessionThreadPane({
                     const selected = selectedSourceAssetIds.includes(asset.id);
 
                     return (
-                      <button
-                        className={
-                          selected
-                            ? "rounded-[1rem] bg-[var(--xidea-selection)] px-4 py-4 text-left transition-colors"
-                            : "rounded-[1rem] bg-[var(--xidea-parchment)] px-4 py-4 text-left transition-colors hover:bg-[#f8f2ee]"
-                        }
+                      <AssetListItem
+                        asset={asset}
                         key={asset.id}
                         onClick={() => onToggleProjectMaterial(asset.id)}
-                        type="button"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                            {asset.title}
-                          </p>
-                          <span className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
-                            {getAssetKindLabel(asset.kind)}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                          {asset.topic}
-                        </p>
-                      </button>
+                        selected={selected}
+                      />
                     );
                   })}
                 </div>
