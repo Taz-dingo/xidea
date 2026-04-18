@@ -3,6 +3,24 @@
 只保留"当前仍生效、后续会反复影响协作或实现"的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-18 — `study / review` 的主路径学习卡优先由 LLM 实时生成；模板题卡只保留为 backend fallback，前端 mock snapshot 不再预置卡片
+
+### 决策
+
+- `study / review session` 的 activity deck 主路径改为 LLM-owned：优先从 `main_decision` / `bundled response` 直接返回 `activities`，只有模型没有稳定给出时，runtime 才回退到模板 `build_activities()`
+- `project session` 继续硬约束为不生成 activity；前端 `buildMockRuntimeSnapshot()` 也不再预置 demo 卡片，避免离线或 seed 状态继续冒出假题
+- LLM 生成的 activity 必须直接围绕当前学习主题 / 知识点本身出题，禁止继续生成“系统会怎么做 / 你应该怎么答题”这类 meta 卡
+
+### 原因
+
+- 用户当前看到的“怪题”根因不是前端渲染，而是 backend 主路径仍在用 `runtime.py` 里的模板函数拼卡；只要这条路径不切真，题干就会继续带 demo 预制感
+- 如果前端 fallback snapshot 仍自带卡片，就算 backend 已经切到真实生成，UI 首屏和异常回退里也还会继续泄漏预制题，破坏真实链路观感
+
+### 影响
+
+- 后续凡是新增 / 调整 activity prompt，都优先修改 LLM activity generation prompt 和 parser；模板卡只作为失败兜底，不再作为主链路产品语义
+- 如果后续继续优化响应速度，优先继续提高 bundled `activities` 命中率，避免 split path 额外多一次 activity LLM 调用
+
 ## 2026-04-18 — `project materials` 已升成 backend 持久化对象；前端只消费真实上传结果，不再把材料上传继续做成 demo seed 选择
 
 ### 决策

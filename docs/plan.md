@@ -91,10 +91,11 @@
     - 已把 prompt 结构升级成“共享 base prompt + `project / study / review` 分轨 session prompt”，并继续保留 runtime guard；`project session` 也已加 pedagogical reply 过滤和 template fallback，避免文本语义漂回“先做题 / 先回忆”
     - 已把 `project session` 的默认语义进一步收成“学习方向 / 主题讨论 / 材料线索 / 知识点更新”四类推进目标，避免 prompt 和 runtime fallback 再退回空泛的 project 管理对话
     - 已修正 reply 生成链路里的 `user_msg` 传递错误：当前使用真实 `message.content`，不再把整个 `Message` 对象字符串塞进 prompt
-    - 已把 study / review 的 activity fallback 文案改得更贴当前知识点和主题，不再继续问“为什么系统这样安排你”这类自指问题
+    - 已把 study / review 的 activity 主路径切到 LLM 实时生成：当前优先消费 `main_decision` / `bundled response` 内直接返回的 `activities`，只有模型没稳定给卡时才回退到模板 builder
+    - 已把前端 mock runtime snapshot 里的预置卡片撤掉，避免 backend 已切真后，seed / fallback 状态继续把 demo 题卡泄漏到 UI
     - 已把 choice activity contract 扩成 `is_correct / feedback_layers / analysis`，前端据此本地执行“错了继续、对了再过”的即时反馈；整组卡完成后仍统一回传一次 `activity_result`
     - 已把 completed deck history 收进前端 runtime store 和右侧 inspector，当前可回看每张卡的尝试轨迹与错误分析
-    - 当前剩余缺口集中在 LLM 仍主动返回 `needs_tool=true` 的少数场景：这些路径现在会优先复用预取上下文，但整体仍是 `main_decision -> tool/session loop -> bundled response`
+    - 当前剩余缺口集中在两处：一是 LLM 仍主动返回 `needs_tool=true` 的少数场景；二是 split path 下如果 bundled response 没带 `activities`，runtime 仍可能多一次 activity 生成调用
 - [ ] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
   - owner: 学习引擎 owner / 产品 owner
 - [ ] 定义 Project 最小持久化对象：project memory、learning profile、knowledge points、sessions

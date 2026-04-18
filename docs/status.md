@@ -6,6 +6,8 @@
 
 #### 本轮方向确认
 
+- `apps/agent` 已把 `study / review` 的活动主路径切到 LLM 实时生成：当前优先消费 `main_decision` / `bundled response` 直接返回的 `activities`，只有模型没给出稳定卡组时才回退到模板 activity builder
+- `apps/web` 已撤掉 mock runtime snapshot 里的预置学习卡，避免在 backend 真流已接通后，前端 seed / fallback 状态继续泄漏 demo 题卡
 - `apps/agent` 已把 choice activity contract 扩成 backend-owned 正确性结构：每个选项现在显式带 `is_correct / feedback_layers / analysis`，前端不再自己猜正确项或错误分析
 - `apps/web` 已把学习卡交互改成“点选即判、错了继续、对了自动进下一张”的强反馈节奏；多次纠偏轨迹会一并记进本轮 card deck，而不是中途反复触发 agent
 - `apps/web` 已把完成的 card deck 收进右侧 inspector，可回看每张卡的尝试次数、最终作答，以及错误选择对应的分析
