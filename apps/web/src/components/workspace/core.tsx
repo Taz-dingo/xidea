@@ -173,12 +173,7 @@ export function SessionCard({
       type="button"
     >
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className={active ? "text-[var(--xidea-selection-text)]" : "text-[var(--xidea-stone)]"}>
-            {getSessionTypeIcon(type)}
-          </span>
-          <p className="truncate text-sm font-medium">{visibleTitle}</p>
-        </div>
+        <p className="truncate text-sm font-medium">{visibleTitle}</p>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <SessionTypeBadge compact type={type} />
           <span
