@@ -265,9 +265,14 @@ export function LearningActivityCard({
                   type="button"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
-                      {choice.label}
-                    </p>
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+                        {choice.label}
+                      </p>
+                      <p className="text-[13px] leading-5 text-[var(--xidea-stone)]">
+                        {choice.detail}
+                      </p>
+                    </div>
                     {wasLatestCorrect ? (
                       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#5a8c34]" />
                     ) : wasLatestWrong ? (

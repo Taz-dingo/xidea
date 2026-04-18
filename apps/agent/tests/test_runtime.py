@@ -58,9 +58,14 @@ def test_run_agent_v0_prefers_clarify_for_confusion() -> None:
     assert result.graph_state.diagnosis.primary_issue == "concept-confusion"
     assert result.graph_state.plan.selected_mode == "contrast-drill"
     assert result.graph_state.activity.kind == "quiz"
+    assert result.graph_state.activity.title == "先判断问题出在召回还是排序"
+    assert "什么时候需要重排" in result.graph_state.activity.prompt
     assert len(result.graph_state.activities) == 2
     assert result.graph_state.activities[1].kind == "coach-followup"
     assert result.graph_state.activity.input.type == "choice"
+    choice_labels = [choice.label for choice in result.graph_state.activity.input.choices]
+    assert any("top-k 里已经有相关文档" in label for label in choice_labels)
+    assert all("最容易混淆的两个判断对象" not in label for label in choice_labels)
     assert result.graph_state.activity.input.choices[0].is_correct is True
     assert result.graph_state.activity.input.choices[1].is_correct is False
     assert len(result.graph_state.activity.input.choices[1].feedback_layers) >= 3

@@ -198,218 +198,475 @@ def _build_choice(
     )
 
 
-def _build_activity_choice_set(mode: LearningMode):
-    if mode == "contrast-drill":
-        return ActivityChoiceInput(
-            type="choice",
-            choices=[
-                _build_choice(
-                    choice_id="trace-boundary",
-                    label="先区分最容易混淆的两个判断对象分别解决什么问题。",
-                    detail="先把边界拉开，再决定下一步该补哪条证据或材料。",
-                    is_correct=True,
-                    feedback_layers=[
-                        "对，先把两个判断对象拉开，才能知道后面该补哪条证据。",
-                        "你抓到核心了：这轮不是继续堆信息，而是先确认它们分别控制什么风险。",
-                    ],
-                    analysis="这条回答先处理边界，再决定补证据方向，最符合系统要验证的判断能力。",
-                ),
-                _build_choice(
-                    choice_id="increase-context",
-                    label="先继续堆更多信息进去，看看能不能覆盖掉当前问题。",
-                    detail="这是常见直觉，但会跳过问题定位，容易继续放大噪音。",
-                    is_correct=False,
-                    feedback_layers=[
-                        "先别急着加信息。现在缺的不是覆盖率，而是问题定位。",
-                        "如果还没区分清楚两个判断对象分别解决什么问题，信息越多只会把噪音一起放大。",
-                        "真正要先回答的是：当前缺口到底出在召回、判断边界，还是别的环节；没定位前继续加料通常无效。",
-                    ],
-                    analysis="这条选择把问题误判成信息不够，而不是边界没拉开，容易越补越乱。",
-                ),
-                _build_choice(
-                    choice_id="skip-diagnosis",
-                    label="先给一个模糊结论，暂时不解释为什么这样判断。",
-                    detail="会把真正的边界缺口藏起来，不利于后续继续编排。",
-                    is_correct=False,
-                    feedback_layers=[
-                        "这会跳过最关键的判断依据，系统没法知道你到底卡在哪。",
-                        "如果只给结论、不解释为什么，真正混淆的是概念边界还是证据选择就会被藏起来。",
-                        "这轮的目标不是拿到一个表面答案，而是暴露你判断时最容易混淆的那一步；省略依据会直接损失这层信息。",
-                    ],
-                    analysis="这条选择回避了判断依据，系统拿不到可用于继续编排的真实缺口。",
-                ),
-            ],
-        )
-
-    if mode == "scenario-sim":
-        return ActivityChoiceInput(
-            type="choice",
-            choices=[
-                _build_choice(
-                    choice_id="explain-judgment-chain",
-                    label="先说明关键步骤分别控制什么风险，再解释为什么不能偷简化。",
-                    detail="把判断链路拆开，评审或同事才能听见真实取舍。",
-                    is_correct=True,
-                    feedback_layers=[
-                        "对，项目解释最重要的是把判断链路和风险控制说出来。",
-                        "这条回答能证明你不是在背结论，而是真的知道每一步为什么存在。",
-                    ],
-                    analysis="这条选择把方案拆回判断链路，最能验证是否具备项目迁移能力。",
-                ),
-                _build_choice(
-                    choice_id="stack-more-context",
-                    label="重点强调信息越多越安全，先把更多内容塞进去再说。",
-                    detail="这会把噪声问题伪装成覆盖率问题，解释链路不完整。",
-                    is_correct=False,
-                    feedback_layers=[
-                        "光强调“多放信息更安全”不够，因为它没有解释每一步为什么存在。",
-                        "评审真正会追问的是：哪些步骤在控制 hallucination、召回偏差或上下文漂移，而不是信息是不是越多越好。",
-                        "如果不拆出关键判断链路，这个回答会把系统设计问题伪装成“多塞内容就行”的覆盖率问题，解释力很弱。",
-                    ],
-                    analysis="这条选择把重点放在堆信息，而不是解释关键判断链路，难以支撑项目场景里的说服力。",
-                ),
-                _build_choice(
-                    choice_id="focus-model-only",
-                    label="先把问题归因成模型或工具不够强，暂时不解释判断链路。",
-                    detail="会跳过系统设计层的判断标准，难以说服评审。",
-                    is_correct=False,
-                    feedback_layers=[
-                        "这会把责任全推给模型强弱，但没有回答系统为什么要这样设计。",
-                        "项目讨论里，别人更想知道的是：哪些步骤是为了降低风险、提高稳定性，而不是一句“模型还不够强”。",
-                        "如果不解释判断链路，模型能力再强也只是黑盒结论；你仍然没说明为什么当前方案需要这些结构。",
-                    ],
-                    analysis="这条选择跳过了系统设计层的判断标准，把结构问题错误归因成模型能力问题。",
-                ),
-            ],
-        )
-
-    if mode in ("guided-qa", "socratic"):
-        return ActivityChoiceInput(
-            type="choice",
-            choices=[
-                _build_choice(
-                    choice_id="explain-boundary",
-                    label="先用一句话讲清楚核心边界，再补原因。",
-                    detail="先给判断标准，再展开解释，更容易看出是否真的理解。",
-                    is_correct=True,
-                    feedback_layers=[
-                        "对，先把边界说清楚，后面的解释才有落点。",
-                        "这能最快暴露你是否真正理解，而不是只会复述定义。",
-                    ],
-                    analysis="这条回答先给判断标准，再展开原因，最容易验证理解是否稳定。",
-                ),
-                _build_choice(
-                    choice_id="repeat-definition",
-                    label="先复述概念定义，后面再看要不要区分边界。",
-                    detail="只复述定义容易掩盖真正的判断缺口。",
-                    is_correct=False,
-                    feedback_layers=[
-                        "先别回到定义。现在更重要的是把边界拉开。",
-                        "只复述定义常常会让人看起来像懂了，但一到判断题还是分不清。",
-                        "这轮要验证的是“你能不能用判断标准区分相近概念”，不是“你记不记得教材式表述”。如果只停在定义，真实缺口会被盖住。",
-                    ],
-                    analysis="这条选择把任务退回成复述定义，绕开了真正要验证的边界判断能力。",
-                ),
-                _build_choice(
-                    choice_id="jump-to-solution",
-                    label="先直接给方案结论，暂时不解释为什么这样判断。",
-                    detail="会跳过理解验证，系统拿不到可靠的学习依据。",
-                    is_correct=False,
-                    feedback_layers=[
-                        "先给结论还不够，因为系统要看到你的判断过程。",
-                        "如果不解释为什么这样判断，后面就无法区分你是真的理解，还是碰巧押中了答案。",
-                        "这轮的价值在于让系统拿到稳定的学习依据：你区分了什么、靠什么区分。如果直接跳到结论，这层证据会消失。",
-                    ],
-                    analysis="这条选择省掉了判断过程，系统无法据此确认理解是否真实稳固。",
-                ),
-            ],
-        )
-
-    if mode in ("image-recall", "audio-recall"):
-        return ActivityChoiceInput(
-            type="choice",
-            choices=[
-                _build_choice(
-                    choice_id="recall-key-criterion",
-                    label="先回忆关键判断标准，再看自己哪里记不稳。",
-                    detail="优先验证可回忆性，而不是继续看材料。",
-                    is_correct=True,
-                    feedback_layers=[
-                        "对，复习时先看自己能不能直接回忆出判断标准。",
-                        "这能区分出是真记住了，还是只是刚看过材料还留着余温。",
-                    ],
-                    analysis="这条回答优先验证主动回忆能力，最符合复习轮的目标。",
-                ),
-                _build_choice(
-                    choice_id="peek-material",
-                    label="先回材料确认一遍，再回答。",
-                    detail="会绕开主动回忆，系统没法判断记忆是否真的可用。",
-                    is_correct=False,
-                    feedback_layers=[
-                        "这会先把答案补回来，但复习轮想看的正是你此刻能不能自己想起。",
-                        "一旦先看材料，系统就分不清是你真的记住了，还是刚刚被提示起来的。",
-                        "复习轮的核心不是把题做对一次，而是测出记忆是不是已经能脱离材料独立调用；先回看材料会直接损失这层信息。",
-                    ],
-                    analysis="这条选择绕开了主动回忆，系统无法判断记忆是否真正稳定可用。",
-                ),
-                _build_choice(
-                    choice_id="guess-roughly",
-                    label="先模糊说个大概，细节以后再补。",
-                    detail="会把记忆断点藏起来，降低复习判断质量。",
-                    is_correct=False,
-                    feedback_layers=[
-                        "模糊带过会让真正的记忆断点被藏起来。",
-                        "如果你只说个大概，系统很难判断你是差一点就想起来，还是核心标准已经丢了。",
-                        "复习轮需要的是清晰暴露断点：到底是哪条标准想不起来、哪一步顺序记混了。含糊作答会让后续编排失真。",
-                    ],
-                    analysis="这条选择用含糊回答掩盖了真实断点，降低了复习信号质量。",
-                ),
-            ],
-        )
-
+def _build_choice_input(*choice_specs: dict[str, object]) -> ActivityChoiceInput:
     return ActivityChoiceInput(
         type="choice",
-        choices=[
-            _build_choice(
-                choice_id="state-core-judgment",
-                label="先说出这一轮最关键的判断，再解释原因。",
-                detail="这样最容易暴露当前真正稳不稳。",
-                is_correct=True,
-                feedback_layers=[
-                    "对，先说关键判断，系统才能看见你最核心的理解是否稳。",
-                    "这条回答能先暴露真正的判断标准，再展开原因，信息密度最高。",
-                ],
-                analysis="这条回答先给关键判断，再补原因，最有利于系统读取真实学习状态。",
-            ),
-            _build_choice(
-                choice_id="repeat-material",
-                label="先把材料里的原话重述一遍，确保信息没漏。",
-                detail="会削弱系统对真实理解和迁移能力的判断。",
-                is_correct=False,
-                feedback_layers=[
-                    "重述材料不等于完成判断，这会把作答变成摘抄。",
-                    "系统现在要看的不是你能不能复述，而是你能不能抓住这轮最关键的判断点。",
-                    "如果只是把材料原话搬回来，系统无法判断你是否真的理解、能否迁移，也就很难决定下一步该 teach、clarify 还是 review。",
-                ],
-                analysis="这条选择把任务退化成复述材料，弱化了对真实理解和迁移能力的判断。",
-            ),
-            _build_choice(
-                choice_id="skip-judgment",
-                label="先不给判断，等系统直接告诉我答案。",
-                detail="会让这一轮失去可检视表现，下一步更难编排。",
-                is_correct=False,
-                feedback_layers=[
-                    "这会直接失去这轮最重要的信号：你现在到底会不会判断。",
-                    "如果把判断完全交给系统，后面就无法区分你是没理解、记不牢，还是只是暂时没组织好表达。",
-                    "学习编排依赖的是你的实际表现，而不是系统替你回答。跳过判断会让下一步只能做保守安排，精度会明显变差。",
-                ],
-                analysis="这条选择放弃了当前作答机会，系统拿不到足够表现信号继续做高精度编排。",
-            ),
-        ],
+        choices=[_build_choice(**choice_spec) for choice_spec in choice_specs],
     )
 
 
-def _build_activity_title(mode: LearningMode, action: PedagogicalAction) -> str:
+def _build_activity_choice_set(
+    mode: LearningMode,
+    learning_unit: LearningUnit | None,
+    action: PedagogicalAction,
+):
+    unit_id = learning_unit.id if learning_unit is not None else None
+
+    if unit_id == "unit-rag-retrieval":
+        if mode == "contrast-drill":
+            return _build_choice_input(
+                {
+                    "choice_id": "rerank-when-candidates-exist",
+                    "label": "top-k 里已经有相关文档，但排在前面的常是语义相近却答非所问的片段。",
+                    "detail": "候选基本找到了，问题更像排序没把真正对口的证据顶到前面。",
+                    "is_correct": True,
+                    "feedback_layers": [
+                        "对，这更像“候选已在集合里，但顺序没把最该看的证据排前面”，所以该补重排。",
+                        "关键不是继续扩大召回，而是让已有候选按任务相关性重新排序，把真正回答问题的片段顶上来。",
+                    ],
+                    "analysis": "这条回答准确抓住了“召回基本够、但前排排序不对”的信号，最符合这轮要辨析的边界。",
+                },
+                {
+                    "choice_id": "recall-not-enough",
+                    "label": "top-k 里经常根本找不到答案对应文档，所以优先加一个重排层。",
+                    "detail": "这更像召回覆盖不足，先该补召回或索引，而不是指望重排把不存在的候选排出来。",
+                    "is_correct": False,
+                    "feedback_layers": [
+                        "先别急着加重排。正确文档如果还没进候选集，重排也无从发挥。",
+                        "这类现象更像召回覆盖不足：该先看索引、召回策略或查询表达，而不是把问题直接归到排序。",
+                        "重排解决的是“候选已有但排序不够对口”，不是“正确文档根本没被召回进来”。这里先补重排会把问题诊断偏掉。",
+                    ],
+                    "analysis": "这条选择把“召回覆盖不足”和“排序相关性不足”混为一谈，是这轮最需要纠正的误判。",
+                },
+                {
+                    "choice_id": "stuff-more-context",
+                    "label": "把 top-k 调大、多塞一些上下文给模型，就可以替代重排。",
+                    "detail": "会把排序问题伪装成堆料问题，常常同时放大噪音和上下文污染。",
+                    "is_correct": False,
+                    "feedback_layers": [
+                        "多塞内容不等于解决排序问题，反而可能把噪音一起抬进上下文。",
+                        "如果最该看的证据没有被排到前面，单纯加大 top-k 只会让模型更难聚焦。",
+                        "这里缺的不是“更多内容”，而是“把真正对口的内容排到前面”。用堆上下文代替重排，通常会同时损失稳定性和可解释性。",
+                    ],
+                    "analysis": "这条选择把“需要更好排序”误写成“需要更多上下文”，会让系统设计继续跑偏。",
+                },
+            )
+
+        if mode in ("guided-qa", "socratic"):
+            return _build_choice_input(
+                {
+                    "choice_id": "rerank-explains-ordering-gap",
+                    "label": "重排是在“候选已经召回进来”的前提下，把最回答问题的证据排到前面。",
+                    "detail": "它补的是任务相关性排序，不是替代召回把漏掉的文档找回来。",
+                    "is_correct": True,
+                    "feedback_layers": [
+                        "对，这句解释把重排真正补的缺口说清楚了：不是补召回，而是补排序。",
+                        "只要这层边界讲清楚，后面再谈什么时候该加重排就有了稳定判断标准。",
+                    ],
+                    "analysis": "这条表述直接命中“重排补排序、不补召回”的核心边界，是当前知识点最该先说清的一句。",
+                },
+                {
+                    "choice_id": "rerank-recovers-missed-docs",
+                    "label": "重排的主要作用是把本来没召回到的正确文档重新找回来。",
+                    "detail": "这会把重排误说成召回补丁，混掉两阶段架构里的职责边界。",
+                    "is_correct": False,
+                    "feedback_layers": [
+                        "这句最大的问题是把重排说成了“补召回”。",
+                        "如果正确文档根本不在候选集里，重排没有素材可排；它能做的是在已有候选里重排相关性。",
+                        "一旦把重排误写成“找回漏召文档”，后面对系统问题的诊断就会全线偏掉：你会错把召回缺口当成排序缺口。",
+                    ],
+                    "analysis": "这条说法直接混淆了召回和重排的职责，是这轮必须排掉的典型误解。",
+                },
+                {
+                    "choice_id": "strong-embedding-removes-rerank",
+                    "label": "只要 embedding 足够强，重排基本就没有实际价值。",
+                    "detail": "embedding 决定召回语义能力，但不自动等于任务级的前排排序足够稳。",
+                    "is_correct": False,
+                    "feedback_layers": [
+                        "embedding 更强不等于前排结果已经足够对口。",
+                        "很多场景里，问题不是“能不能把相关候选找进来”，而是“前几条到底是不是最该给模型看的证据”。",
+                        "重排存在的原因正是：即使召回足够强，前排顺序仍可能把语义相近但不真正回答问题的片段放在前面。",
+                    ],
+                    "analysis": "这条选择把召回语义能力和任务相关性排序混成一层，容易让系统设计判断失焦。",
+                },
+            )
+
+        if mode == "scenario-sim" or action == "apply":
+            return _build_choice_input(
+                {
+                    "choice_id": "review-explain-relevance-order",
+                    "label": "我们先保证候选能进来，再用重排把最回答问题的证据排前面，不然生成很容易抓错上下文。",
+                    "detail": "这句先讲判断链路，再讲为什么不能偷成“只召回就行”。",
+                    "is_correct": True,
+                    "feedback_layers": [
+                        "对，这种解释先把两层职责拆开，再把“为什么需要重排”说清楚了。",
+                        "评审或同事真正需要听到的就是这层取舍：不是多做一步，而是为了减少前排证据错位。",
+                    ],
+                    "analysis": "这条回答把“候选进入”和“前排排序”拆成两层，是项目语境下最有说服力的解释方式。",
+                },
+                {
+                    "choice_id": "review-blame-model-size",
+                    "label": "加重排主要是因为模型还不够强，等模型更强就不需要这些结构了。",
+                    "detail": "会把方案取舍偷换成模型强弱问题，答不到设计边界本身。",
+                    "is_correct": False,
+                    "feedback_layers": [
+                        "这句把方案取舍偷换成了模型强弱，解释焦点跑偏了。",
+                        "别人真正要问的是“为什么当前链路需要这一步”，不是“模型什么时候会更强”。",
+                        "如果只把原因归结为模型不够强，你就没有解释清楚：即使模型更强，候选排序和证据对口性为什么仍然重要。",
+                    ],
+                    "analysis": "这条回答把结构化设计问题错误归因成模型能力问题，不利于答辩或方案讨论。",
+                },
+                {
+                    "choice_id": "review-just-stuff-more",
+                    "label": "只要把更多召回结果直接拼给模型，通常就能替代重排。",
+                    "detail": "会把“前排排序不对”的问题继续伪装成“内容还不够多”。",
+                    "is_correct": False,
+                    "feedback_layers": [
+                        "这类回答最大的问题是默认“多给内容”能替代排序判断。",
+                        "但如果前几条证据本来就不对口，多塞内容只会让模型更难聚焦，甚至把错证据一起放大。",
+                        "评审想听的是：为什么不能偷成“只召回 + 多塞上下文”。真正原因是候选进入和前排排序是两层不同的质量控制点。",
+                    ],
+                    "analysis": "这条说法会把排序缺口继续伪装成堆料问题，无法真正说明为什么需要重排。",
+                },
+            )
+
+    if unit_id == "unit-rag-core":
+        if mode in ("contrast-drill", "guided-qa", "socratic"):
+            return _build_choice_input(
+                {
+                    "choice_id": "rag-needs-context-construction",
+                    "label": "检索命中只是拿到候选；排序、截断和上下文组织决定模型最终会不会抓对证据。",
+                    "detail": "这才是“RAG 不是简单检索 + 拼接”的核心原因。",
+                    "is_correct": True,
+                    "feedback_layers": [
+                        "对，这句把“检索命中”和“上下文可用”拆开了。",
+                        "只要这层关系讲清楚，就不会再把 RAG 理解成机械地把检索结果全文塞进 prompt。",
+                    ],
+                    "analysis": "这条回答直接指出了 RAG 多出来的关键层：上下文构造，而不是单纯检索命中。",
+                },
+                {
+                    "choice_id": "rag-just-concat",
+                    "label": "只要能检索到相关文档，把全文直接拼进 prompt 就够了。",
+                    "detail": "会忽略排序、截断和噪音控制，把可用上下文误写成原始拼接。",
+                    "is_correct": False,
+                    "feedback_layers": [
+                        "问题不在“有没有文档”，而在“给模型的上下文是不是被组织成了可用证据”。",
+                        "直接全文拼接通常会把噪音、重复和无关段落一起塞进去，命中了也不代表模型能用好。",
+                        "这句把 RAG 误简化成“检索完就拼接”，正好漏掉了真正决定回答质量的那一层：上下文构造。",
+                    ],
+                    "analysis": "这条说法忽略了上下文构造这层关键决策，会把 RAG 错看成机械拼接流程。",
+                },
+                {
+                    "choice_id": "rag-more-is-better",
+                    "label": "RAG 的核心只是让模型看到更多内容，所以内容越多越好。",
+                    "detail": "会把质量控制偷换成覆盖率直觉，忽略上下文窗口和证据优先级。",
+                    "is_correct": False,
+                    "feedback_layers": [
+                        "“更多内容”不是目标，给出“更对口的证据”才是目标。",
+                        "一旦内容过多、顺序不对或噪音过高，模型反而更容易抓错线索。",
+                        "RAG 不只是扩上下文，而是在有限窗口里做证据选择和组织。把它说成“越多越好”，会直接丢掉这层设计判断。",
+                    ],
+                    "analysis": "这条选择把 RAG 错写成纯覆盖率问题，忽视了上下文构造和噪音控制。",
+                },
+            )
+
+        if mode == "scenario-sim" or action == "apply":
+            return _build_choice_input(
+                {
+                    "choice_id": "rag-explain-context-layer",
+                    "label": "检索到只是第一步，我们还要把最相关、最可回答问题的证据组织成可用上下文，RAG 才稳定。",
+                    "detail": "这句先讲链路，再讲为什么不能偷成“检索 + 拼接”。",
+                    "is_correct": True,
+                    "feedback_layers": [
+                        "对，这种解释先把“找到候选”和“组织上下文”拆开了，听起来就不是黑盒堆料。",
+                        "只要把这层讲清楚，别人就能理解为什么 RAG 不是做完检索就结束。",
+                    ],
+                    "analysis": "这条回答直指 RAG 相比“检索 + 拼接”多出的关键控制层，最适合对外解释。",
+                },
+                {
+                    "choice_id": "rag-explain-only-retrieval",
+                    "label": "RAG 的关键就是把更多相关文档检索出来，后面拼接是细节。",
+                    "detail": "会把上下文构造降成细节，解释不到最终回答质量为什么会分化。",
+                    "is_correct": False,
+                    "feedback_layers": [
+                        "这句把真正影响回答质量的一层降成了“细节”。",
+                        "别人想知道的是：为什么检索到了还可能答不好；如果不谈上下文构造，这个问题就没被回答。",
+                        "把“拼接/组织/筛选”都当成细节，会让方案听起来像只是多检索一点文档，而不是在做证据质量控制。",
+                    ],
+                    "analysis": "这条说法仍把 RAG 讲成“检索主导”，解释力不够，容易被追问打穿。",
+                },
+                {
+                    "choice_id": "rag-explain-model-magic",
+                    "label": "只要模型足够强，RAG 本质上就只是把检索结果交给模型自己消化。",
+                    "detail": "会把系统设计责任偷交给模型，绕开链路取舍。",
+                    "is_correct": False,
+                    "feedback_layers": [
+                        "这句把问题再次推回模型强弱，没解释为什么系统还要设计上下文构造。",
+                        "即使模型更强，证据顺序、噪音和窗口限制也不会自动消失。",
+                        "如果对方问“那为什么不直接全交给模型自己处理”，你还是需要回到证据组织和质量控制这层，而不是用模型能力兜底。",
+                    ],
+                    "analysis": "这条回答会把系统设计判断偷换成模型能力崇拜，不利于讲清真实取舍。",
+                },
+            )
+
+    if unit_id == "unit-rag-explain":
+        return _build_choice_input(
+            {
+                "choice_id": "explain-risk-and-tradeoff",
+                "label": "先讲业务风险和稳定性：这些步骤是在减少答非所问、证据错位和不可解释性。",
+                "detail": "先让非技术对象听懂为什么要这样设计，再展开技术实现。",
+                "is_correct": True,
+                "feedback_layers": [
+                    "对，先讲风险控制和业务影响，非技术对象才能听懂为什么这套结构有必要。",
+                    "这条开场能先建立“为什么这样设计”的心智，再往下接技术细节才不会散。",
+                ],
+                "analysis": "这条说法先把评审真正关心的取舍讲清楚，是最适合作为解释开场的一句。",
+            },
+            {
+                "choice_id": "explain-implementation-first",
+                "label": "先按顺序罗列 embedding、reranker、chunking、prompt 的实现步骤。",
+                "detail": "实现细节会让技术人点头，但不足以让评审先理解为什么需要这套方案。",
+                "is_correct": False,
+                "feedback_layers": [
+                    "实现步骤不是不能讲，但它不该是开场第一句。",
+                    "如果先列技术栈，评审或产品还没建立“为什么需要这套结构”的心智，很容易觉得你只是在堆术语。",
+                    "更有效的顺序是：先讲它解决什么风险和业务问题，再解释这些技术步骤各自承担哪层控制作用。",
+                ],
+                "analysis": "这条开场把解释重心放在实现过程，忽略了“为什么这样设计”的答辩主线。",
+            },
+            {
+                "choice_id": "explain-model-only",
+                "label": "先说如果模型再强一点，这些设计大多都可以省掉。",
+                "detail": "会把方案取舍偷换成模型强弱判断，显得整套设计只是权宜之计。",
+                "is_correct": False,
+                "feedback_layers": [
+                    "这会让整套方案听起来像“模型不够强时的临时补丁”，说服力会立刻下降。",
+                    "评审真正要听到的是：为什么这些结构本身就在控制质量和风险，而不是等更强模型来替代。",
+                    "如果开场就把原因归给模型不够强，你后面会越来越难解释：那为什么当前还值得做这些设计、ROI 又在哪里。",
+                ],
+                "analysis": "这条回答会把系统设计价值削弱成模型短板补丁，不利于评审沟通。",
+            },
+        )
+
+    if mode == "contrast-drill":
+        return _build_choice_input(
+            {
+                "choice_id": "trace-boundary",
+                "label": "先把这条知识点里最关键的边界拉开，再决定下一步该补哪条证据。",
+                "detail": "先定位真正的判断对象，而不是继续泛泛补信息。",
+                "is_correct": True,
+                "feedback_layers": [
+                    "对，先把边界拉开，后面补证据才不会越补越乱。",
+                    "这轮先确认“到底哪两层最容易混”，比立刻堆更多信息更重要。",
+                ],
+                "analysis": "这条回答先处理边界，再决定补证据方向，更符合辨析题的目标。",
+            },
+            {
+                "choice_id": "increase-context",
+                "label": "先继续加更多信息，看看能不能把当前问题一起覆盖掉。",
+                "detail": "会把边界没拉开的缺口继续藏在信息噪音里。",
+                "is_correct": False,
+                "feedback_layers": [
+                    "先别急着加信息。现在更缺的是问题定位，不是覆盖率。",
+                    "如果边界还没拉开，继续加材料通常只会把噪音一起放大。",
+                    "真正要先回答的是：你现在混的是哪两层、哪一个判断标准还不稳。没定位前继续加料，后面会更难纠偏。",
+                ],
+                "analysis": "这条选择把边界问题误写成信息不足，容易继续跑偏。",
+            },
+            {
+                "choice_id": "skip-diagnosis",
+                "label": "先给一个大概结论，判断依据先不展开。",
+                "detail": "会让真正的混淆点继续藏着，系统也更难给出下一步。",
+                "is_correct": False,
+                "feedback_layers": [
+                    "只给结论还不够，这轮更关键的是把判断依据露出来。",
+                    "如果不展开依据，系统就看不见你到底是概念边界没稳，还是证据选择没稳。",
+                    "辨析题的价值就在于暴露“你靠什么区分它们”。如果把依据省掉，后面的学习编排就只能走更保守的路径。",
+                ],
+                "analysis": "这条选择回避了判断依据，系统难以定位真实缺口。",
+            },
+        )
+
+    if mode == "scenario-sim":
+        return _build_choice_input(
+            {
+                "choice_id": "explain-judgment-chain",
+                "label": "先把关键步骤分别控制什么风险讲清楚，再解释为什么不能偷成更省事的做法。",
+                "detail": "项目讨论里，别人真正要听到的是判断链路，而不是只背最终结论。",
+                "is_correct": True,
+                "feedback_layers": [
+                    "对，项目解释最重要的是把判断链路和风险控制说出来。",
+                    "只要把“为什么不能偷简化”讲清楚，这轮就不只是背答案，而是真的能解释方案。",
+                ],
+                "analysis": "这条选择把方案拆回判断链路，最能验证项目场景里的解释能力。",
+            },
+            {
+                "choice_id": "stack-more-context",
+                "label": "重点强调信息越多越安全，先把更多内容塞进去再说。",
+                "detail": "会把系统设计问题继续伪装成覆盖率问题。",
+                "is_correct": False,
+                "feedback_layers": [
+                    "光强调“多放信息更安全”不够，因为它没有解释每一步为什么存在。",
+                    "项目讨论里，别人更想知道的是：哪些步骤在控制风险、为什么不能直接偷简化。",
+                    "如果不拆出关键判断链路，这个回答会把设计问题伪装成“多塞内容就行”的覆盖率问题，说服力会很弱。",
+                ],
+                "analysis": "这条选择仍把重点放在堆信息，而不是解释关键判断链路。",
+            },
+            {
+                "choice_id": "focus-model-only",
+                "label": "先把问题归因成模型或工具不够强，判断链路后面再说。",
+                "detail": "会跳过系统设计层的取舍标准，很难真的说服别人。",
+                "is_correct": False,
+                "feedback_layers": [
+                    "这会把责任全推给模型强弱，但没有回答系统为什么要这样设计。",
+                    "别人真正想知道的是：哪些步骤在控制风险、提高稳定性，而不是一句“模型还不够强”。",
+                    "如果不解释判断链路，模型再强也只是黑盒结论；你仍然没说明为什么当前方案需要这些结构。",
+                ],
+                "analysis": "这条选择跳过了系统设计层的判断标准，解释焦点会跑偏。",
+            },
+        )
+
+    if mode in ("guided-qa", "socratic"):
+        return _build_choice_input(
+            {
+                "choice_id": "explain-boundary",
+                "label": "先给出和当前知识点直接相关的判断边界，再补一句为什么。",
+                "detail": "先让答案落在这条知识点本身，而不是只绕着答题方式打转。",
+                "is_correct": True,
+                "feedback_layers": [
+                    "对，先把当前知识点里的判断边界说清楚，后面的解释才有落点。",
+                    "这能更快看出你是否真的理解，而不是只会复述表面定义。",
+                ],
+                "analysis": "这条回答先落在知识点本身，再补原因，更容易验证理解是否稳定。",
+            },
+            {
+                "choice_id": "repeat-definition",
+                "label": "先复述概念定义，边界和应用后面再说。",
+                "detail": "只停在定义层，往往会把真正的判断缺口继续盖住。",
+                "is_correct": False,
+                "feedback_layers": [
+                    "先别退回纯定义。当前更重要的是把边界和判断标准拉开。",
+                    "只复述定义常常会让人“看起来懂了”，但一到实际判断还是会混。",
+                    "这轮要验证的是你能不能把知识点用在判断上，而不是能不能背出教材式表述。只停在定义层，真实缺口会继续被盖住。",
+                ],
+                "analysis": "这条选择把任务退回成复述定义，绕开了当前真正要验证的内容。",
+            },
+            {
+                "choice_id": "jump-to-solution",
+                "label": "先直接给一个结论，判断依据之后再补。",
+                "detail": "会让系统看不见你是怎么区分、怎么推到这个答案的。",
+                "is_correct": False,
+                "feedback_layers": [
+                    "先给结论还不够，因为这轮还要看到你的判断过程。",
+                    "如果不解释为什么这样判断，后面就很难区分你是真的理解，还是碰巧押中了答案。",
+                    "这轮最有价值的信息是：你靠什么证据、什么标准得出这个判断。如果直接跳到结论，这层学习信号会直接丢掉。",
+                ],
+                "analysis": "这条选择省掉了判断过程，系统难以确认理解是否真的稳固。",
+            },
+        )
+
+    if mode in ("image-recall", "audio-recall"):
+        return _build_choice_input(
+            {
+                "choice_id": "recall-key-criterion",
+                "label": "先回忆关键判断标准，再看自己哪里记不稳。",
+                "detail": "优先验证可回忆性，而不是继续看材料。",
+                "is_correct": True,
+                "feedback_layers": [
+                    "对，复习时先看自己能不能直接回忆出判断标准。",
+                    "这能区分出是真记住了，还是只是刚看过材料还留着余温。",
+                ],
+                "analysis": "这条回答优先验证主动回忆能力，最符合复习轮的目标。",
+            },
+            {
+                "choice_id": "peek-material",
+                "label": "先回材料确认一遍，再回答。",
+                "detail": "会绕开主动回忆，系统没法判断记忆是否真的可用。",
+                "is_correct": False,
+                "feedback_layers": [
+                    "这会先把答案补回来，但复习轮想看的正是你此刻能不能自己想起。",
+                    "一旦先看材料，系统就分不清是你真的记住了，还是刚刚被提示起来的。",
+                    "复习轮的核心不是把题做对一次，而是测出记忆是不是已经能脱离材料独立调用；先回看材料会直接损失这层信息。",
+                ],
+                "analysis": "这条选择绕开了主动回忆，系统无法判断记忆是否真正稳定可用。",
+            },
+            {
+                "choice_id": "guess-roughly",
+                "label": "先模糊说个大概，细节以后再补。",
+                "detail": "会把记忆断点藏起来，降低复习判断质量。",
+                "is_correct": False,
+                "feedback_layers": [
+                    "模糊带过会让真正的记忆断点被藏起来。",
+                    "如果你只说个大概，系统很难判断你是差一点就想起来，还是核心标准已经丢了。",
+                    "复习轮需要的是清晰暴露断点：到底是哪条标准想不起来、哪一步顺序记混了。含糊作答会让后续编排失真。",
+                ],
+                "analysis": "这条选择用含糊回答掩盖了真实断点，降低了复习信号质量。",
+            },
+        )
+
+    return _build_choice_input(
+        {
+            "choice_id": "state-core-judgment",
+            "label": "先说出这一轮最关键的判断，再解释原因。",
+            "detail": "这样最容易暴露当前真正稳不稳。",
+            "is_correct": True,
+            "feedback_layers": [
+                "对，先说关键判断，系统才能看见你最核心的理解是否稳。",
+                "这条回答能先暴露真正的判断标准，再展开原因，信息密度最高。",
+            ],
+            "analysis": "这条回答先给关键判断，再补原因，最有利于系统读取真实学习状态。",
+        },
+        {
+            "choice_id": "repeat-material",
+            "label": "先把材料里的原话重述一遍，确保信息没漏。",
+            "detail": "会削弱系统对真实理解和迁移能力的判断。",
+            "is_correct": False,
+            "feedback_layers": [
+                "重述材料不等于完成判断，这会把作答变成摘抄。",
+                "系统现在要看的不是你能不能复述，而是你能不能抓住这轮最关键的判断点。",
+                "如果只是把材料原话搬回来，系统无法判断你是否真的理解、能否迁移，也就很难决定下一步该 teach、clarify 还是 review。",
+            ],
+            "analysis": "这条选择把任务退化成复述材料，弱化了对真实理解和迁移能力的判断。",
+        },
+        {
+            "choice_id": "skip-judgment",
+            "label": "先不给判断，等系统直接告诉我答案。",
+            "detail": "会让这一轮失去可检视表现，下一步更难编排。",
+            "is_correct": False,
+            "feedback_layers": [
+                "这会直接失去这轮最重要的信号：你现在到底会不会判断。",
+                "如果把判断完全交给系统，后面就无法区分你是没理解、记不牢，还是只是暂时没组织好表达。",
+                "学习编排依赖的是你的实际表现，而不是系统替你回答。跳过判断会让下一步只能做保守安排，精度会明显变差。",
+            ],
+            "analysis": "这条选择放弃了当前作答机会，系统拿不到足够表现信号继续做高精度编排。",
+        },
+    )
+
+
+def _build_activity_title(
+    mode: LearningMode,
+    action: PedagogicalAction,
+    learning_unit: LearningUnit | None,
+) -> str:
+    unit_id = learning_unit.id if learning_unit is not None else None
+
+    if unit_id == "unit-rag-retrieval":
+        if mode == "contrast-drill":
+            return "先判断问题出在召回还是排序"
+        if mode in ("guided-qa", "socratic"):
+            return "先讲清楚重排到底在补什么"
+        if mode == "scenario-sim" or action == "apply":
+            return "先练一次向评审解释为什么需要重排"
+
+    if unit_id == "unit-rag-core":
+        if mode in ("contrast-drill", "guided-qa", "socratic"):
+            return "先判断问题出在检索命中还是上下文构造"
+        if mode == "scenario-sim" or action == "apply":
+            return "先练一次解释为什么 RAG 不只是检索加拼接"
+
+    if unit_id == "unit-rag-explain":
+        return "先练一次对评审解释方案"
+
     if mode == "contrast-drill":
         return "先做一个边界辨析"
 
@@ -425,18 +682,56 @@ def _build_activity_title(mode: LearningMode, action: PedagogicalAction) -> str:
 def _build_activity_prompt(
     action: PedagogicalAction,
     mode: LearningMode,
-    unit_title: str,
+    learning_unit: LearningUnit | None,
 ) -> str:
+    unit_id = learning_unit.id if learning_unit is not None else None
+    unit_title = learning_unit.title if learning_unit is not None else "当前知识点"
+
+    if unit_id == "unit-rag-retrieval":
+        if mode == "contrast-drill":
+            return (
+                "围绕「什么时候需要重排，而不是只做向量召回」，选出最合理的判断："
+                "下面哪种情况最说明“候选基本找到了，但前排排序不对”，因此该补的是重排？"
+            )
+        if mode in ("guided-qa", "socratic"):
+            return (
+                "围绕「什么时候需要重排，而不是只做向量召回」，选出更准确的一句解释："
+                "重排到底是在补哪一类缺口？"
+            )
+        if mode == "scenario-sim" or action == "apply":
+            return (
+                "如果你要向同事或评审解释「什么时候需要重排，而不是只做向量召回」，"
+                "下面哪种说法最能讲清楚为什么不能偷成“只召回就行”？"
+            )
+
+    if unit_id == "unit-rag-core":
+        if mode in ("contrast-drill", "guided-qa", "socratic"):
+            return (
+                "围绕「RAG 为什么不是简单检索 + 拼接」，选出更准确的一句判断："
+                "真正多出来、而且决定回答质量的那一层是什么？"
+            )
+        if mode == "scenario-sim" or action == "apply":
+            return (
+                "如果你要向产品或评审解释「RAG 为什么不是简单检索 + 拼接」，"
+                "下面哪种说法最能先把设计取舍讲清楚？"
+            )
+
+    if unit_id == "unit-rag-explain":
+        return (
+            "如果你要把「如何把 RAG 方案解释给产品和评审」讲给非技术同事，"
+            "下面哪种开场最合适？"
+        )
+
     if mode == "contrast-drill":
         return (
-            f"围绕「{unit_title}」，先说出这轮最容易混淆的两个判断对象分别解决什么问题，"
-            "再补一句你会先看哪条证据来区分它们。"
+            f"围绕「{unit_title}」，选出更合理的一句判断："
+            "哪种说法真正抓住了当前最该先分清的边界？"
         )
 
     if mode == "scenario-sim" or action == "apply":
         return (
-            f"假设你正在向同事或评审解释「{unit_title}」，请用 3 到 5 句说明这条方案的关键取舍，"
-            "以及为什么不能偷简化成一个看起来更省事的做法。"
+            f"如果你要把「{unit_title}」解释给同事或评审，"
+            "下面哪种说法最能先讲清楚这条方案为什么这样设计？"
         )
 
     if action == "review" or mode in ("image-recall", "audio-recall"):
@@ -446,8 +741,8 @@ def _build_activity_prompt(
         )
 
     return (
-        f"先用你自己的话解释「{unit_title}」里当前最关键的判断："
-        "它到底解决什么问题，最容易和什么混淆？"
+        f"围绕「{unit_title}」，选出更准确的一句解释："
+        "哪种说法最能代表你已经抓住这条知识点的核心判断？"
     )
 
 
@@ -462,11 +757,6 @@ def build_activities(
         return []
 
     unit_id = learning_unit.id if learning_unit is not None else diagnosis.focus_unit_id
-    unit_title = (
-        learning_unit.title
-        if learning_unit is not None
-        else diagnosis.focus_unit_id or "当前知识点"
-    )
     evidence = learner_state.weak_signals[:3] or (
         diagnosis.explanation.evidence[:3] if diagnosis.explanation is not None else []
     )
@@ -489,12 +779,20 @@ def build_activities(
                 title=(
                     "先做一轮回忆校准"
                     if index == 0 and session_type == "review" and kind == "recall"
-                    else _build_activity_title(mode, diagnosis.recommended_action)
+                    else _build_activity_title(
+                        mode,
+                        diagnosis.recommended_action,
+                        learning_unit,
+                    )
                     if index == 0
                     else f"第 {index + 1} 步：{step.title}"
                 ),
                 objective=step.outcome,
-                prompt=_build_activity_prompt(diagnosis.recommended_action, mode, unit_title),
+                prompt=_build_activity_prompt(
+                    diagnosis.recommended_action,
+                    mode,
+                    learning_unit,
+                ),
                 support=step.reason if index > 0 else diagnosis.reason,
                 mode=mode,
                 evidence=evidence,
@@ -505,7 +803,11 @@ def build_activities(
                     if kind == "recall"
                     else "提交作答"
                 ),
-                input=_build_activity_choice_set(mode),
+                input=_build_activity_choice_set(
+                    mode,
+                    learning_unit,
+                    diagnosis.recommended_action,
+                ),
             )
         )
 

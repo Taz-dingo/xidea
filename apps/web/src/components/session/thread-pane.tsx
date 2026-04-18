@@ -267,40 +267,25 @@ export function SessionThreadPane({
               displayMessages.map((message) => {
                 const isAssistant = message.role === "assistant";
                 const rawText = getMessageText(message);
-                const shouldReplaceLatestAssistantWithActivityIntro =
-                  isAssistant &&
-                  message.id === latestAssistantMessageId &&
-                  shouldShowActivityStack &&
-                  hasPendingActivity;
                 if (isAssistant && rawText === "") {
                   return null;
                 }
 
                 return (
                   <div className="space-y-3" key={message.id}>
-                    {shouldReplaceLatestAssistantWithActivityIntro ? (
-                      <div className="flex justify-start">
-                        <div className="w-full max-w-[82%] py-0.5 text-[14px] leading-6 text-[var(--xidea-stone)]">
-                          {selectedSessionType === "review"
-                            ? "这轮先完成下面这组复习动作，再继续下一轮对话。"
-                            : "这轮先完成下面这组学习动作，再继续下一轮对话。"}
+                    <div className={isAssistant ? "flex justify-start" : "flex justify-end"}>
+                      {isAssistant ? (
+                        <div className="w-full max-w-[82%] py-0.5">
+                          <MarkdownContent content={rawText} />
                         </div>
-                      </div>
-                    ) : (
-                      <div className={isAssistant ? "flex justify-start" : "flex justify-end"}>
-                        {isAssistant ? (
-                          <div className="w-full max-w-[82%] py-0.5">
-                            <MarkdownContent content={rawText} />
-                          </div>
-                        ) : (
-                          <Card className="w-full max-w-[72%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                            <CardContent className="px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                              <div>{rawText}</div>
-                            </CardContent>
-                          </Card>
-                        )}
-                      </div>
-                    )}
+                      ) : (
+                        <Card className="w-full max-w-[72%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                          <CardContent className="px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
+                            <div>{rawText}</div>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
 
                     {isAssistant &&
                     message.id === latestAssistantMessageId &&
