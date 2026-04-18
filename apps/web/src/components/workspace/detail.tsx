@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { ArrowLeft } from "lucide-react";
 import type { KnowledgePointItem, SessionItem } from "@/domain/project-workspace";
 import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import type { SourceAsset } from "@/domain/types";
@@ -35,6 +36,7 @@ export function KnowledgePointDetailScreen({
   knowledgePointAssets,
   isArchiveConfirmationOpen,
   onCancelArchiveConfirmation,
+  onBack,
   onCancelEditing,
   onChangeDraft,
   onConfirmArchive,
@@ -55,6 +57,7 @@ export function KnowledgePointDetailScreen({
   knowledgePointAssets: ReadonlyArray<SourceAsset>;
   isArchiveConfirmationOpen: boolean;
   onCancelArchiveConfirmation: () => void;
+  onBack: () => void;
   onCancelEditing: () => void;
   onChangeDraft: (draft: EditableKnowledgePointDraftValue) => void;
   onConfirmArchive: () => void;
@@ -72,8 +75,17 @@ export function KnowledgePointDetailScreen({
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div className="space-y-4">
-        <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+        <Card className="xidea-card-motion rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
           <CardContent className="space-y-5 p-6">
+            <button
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-1.5 text-sm text-[var(--xidea-charcoal)] transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[var(--xidea-white)]"
+              onClick={onBack}
+              type="button"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              返回项目工作台
+            </button>
+
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0 flex-1 space-y-3">
                 {isEditing ? (
@@ -180,7 +192,7 @@ export function KnowledgePointDetailScreen({
                 <Card className="rounded-[1rem] border-[#e3d3c6] bg-[#faf3ee] shadow-none">
                   <CardContent className="space-y-2 px-4 py-4">
                     <p className="xidea-kicker text-[var(--xidea-selection-text)]">
-                      Archive Suggestion
+                      归档建议
                     </p>
                     <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
                       {knowledgePoint.archiveSuggestion.reason}
@@ -231,7 +243,7 @@ export function KnowledgePointDetailScreen({
             <CardTitle className="text-base font-medium text-[var(--xidea-near-black)]">
               来源材料
             </CardTitle>
-            <CardDescription>当前知识点关联的 project materials。</CardDescription>
+            <CardDescription>当前知识卡关联的项目材料。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {knowledgePointAssets.length > 0 ? (
@@ -263,12 +275,12 @@ export function KnowledgePointDetailScreen({
       <div className="space-y-4">
         <InspectorCard
           description={reviewHistorySummary}
-          title="Review Heatmap"
+          title="复习热力图"
         >
           <ReviewHeatmap weeks={reviewHeatmap} />
         </InspectorCard>
 
-        <InspectorCard description="这个知识点在项目内如何被继续组织。" title="相关 Sessions">
+        <InspectorCard description="这个知识卡在项目里是如何被继续推进的。" title="相关会话">
           {relatedSessions.length > 0 ? (
             relatedSessions.map((session) => (
               <SessionCard

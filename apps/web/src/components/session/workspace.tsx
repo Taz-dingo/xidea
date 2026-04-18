@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { FileInput } from "lucide-react";
+import { CompletedDeckRail } from "@/components/session/deck-rail";
 import { SessionThreadPane } from "@/components/session/thread-pane";
 import { SessionInspector } from "@/components/session/inspector";
 import {
@@ -26,6 +27,7 @@ import type {
   SessionItem,
   WorkspaceSection,
 } from "@/domain/project-workspace";
+import { getSessionTypeDescription } from "@/domain/project-workspace";
 import type {
   LearningActivityAttempt,
   LearningActivitySubmission,
@@ -145,6 +147,9 @@ export function SessionWorkspace({
   tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario>;
   workspaceSection: WorkspaceSection;
 }): ReactElement {
+  const projectSessions = selectedProjectSessions.filter((session) => session.type === "project");
+  const learningSessions = selectedProjectSessions.filter((session) => session.type !== "project");
+
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[292px_minmax(0,1fr)_320px]">
       <Card className="rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none">
@@ -153,26 +158,50 @@ export function SessionWorkspace({
             <WorkspaceNavButton
               active={workspaceSection === "overview"}
               count={projectStats.total - projectStats.archived}
-              label="Overview"
+              label="总览"
               onClick={() => onWorkspaceSectionChange("overview")}
             />
             <WorkspaceNavButton
               active={workspaceSection === "due-review"}
               count={projectStats.dueReview}
-              label="Due Review"
+              label="待复习"
               onClick={() => onWorkspaceSectionChange("due-review")}
             />
             <WorkspaceNavButton
               active={workspaceSection === "archived"}
               count={projectStats.archived}
-              label="Archived"
+              label="已归档"
               onClick={() => onWorkspaceSectionChange("archived")}
             />
           </div>
 
           <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3">
-            <p className="xidea-kicker text-[var(--xidea-stone)]">Recent Sessions</p>
-            {selectedProjectSessions.slice(0, 5).map((session) => (
+            <div className="space-y-1">
+              <p className="xidea-kicker text-[var(--xidea-stone)]">研讨会话</p>
+              <p className="text-sm leading-6 text-[var(--xidea-stone)]">
+                {getSessionTypeDescription("project")}
+              </p>
+            </div>
+            {projectSessions.map((session) => (
+              <SessionCard
+                active={session.id === selectedSession.id}
+                key={session.id}
+                onClick={() => onOpenSession(session.id)}
+                title={session.title}
+                type={session.type}
+                updatedAt={session.updatedAt}
+              />
+            ))}
+          </div>
+
+          <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3">
+            <div className="space-y-1">
+              <p className="xidea-kicker text-[var(--xidea-stone)]">学习与复习</p>
+              <p className="text-sm leading-6 text-[var(--xidea-stone)]">
+                学习负责推进，复习负责校准。
+              </p>
+            </div>
+            {learningSessions.map((session) => (
               <SessionCard
                 active={session.id === selectedSession.id}
                 key={session.id}
@@ -186,7 +215,7 @@ export function SessionWorkspace({
         </CardContent>
       </Card>
 
-      <Card className="flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none">
+      <Card className="xidea-card-motion flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none">
         <CardHeader className="gap-3 border-b border-[var(--xidea-border)] px-5 pb-4 pt-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
@@ -204,16 +233,16 @@ export function SessionWorkspace({
                 variant="outline"
               >
                 {isAgentRunning
-                  ? "Streaming"
+                  ? "实时处理中"
                   : agentConnectionState === "offline"
-                    ? "Offline"
+                    ? "连接离线"
                     : activeRuntime.source === "live-agent"
-                      ? "Live Agent"
+                      ? "实时 Agent"
                       : activeRuntime.source === "hydrated-state"
-                        ? "Hydrated"
+                        ? "已回填"
                         : agentConnectionState === "ready"
-                          ? "Agent Ready"
-                          : "Checking"}
+                          ? "可用"
+                          : "检查中"}
               </Badge>
               <Button className="rounded-full" onClick={onCloseSession} type="button" variant="outline">
                 关闭 session
@@ -221,6 +250,10 @@ export function SessionWorkspace({
             </div>
           </div>
         </CardHeader>
+
+        {selectedSession.type !== "project" && completedActivityDecks.length > 0 ? (
+          <CompletedDeckRail decks={completedActivityDecks} />
+        ) : null}
 
         <SessionThreadPane
           activeRuntime={activeRuntime}

@@ -181,7 +181,13 @@ export interface AgentStatePatch {
 export type AgentStreamEvent =
   | {
       readonly event: "status";
-      readonly phase: "loading-context" | "making-decision" | "retrieving-context" | "composing-response";
+      readonly phase:
+        | "loading-context"
+        | "making-decision"
+        | "retrieving-context"
+        | "composing-response"
+        | "preparing-followup"
+        | "writing-state";
       readonly message: string;
     }
   | { readonly event: "text-delta"; readonly delta: string }
@@ -307,6 +313,14 @@ export interface RuntimeSnapshot {
   readonly activity: LearningActivity | null;
   readonly activities: ReadonlyArray<LearningActivity>;
   readonly assistantMessage: string;
+  readonly streamStatusPhase:
+    | "loading-context"
+    | "making-decision"
+    | "retrieving-context"
+    | "composing-response"
+    | "preparing-followup"
+    | "writing-state"
+    | null;
   readonly streamStatusLabel: string | null;
   readonly rationale: ReadonlyArray<string>;
 }
@@ -566,15 +580,17 @@ function buildAssistantMessageFromStreamEvents(events: ReadonlyArray<AgentStream
     .join("");
 }
 
-function getLatestStreamStatusLabel(events: ReadonlyArray<AgentStreamEvent>): string | null {
-  const statusEvent = [...events]
-    .reverse()
-    .find(
-      (event): event is Extract<AgentStreamEvent, { event: "status" }> =>
-        event.event === "status",
-    );
-
-  return statusEvent?.message ?? null;
+function getLatestStreamStatus(
+  events: ReadonlyArray<AgentStreamEvent>,
+): Extract<AgentStreamEvent, { event: "status" }> | null {
+  return (
+    [...events]
+      .reverse()
+      .find(
+        (event): event is Extract<AgentStreamEvent, { event: "status" }> =>
+          event.event === "status",
+      ) ?? null
+  );
 }
 
 export function buildDefaultAgentPrompt(
@@ -666,6 +682,7 @@ export function buildMockRuntimeSnapshot(
     activity,
     activities,
     assistantMessage: `${plan.decision.reason} 这轮我会先用「${plan.decision.title}」推进，目标是${plan.decision.objective}。`,
+    streamStatusPhase: null,
     streamStatusLabel: null,
     rationale: [],
   });
@@ -705,6 +722,7 @@ export function hydrateRuntimeSnapshotFromLearnerState(
     signalCards,
     activity: fallbackSnapshot.activity,
     activities: fallbackSnapshot.activities,
+    streamStatusPhase: null,
     streamStatusLabel: null,
   });
 }
@@ -768,6 +786,7 @@ export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot
     activity,
     activities,
     assistantMessage: buildAssistantMessageFromEvents(result),
+    streamStatusPhase: null,
     streamStatusLabel: null,
     rationale: result.graph_state.rationale,
   };
@@ -797,7 +816,7 @@ export function normalizeAgentStreamResult(input: {
     (event): event is Extract<AgentStreamEvent, { event: "state-patch" }> =>
       event.event === "state-patch",
   );
-  const streamStatusLabel = getLatestStreamStatusLabel(input.events);
+  const streamStatus = getLatestStreamStatus(input.events);
 
   const diagnosis = diagnosisEvent?.diagnosis;
   const plan = planEvent?.plan;
@@ -859,7 +878,8 @@ export function normalizeAgentStreamResult(input: {
     activity,
     activities,
     assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
-    streamStatusLabel,
+    streamStatusPhase: streamStatus?.phase ?? null,
+    streamStatusLabel: streamStatus?.message ?? null,
     rationale: diagnosis.explanation?.evidence ?? [],
   });
 }
@@ -887,7 +907,7 @@ export function normalizePartialAgentStreamResult(input: {
     (event): event is Extract<AgentStreamEvent, { event: "state-patch" }> =>
       event.event === "state-patch",
   );
-  const streamStatusLabel = getLatestStreamStatusLabel(input.events);
+  const streamStatus = getLatestStreamStatus(input.events);
 
   const diagnosis = diagnosisEvent?.diagnosis;
   const plan = planEvent?.plan;
@@ -897,9 +917,10 @@ export function normalizePartialAgentStreamResult(input: {
   if (diagnosis === undefined && plan === undefined && statePatchEvent === undefined) {
     return {
       ...input.fallbackSnapshot,
-      source: streamStatusLabel === null ? input.fallbackSnapshot.source : "live-agent",
+      source: streamStatus === null ? input.fallbackSnapshot.source : "live-agent",
       assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
-      streamStatusLabel,
+      streamStatusPhase: streamStatus?.phase ?? null,
+      streamStatusLabel: streamStatus?.message ?? null,
     };
   }
 
@@ -979,7 +1000,8 @@ export function normalizePartialAgentStreamResult(input: {
     activity,
     activities,
     assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
-    streamStatusLabel,
+    streamStatusPhase: streamStatus?.phase ?? null,
+    streamStatusLabel: streamStatus?.message ?? null,
     rationale: diagnosis?.explanation?.evidence ?? input.fallbackSnapshot.rationale,
   });
 }

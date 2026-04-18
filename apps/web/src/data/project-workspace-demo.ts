@@ -79,9 +79,9 @@ export const initialSessions: ReadonlyArray<SessionItem> = [
     projectId,
     type: "project",
     knowledgePointId: null,
-    title: "当前 project session",
+    title: "当前研讨",
     summary: "围绕材料导入、知识点演化和项目答辩叙事继续推进。",
-    updatedAt: "1h",
+    updatedAt: "1 小时前",
     status: "活跃",
   },
   {
@@ -101,7 +101,7 @@ export const initialSessions: ReadonlyArray<SessionItem> = [
     knowledgePointId: "unit-3",
     title: "学习：答辩表达迁移",
     summary: "把设计取舍转成比赛答辩可讲的表达结构。",
-    updatedAt: "2d",
+    updatedAt: "2 天前",
     status: "进行中",
   },
   {

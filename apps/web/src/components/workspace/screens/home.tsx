@@ -45,25 +45,25 @@ export function HomeScreen({
           <WorkspaceNavButton
             active={homeSection === "all-projects"}
             count={totalProjects}
-            label="All Projects"
+            label="全部项目"
             onClick={() => onHomeSectionChange("all-projects")}
           />
           <WorkspaceNavButton
             active={homeSection === "recent"}
             count={homeSectionCounts.recent}
-            label="Recent"
+            label="最近打开"
             onClick={() => onHomeSectionChange("recent")}
           />
           <WorkspaceNavButton
             active={homeSection === "due-review"}
             count={homeSectionCounts.dueReview}
-            label="Due Review"
+            label="待复习"
             onClick={() => onHomeSectionChange("due-review")}
           />
           <WorkspaceNavButton
             active={homeSection === "archived"}
             count={homeSectionCounts.archived}
-            label="Archived"
+            label="已归档"
             onClick={() => onHomeSectionChange("archived")}
           />
         </CardContent>
@@ -75,7 +75,7 @@ export function HomeScreen({
             <CardContent className="space-y-4 p-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-2">
-                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">Continue</p>
+                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">继续推进</p>
                   <h2 className="text-xl font-medium text-[var(--xidea-near-black)]">
                     {continueProjectSummary.project.name}
                   </h2>
@@ -101,7 +101,7 @@ export function HomeScreen({
                 <MetricTile
                   label="下一步"
                   tone="emerald"
-                  value={continueActionLabel ?? "继续当前 project"}
+                  value={continueActionLabel ?? "继续当前研讨"}
                 />
               </div>
               <div className="flex flex-wrap gap-3">
@@ -110,7 +110,7 @@ export function HomeScreen({
                   onClick={onContinueProject}
                   type="button"
                 >
-                  继续 Project
+                  进入项目
                 </Button>
                 <Button className="rounded-full" onClick={onStartReview} type="button" variant="outline">
                   <RefreshCcw className="h-4 w-4" />
@@ -159,7 +159,7 @@ export function HomeScreen({
         ) : (
           <Card className="rounded-[1.3rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
             <CardContent className="px-5 py-6 text-sm text-[var(--xidea-stone)]">
-              没找到匹配的 project，可以换个关键词再试。
+              没找到匹配的项目，可以换个关键词再试。
             </CardContent>
           </Card>
         )}

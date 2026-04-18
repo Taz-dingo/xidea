@@ -102,7 +102,7 @@ export function useWorkspacePageModel({
     () =>
       getBrowseProfileSummary(
         activeRuntime.stateSource === ""
-          ? "系统当前把这个 session 视为「待生成」"
+          ? "系统当前把这轮会话视为「待生成」"
           : activeRuntime.stateSource,
         activeRuntime.state.weakSignals[0] ?? "",
       ),
@@ -166,6 +166,29 @@ export function useWorkspacePageModel({
       reviewEvents,
     ],
   );
+  const projectReviewHeatmap = useMemo(
+    () =>
+      reviewEvents.length === 0
+        ? buildEmptyReviewHeatmap()
+        : buildReviewHeatmap(
+            reviewEvents,
+            latestKnowledgePointReviewedEvent?.event_at
+              ? formatDateLabel(latestKnowledgePointReviewedEvent.event_at)
+              : null,
+            formatDateLabel(
+              getLatestIsoDate(
+                data.knowledgePointReviewInspectors.map(
+                  (inspector) => inspector.scheduledAt,
+                ),
+              ),
+            ),
+          ),
+    [
+      data.knowledgePointReviewInspectors,
+      latestKnowledgePointReviewedEvent?.event_at,
+      reviewEvents,
+    ],
+  );
   const knowledgePointReviewHistorySummary = useMemo(
     () =>
       getKnowledgePointReviewHistorySummary({
@@ -185,6 +208,7 @@ export function useWorkspacePageModel({
     knowledgePointReviewHeatmap,
     knowledgePointReviewHistorySummary,
     normalizedSearchQuery,
+    projectReviewHeatmap,
     projectMaterialCount,
     projectStats,
     relatedKnowledgePoints,

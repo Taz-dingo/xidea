@@ -64,19 +64,19 @@ export function useSessionActions(data: WorkspaceData) {
       data.sessions.filter((session) => session.projectId === targetProject.id)
         .length + 1;
     const titlePrefix =
-      type === "study" ? "学习" : type === "review" ? "复习" : "project";
+      type === "study" ? "学习" : type === "review" ? "复习" : "研讨";
     const createdSession: SessionItem = {
       id: `session-${Date.now()}`,
       projectId: targetProject.id,
       type,
       knowledgePointId,
-      title: `${titlePrefix} session ${nextIndex}`,
+      title: `${titlePrefix} ${nextIndex}`,
       summary:
         type === "study"
           ? "围绕未学知识点启动一轮学习。"
           : type === "review"
             ? "围绕待复习知识点安排一轮回拉。"
-            : "继续围绕 project 目标推进材料与知识点。",
+            : "继续围绕项目目标推进材料与知识点。",
       updatedAt: "刚刚",
       status: "空白",
     };

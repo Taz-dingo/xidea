@@ -58,7 +58,7 @@ function AssetPicker({
               <p className="text-sm font-medium text-[var(--xidea-near-black)]">
                 {asset.title}
               </p>
-              <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+              <span className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
                 {getAssetKindLabel(asset.kind)}
               </span>
             </div>
@@ -114,12 +114,12 @@ export function CreateProjectPanel({
 
   return (
     <FormShell
-      description="先把项目主题、答辩目标和规则收紧，再进入知识点池和 session 工作态。"
-      title="新建 Project"
+      description="先把项目主题、答辩目标和规则收紧，再进入知识点池和会话工作态。"
+      title="新建项目"
     >
       <div className="grid gap-4 lg:grid-cols-2">
         <label className="space-y-2 text-sm text-[var(--xidea-charcoal)]">
-          <span className="font-medium text-[var(--xidea-near-black)]">Project 名称</span>
+          <span className="font-medium text-[var(--xidea-near-black)]">项目名称</span>
           <input
             className="w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-3 py-2 outline-none focus:border-[var(--xidea-selection-border)]"
             onChange={(event) => onChange({ ...draft, name: event.target.value })}
@@ -139,7 +139,7 @@ export function CreateProjectPanel({
       </div>
 
       <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-        <span className="font-medium text-[var(--xidea-near-black)]">Project 描述</span>
+        <span className="font-medium text-[var(--xidea-near-black)]">项目说明</span>
         <Textarea
           className="min-h-24 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
           onChange={(event) => onChange({ ...draft, description: event.target.value })}
@@ -149,7 +149,7 @@ export function CreateProjectPanel({
       </label>
 
       <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-        <span className="font-medium text-[var(--xidea-near-black)]">Special Rules</span>
+        <span className="font-medium text-[var(--xidea-near-black)]">特殊约束</span>
         <Textarea
           className="min-h-24 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
           onChange={(event) =>
@@ -161,7 +161,7 @@ export function CreateProjectPanel({
       </label>
 
       <div className="space-y-2 text-sm text-[var(--xidea-charcoal)]">
-        <span className="font-medium text-[var(--xidea-near-black)]">Initial Materials</span>
+        <span className="font-medium text-[var(--xidea-near-black)]">初始材料</span>
         <AssetPicker
           assets={assets}
           onToggle={(assetId) =>
@@ -183,7 +183,7 @@ export function CreateProjectPanel({
           onClick={onSave}
           type="button"
         >
-          创建 Project
+          创建项目
         </Button>
         <Button className="rounded-full" onClick={onCancel} type="button" variant="outline">
           取消
@@ -213,11 +213,11 @@ export function EditMetaPanel({
 
   return (
     <FormShell
-      description="这里改的是当前 project 的主题叙事、special rules 和材料池。"
-      title="编辑 Project Meta"
+      description="这里改的是当前项目的主题叙事、特殊约束和材料池。"
+      title="编辑项目信息"
     >
       <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-        <span className="font-medium text-[var(--xidea-near-black)]">Topic</span>
+        <span className="font-medium text-[var(--xidea-near-black)]">主题</span>
         <input
           className="w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-3 py-2 outline-none focus:border-[var(--xidea-selection-border)]"
           onChange={(event) => onChange({ ...draft, topic: event.target.value })}
@@ -225,7 +225,7 @@ export function EditMetaPanel({
         />
       </label>
       <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-        <span className="font-medium text-[var(--xidea-near-black)]">Description</span>
+        <span className="font-medium text-[var(--xidea-near-black)]">说明</span>
         <Textarea
           className="min-h-24 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
           onChange={(event) =>
@@ -235,7 +235,7 @@ export function EditMetaPanel({
         />
       </label>
       <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-        <span className="font-medium text-[var(--xidea-near-black)]">Special Rules</span>
+        <span className="font-medium text-[var(--xidea-near-black)]">特殊约束</span>
         <Textarea
           className="min-h-24 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
           onChange={(event) =>
@@ -246,7 +246,7 @@ export function EditMetaPanel({
       </label>
       <div className="space-y-2 text-sm text-[var(--xidea-charcoal)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="font-medium text-[var(--xidea-near-black)]">Materials</span>
+          <span className="font-medium text-[var(--xidea-near-black)]">材料池</span>
           <MaterialUploadButton label="上传到材料池" onUpload={onUploadMaterial} />
         </div>
         <AssetPicker
@@ -269,7 +269,7 @@ export function EditMetaPanel({
           onClick={onSave}
           type="button"
         >
-          保存 Project Meta
+          保存项目信息
         </Button>
         <Button className="rounded-full" onClick={onCancel} type="button" variant="outline">
           取消

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +17,7 @@ export function InspectorCard({
       <CardHeader className="pb-4">
         <CardTitle className="xidea-kicker text-[var(--xidea-stone)]">{title}</CardTitle>
         {description ? (
-          <CardDescription className="text-sm text-[var(--xidea-stone)]">{description}</CardDescription>
+          <CardDescription className="text-sm leading-6 text-[var(--xidea-stone)]">{description}</CardDescription>
         ) : null}
       </CardHeader>
       <CardContent className="space-y-4">{children}</CardContent>
@@ -85,8 +86,14 @@ export function ReviewHeatmap({
 }: {
   weeks: ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>>;
 }): ReactElement {
+  const [activeCell, setActiveCell] = useState<ReviewHeatmapCell | null>(null);
+  const visibleCell = activeCell ?? weeks.flat().find((cell) => cell.intensity > 0) ?? weeks.flat().at(-1) ?? null;
+
   return (
     <div className="space-y-3">
+      <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
+        {visibleCell?.tooltip ?? "最近还没有学习或复习记录。"}
+      </div>
       <div className="flex gap-1.5">
         {weeks.map((week, weekIndex) => (
           <div className="grid gap-1.5" key={`review-week-${weekIndex}`}>
@@ -94,14 +101,15 @@ export function ReviewHeatmap({
               <div
                 className={`h-4 w-4 rounded-[4px] border border-[var(--xidea-border)] ${getHeatmapCellClass(cell.intensity)}`}
                 key={cell.dateKey}
-                title={cell.tooltip}
+                onMouseEnter={() => setActiveCell(cell)}
+                onMouseLeave={() => setActiveCell(null)}
               />
             ))}
           </div>
         ))}
       </div>
       <div className="flex items-center justify-between gap-3 text-[11px] text-[var(--xidea-stone)]">
-        <span>近 5 周复习轨迹</span>
+        <span>近 5 周轨迹</span>
         <div className="flex items-center gap-1.5">
           <span>低</span>
           {[0, 1, 2, 3, 4].map((intensity) => (

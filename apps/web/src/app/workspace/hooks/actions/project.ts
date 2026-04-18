@@ -46,7 +46,7 @@ export function useProjectActions(data: WorkspaceData) {
       projectId: createdProject.id,
       type: "project",
       knowledgePointId: null,
-      title: "初始 project session",
+      title: "初始研讨",
       summary: "围绕项目目标、材料边界和知识点池初始化这轮工作区。",
       updatedAt: "刚刚",
       status: "空白",

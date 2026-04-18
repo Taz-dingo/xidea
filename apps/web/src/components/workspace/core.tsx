@@ -1,4 +1,9 @@
 import type { ReactElement } from "react";
+import {
+  GraduationCap,
+  MessagesSquare,
+  RotateCcw,
+} from "lucide-react";
 import type { SourceAsset } from "@/domain/types";
 import type {
   KnowledgePointItem,
@@ -94,6 +99,17 @@ function getMasteryFillCount(mastery: number): number {
   return 1;
 }
 
+function getSessionTypeIcon(type: SessionType): ReactElement {
+  switch (type) {
+    case "project":
+      return <MessagesSquare className="h-3.5 w-3.5" />;
+    case "study":
+      return <GraduationCap className="h-3.5 w-3.5" />;
+    case "review":
+      return <RotateCcw className="h-3.5 w-3.5" />;
+  }
+}
+
 export function SessionTypeBadge({
   type,
   compact = false,
@@ -103,9 +119,10 @@ export function SessionTypeBadge({
 }): ReactElement {
   return (
     <Badge
-      className={`border uppercase tracking-[0.12em] shadow-none ${compact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-1 text-[11px]"} ${getSessionTypeAccent(type)}`}
+      className={`border shadow-none ${compact ? "gap-1 px-1.5 py-0.5 text-[10px]" : "gap-1 px-2 py-1 text-[11px]"} ${getSessionTypeAccent(type)}`}
       variant="outline"
     >
+      {getSessionTypeIcon(type)}
       {getSessionTypeLabel(type)}
     </Badge>
   );
@@ -135,7 +152,12 @@ export function SessionCard({
       type="button"
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{title}</p>
+        <div className="flex items-center gap-2">
+          <span className={active ? "text-[var(--xidea-selection-text)]" : "text-[var(--xidea-stone)]"}>
+            {getSessionTypeIcon(type)}
+          </span>
+          <p className="truncate text-sm font-medium">{title}</p>
+        </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <SessionTypeBadge compact type={type} />
           <span
@@ -166,7 +188,7 @@ export function MetricTile({
     <div className="min-w-0 overflow-hidden rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-3">
       <div className="flex min-w-0 items-center gap-2">
         <span className={`inline-block h-2 w-2 rounded-full ${getMetricDotClass(tone)}`} />
-        <span className="truncate text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
+        <span className="truncate text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
           {label}
         </span>
       </div>
@@ -265,7 +287,7 @@ export function MetaPanel({
       <CardContent className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <p className="xidea-kicker text-[var(--xidea-selection-text)]">Project Meta</p>
+            <p className="xidea-kicker text-[var(--xidea-selection-text)]">项目信息</p>
             <p className="text-base font-medium text-[var(--xidea-near-black)]">{project.name}</p>
           </div>
           <Button className="rounded-full" onClick={onClose} type="button" variant="outline">
@@ -275,12 +297,12 @@ export function MetaPanel({
 
         <div className="grid gap-2 md:grid-cols-3">
           <MetricTile label="材料" tone="amber" value={`${materialCount} 份`} />
-          <MetricTile label="Sessions" tone="sky" value={`${sessionCount} 个`} />
+          <MetricTile label="会话" tone="sky" value={`${sessionCount} 个`} />
           <MetricTile label="最近更新" tone="emerald" value={project.updatedAt} />
         </div>
 
         <div className="space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">Special Rules</p>
+          <p className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">特殊约束</p>
           <div className="flex flex-wrap gap-2">
             {project.specialRules.length > 0 ? (
               project.specialRules.map((rule) => (
@@ -293,13 +315,13 @@ export function MetaPanel({
                 </Badge>
               ))
             ) : (
-              <p className="text-sm text-[var(--xidea-stone)]">当前还没有 special rules。</p>
+              <p className="text-sm text-[var(--xidea-stone)]">当前还没有特殊约束。</p>
             )}
           </div>
         </div>
 
         <div className="space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">Project Materials</p>
+          <p className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">项目材料</p>
           <div className="space-y-2">
             {materials.length > 0 ? (
               materials.map((material) => (
@@ -309,7 +331,7 @@ export function MetaPanel({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium text-[var(--xidea-near-black)]">{material.title}</p>
-                    <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+                    <span className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
                       {getAssetKindLabel(material.kind)}
                     </span>
                   </div>
@@ -317,7 +339,7 @@ export function MetaPanel({
                 </div>
               ))
             ) : (
-              <p className="text-sm text-[var(--xidea-stone)]">当前还没有 project materials。</p>
+              <p className="text-sm text-[var(--xidea-stone)]">当前还没有项目材料。</p>
             )}
           </div>
         </div>

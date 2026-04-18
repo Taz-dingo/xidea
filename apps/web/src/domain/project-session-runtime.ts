@@ -168,34 +168,30 @@ export function buildCompletedActivityDeck(input: {
   };
 }
 
+export const ACTIVITY_BATCH_SUMMARY_PREFIX = "已提交本组学习动作结果";
+
 export function buildActivityBatchSummaryMessage(
   results: ReadonlyArray<ActivityBatchResult>,
 ): string {
-  const lines = results.map((result, index) => {
-    const prefix = result.action === "skip" ? "跳过" : "完成";
-    const detail =
-      result.action === "skip"
-        ? "本轮先跳过。"
-        : result.responseText !== ""
-          ? `最终作答：${result.responseText}`
-          : "我完成了这一步。";
-    const attemptsSummary =
-      result.attempts.length > 0
-        ? `共尝试 ${result.attempts.length} 次，错误 ${result.attempts.filter((item) => item.isCorrect === false).length} 次。`
-        : "";
-    const analysis =
-      result.finalAnalysis !== null && result.finalAnalysis.trim() !== ""
-        ? `分析：${result.finalAnalysis}`
-        : "";
+  const submittedCount = results.filter((result) => result.action === "submit").length;
+  const skippedCount = results.length - submittedCount;
+  const attemptCount = results.reduce((total, result) => total + result.attempts.length, 0);
+  const incorrectAttemptCount = results.reduce(
+    (total, result) =>
+      total + result.attempts.filter((attempt) => attempt.isCorrect === false).length,
+    0,
+  );
 
-    return `${index + 1}. [${prefix}] ${result.activityTitle} ${detail} ${attemptsSummary} ${analysis}`.trim();
-  });
+  const detailParts = [
+    `${results.length} 张卡`,
+    `尝试 ${attemptCount} 次`,
+    incorrectAttemptCount > 0 ? `错 ${incorrectAttemptCount} 次` : "已全部答对",
+  ];
+  if (skippedCount > 0) {
+    detailParts.push(`跳过 ${skippedCount} 张`);
+  }
 
-  return [
-    "我刚完成了这一组学习动作：",
-    ...lines,
-    "请把这一组表现当成同一轮输入，统一判断下一步该怎么安排，并说明原因。",
-  ].join("\n");
+  return `${ACTIVITY_BATCH_SUMMARY_PREFIX}（${detailParts.join("，")}）。请结合这次结构化作答结果统一判断下一步安排，并说明原因。`;
 }
 
 export function buildAggregateActivityResult(input: {

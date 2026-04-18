@@ -41,7 +41,9 @@ export function WorkspacePage(): ReactElement {
             onSearchChange={data.setSearchQuery}
             screen={data.screen}
             searchQuery={data.searchQuery}
+            selectedProjectDescription={data.selectedProject.description}
             selectedProjectName={data.selectedProject.name}
+            selectedProjectTopic={data.selectedProject.topic}
           />
 
           {data.isCreatingProject ? (
@@ -82,9 +84,7 @@ export function WorkspacePage(): ReactElement {
           ) : (
             <div className="space-y-4">
               <WorkspaceHero
-                description={data.selectedProject.description}
                 isDetailScreen={data.screen === "detail"}
-                onBack={actions.handleBackToWorkspace}
                 onStartProjectSession={() =>
                   actions.handleCreateSession(data.selectedProject.id, "project")
                 }
@@ -103,8 +103,6 @@ export function WorkspacePage(): ReactElement {
                   )
                 }
                 onToggleProjectMeta={actions.handleToggleProjectMeta}
-                projectName={data.selectedProject.name}
-                projectTopic={data.selectedProject.topic}
                 reviewDisabled={model.reviewTargetPoint === null}
                 studyDisabled={model.studyTargetPoint === null}
               />
@@ -121,9 +119,9 @@ export function WorkspacePage(): ReactElement {
                   <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                     <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
                       <div className="space-y-2">
-                        <p className="xidea-kicker text-[var(--xidea-selection-text)]">Project Settings</p>
+                        <p className="xidea-kicker text-[var(--xidea-selection-text)]">项目设置</p>
                         <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                          继续调整当前 project 的主题、规则和材料池，不需要回到首页重建。
+                          继续调整当前项目的主题、规则和材料池，不需要回到首页重建。
                         </p>
                       </div>
                       <Button
@@ -132,7 +130,7 @@ export function WorkspacePage(): ReactElement {
                         type="button"
                         variant="outline"
                       >
-                        编辑 Project Meta
+                        编辑项目信息
                       </Button>
                     </CardContent>
                   </Card>
@@ -160,6 +158,7 @@ export function WorkspacePage(): ReactElement {
                   knowledgePoint={data.selectedKnowledgePoint}
                   knowledgePointAssets={data.selectedKnowledgePointAssets}
                   onCancelArchiveConfirmation={() => data.setArchiveConfirmationPointId(null)}
+                  onBack={actions.handleBackToWorkspace}
                   onCancelEditing={actions.handleCancelKnowledgePointEditing}
                   onChangeDraft={data.setKnowledgePointDraft}
                   onConfirmArchive={() =>
@@ -213,6 +212,7 @@ export function WorkspacePage(): ReactElement {
                   pendingPrompt={data.draftPrompt}
                   pendingSessionIntent={data.pendingSessionIntent}
                   profileSummary={model.browseProfileSummary}
+                  projectReviewHeatmap={model.projectReviewHeatmap}
                   projectStats={model.projectStats}
                   selectedProjectSessions={data.selectedProjectSessions}
                   workspaceSection={data.workspaceSection}

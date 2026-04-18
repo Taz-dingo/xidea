@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import { CheckCircle2, Sparkles, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,6 +62,70 @@ function getFeedbackToneClasses(tone: "success" | "retry"): string {
     : "border-[var(--xidea-selection-border)] bg-[linear-gradient(180deg,#fff8f4_0%,#fceddf_100%)] text-[var(--xidea-selection-text)]";
 }
 
+function triggerFeedbackVibration(pattern: number | number[]): void {
+  if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") {
+    return;
+  }
+
+  navigator.vibrate(pattern);
+}
+
+function playFeedbackTone(
+  audioContextRef: { current: AudioContext | null },
+  tone: "success" | "retry",
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const AudioContextCtor =
+    window.AudioContext ??
+    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (AudioContextCtor === undefined) {
+    return;
+  }
+
+  try {
+    const context = audioContextRef.current ?? new AudioContextCtor();
+    audioContextRef.current = context;
+    if (context.state === "suspended") {
+      void context.resume();
+    }
+
+    const gain = context.createGain();
+    gain.connect(context.destination);
+    gain.gain.setValueAtTime(tone === "success" ? 0.055 : 0.05, context.currentTime);
+
+    const tones =
+      tone === "success"
+        ? [
+            { frequency: 660, duration: 0.08, type: "triangle" as const },
+            { frequency: 880, duration: 0.12, type: "triangle" as const },
+          ]
+        : [
+            { frequency: 220, duration: 0.1, type: "sawtooth" as const },
+            { frequency: 176, duration: 0.12, type: "sawtooth" as const },
+          ];
+
+    let startAt = context.currentTime;
+    tones.forEach((item, index) => {
+      const oscillator = context.createOscillator();
+      oscillator.type = item.type;
+      oscillator.frequency.setValueAtTime(item.frequency, startAt);
+      oscillator.connect(gain);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + item.duration);
+      if (index < tones.length - 1) {
+        startAt += item.duration * 0.78;
+      }
+    });
+
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + tones.at(-1)!.duration + 0.06);
+  } catch {
+    // Audio feedback is optional; keep the card interaction resilient.
+  }
+}
+
 export function LearningActivityCard({
   activity,
   disabled,
@@ -86,6 +150,9 @@ export function LearningActivityCard({
   } | null>(null);
   const [pendingSubmission, setPendingSubmission] =
     useState<LearningActivitySubmission | null>(null);
+  const [motionClass, setMotionClass] = useState("");
+  const motionResetTimerRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     setSelectedChoiceId(null);
@@ -93,7 +160,16 @@ export function LearningActivityCard({
     setAttempts([]);
     setFeedbackState(null);
     setPendingSubmission(null);
+    setMotionClass("");
   }, [activity.id]);
+
+  useEffect(() => {
+    return () => {
+      if (motionResetTimerRef.current !== null) {
+        window.clearTimeout(motionResetTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (pendingSubmission === null) {
@@ -117,6 +193,20 @@ export function LearningActivityCard({
   const wrongAttemptCount = attempts.filter((attempt) => attempt.isCorrect === false).length;
   const canSubmitText = draftText.trim().length >= (activity.input.type === "text" ? activity.input.minLength : 1);
 
+  function triggerMotion(nextClass: "xidea-feedback-success" | "xidea-feedback-shake"): void {
+    if (motionResetTimerRef.current !== null) {
+      window.clearTimeout(motionResetTimerRef.current);
+    }
+    setMotionClass("");
+    window.requestAnimationFrame(() => {
+      setMotionClass(nextClass);
+      motionResetTimerRef.current = window.setTimeout(() => {
+        setMotionClass("");
+        motionResetTimerRef.current = null;
+      }, 520);
+    });
+  }
+
   function handleChoicePick(choiceId: string): void {
     if (activity.input.type !== "choice" || isLocked) {
       return;
@@ -135,6 +225,9 @@ export function LearningActivityCard({
     const nextAttempts = [...attempts, nextAttempt];
     setAttempts(nextAttempts);
     if (nextAttempt.isCorrect) {
+      triggerMotion("xidea-feedback-success");
+      triggerFeedbackVibration([24, 28, 24]);
+      playFeedbackTone(audioContextRef, "success");
       setFeedbackState({
         tone: "success",
         title: attempts.length === 0 ? "答对了，继续推进" : "修正到位，进入下一张",
@@ -157,6 +250,9 @@ export function LearningActivityCard({
       return;
     }
 
+    triggerMotion("xidea-feedback-shake");
+    triggerFeedbackVibration([18, 34, 18]);
+    playFeedbackTone(audioContextRef, "retry");
     setFeedbackState({
       tone: "retry",
       title:
@@ -196,7 +292,9 @@ export function LearningActivityCard({
   }
 
   return (
-    <Card className="rounded-[1.15rem] border-[var(--xidea-selection-border)] bg-[linear-gradient(180deg,#fffdf9_0%,#fcf4ee_100%)] shadow-[0_18px_40px_rgba(111,74,53,0.08)]">
+    <Card
+      className={`rounded-[1.15rem] border-[var(--xidea-selection-border)] bg-[linear-gradient(180deg,#fffdf9_0%,#fcf4ee_100%)] shadow-[0_18px_40px_rgba(111,74,53,0.08)] ${motionClass}`}
+    >
       <CardHeader className="space-y-3 pb-2.5">
         <div className="flex flex-wrap items-center gap-2">
           <Badge
@@ -250,9 +348,9 @@ export function LearningActivityCard({
                 <button
                   className={
                     wasLatestCorrect
-                      ? "w-full rounded-[1rem] border border-[#9dc67e] bg-[linear-gradient(180deg,#f7fff1_0%,#eef9e6_100%)] px-3.5 py-3 text-left transition-all"
+                      ? "w-full rounded-[1rem] border border-[#9dc67e] bg-[linear-gradient(180deg,#f7fff1_0%,#eef9e6_100%)] px-3.5 py-3 text-left shadow-[0_16px_28px_rgba(90,140,52,0.14)] transition-all"
                       : wasLatestWrong
-                        ? "w-full rounded-[1rem] border border-[#ebb59c] bg-[linear-gradient(180deg,#fff6f1_0%,#fde8dd_100%)] px-3.5 py-3 text-left transition-all"
+                        ? "w-full rounded-[1rem] border border-[#ebb59c] bg-[linear-gradient(180deg,#fff6f1_0%,#fde8dd_100%)] px-3.5 py-3 text-left shadow-[0_14px_26px_rgba(212,109,69,0.12)] transition-all"
                         : selectedChoiceId === choice.id
                           ? "w-full rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3.5 py-3 text-left transition-colors"
                           : "w-full rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3.5 py-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fff8f4]"

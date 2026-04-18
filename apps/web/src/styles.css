@@ -45,10 +45,21 @@ body {
 button {
   font: inherit;
   cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
 }
 
 button:disabled {
   cursor: not-allowed;
+}
+
+button:not(:disabled):active {
+  transform: scale(0.985);
 }
 
 ::selection {
@@ -157,4 +168,98 @@ button:disabled {
     grid-template-rows 180ms ease,
     opacity 180ms ease,
     margin-top 180ms ease;
+}
+
+@keyframes xidea-soft-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes xidea-dot-wave {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.xidea-card-motion {
+  animation: xidea-soft-rise 220ms ease;
+}
+
+.xidea-dot-wave {
+  animation: xidea-dot-wave 1s ease-in-out infinite;
+  animation-delay: var(--xidea-dot-delay, 0s);
+}
+
+@keyframes xidea-feedback-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  18% {
+    transform: translateX(-7px);
+  }
+  36% {
+    transform: translateX(6px);
+  }
+  54% {
+    transform: translateX(-4px);
+  }
+  72% {
+    transform: translateX(3px);
+  }
+}
+
+@keyframes xidea-feedback-success {
+  0% {
+    transform: scale(0.985);
+    box-shadow:
+      0 18px 40px rgba(111, 74, 53, 0.08),
+      0 0 0 rgba(157, 198, 126, 0);
+  }
+  45% {
+    transform: scale(1.015);
+    box-shadow:
+      0 24px 48px rgba(90, 140, 52, 0.16),
+      0 0 0 8px rgba(157, 198, 126, 0.14);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 18px 40px rgba(111, 74, 53, 0.08),
+      0 0 0 rgba(157, 198, 126, 0);
+  }
+}
+
+.xidea-feedback-shake {
+  animation: xidea-feedback-shake 360ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.xidea-feedback-success {
+  animation: xidea-feedback-success 460ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xidea-feedback-shake,
+  .xidea-feedback-success,
+  .xidea-card-motion,
+  .xidea-dot-wave {
+    animation: none;
+  }
+
+  button:not(:disabled):active {
+    transform: none;
+  }
 }

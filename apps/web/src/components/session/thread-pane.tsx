@@ -12,13 +12,25 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { getMessageText, sanitizeVisibleAssistantText } from "@/domain/chat-message";
-import type { ActivityResolution } from "@/domain/project-session-runtime";
+import {
+  ACTIVITY_BATCH_SUMMARY_PREFIX,
+  type ActivityResolution,
+} from "@/domain/project-session-runtime";
 import type {
   LearningActivityAttempt,
   LearningActivitySubmission,
   SourceAsset,
 } from "@/domain/types";
 import type { RuntimeSnapshot } from "@/domain/agent-runtime";
+
+function isSyntheticActivityBatchMessage(text: string): boolean {
+  return text.trim().startsWith(ACTIVITY_BATCH_SUMMARY_PREFIX);
+}
+
+function getVisibleSyntheticActivityBatchMessage(text: string): string {
+  const visibleText = text.replace(/请结合[\s\S]*$/u, "").trim();
+  return visibleText.endsWith("。") ? visibleText : `${visibleText}。`;
+}
 
 function SessionStreamingStatus({
   label,
@@ -31,9 +43,9 @@ function SessionStreamingStatus({
       <span className="flex items-center gap-1">
         {[0, 1, 2].map((index) => (
           <span
-            className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--xidea-terracotta)]/70"
+            className="xidea-dot-wave h-1.5 w-1.5 rounded-full bg-[var(--xidea-terracotta)]/70"
             key={index}
-            style={{ animationDelay: `${index * 0.15}s` }}
+            style={{ ["--xidea-dot-delay" as string]: `${index * 0.15}s` }}
           />
         ))}
       </span>
@@ -112,7 +124,13 @@ export function SessionThreadPane({
     : "";
   const streamingPreviewText = sanitizeVisibleAssistantText(activeRuntime.assistantMessage).trim();
   const streamingStatusLabel =
-    activeRuntime.streamStatusLabel ?? "正在结合当前 project、材料和状态判断下一步";
+    activeRuntime.streamStatusLabel ?? "正在判断下一步";
+  const shouldShowPostReplyStatus =
+    isAgentRunning &&
+    hasStructuredRuntime &&
+    latestAssistantText !== "" &&
+    (activeRuntime.streamStatusPhase === "preparing-followup" ||
+      activeRuntime.streamStatusPhase === "writing-state");
   const shouldShowStreamingPreview =
     isAgentRunning &&
     hasStructuredRuntime &&
@@ -154,7 +172,7 @@ export function SessionThreadPane({
                 variant="outline"
               >
                 <Settings2 className="h-4 w-4" />
-                改 topic / rules
+                编辑主题
               </Button>
             ) : null}
             {selectedSourceAssetIds.length > 0 ? (
@@ -167,10 +185,10 @@ export function SessionThreadPane({
             ) : (
               <span className="text-sm text-[var(--xidea-stone)]">
                 {selectedSessionType === "project"
-                  ? "当前先按纯对话推进，需要时可补材料或直接改 topic / rules。"
+                  ? "当前先按纯对话推进，需要时再补材料或调整主题。"
                   : selectedSessionType === "study"
-                    ? "study session 只围绕当前知识点编排卡组，不在这里挂项目材料。"
-                    : "review session 只围绕回忆与校准推进，不在这里挂项目材料。"}
+                    ? "学习会话只围绕当前知识卡编排动作，这里不挂项目材料。"
+                    : "复习会话只围绕回忆和校准推进，这里不挂项目材料。"}
               </span>
             )}
           </div>
@@ -206,7 +224,7 @@ export function SessionThreadPane({
                   <div>
                     <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
                     <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                      这些材料只会在 project session 里作为本轮附加上下文送给 agent。
+                      这些材料只会在研讨会话里作为本轮附加上下文送给 agent。
                     </p>
                   </div>
                 </div>
@@ -232,7 +250,7 @@ export function SessionThreadPane({
                           <p className="text-sm font-medium text-[var(--xidea-near-black)]">
                             {asset.title}
                           </p>
-                          <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+                          <span className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
                             {getAssetKindLabel(asset.kind)}
                           </span>
                         </div>
@@ -246,7 +264,7 @@ export function SessionThreadPane({
                 {selectedProjectMaterials.length === 0 ? (
                   <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                     <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
-                      当前 project 还没有材料。先到 More 里的“编辑 Project Meta”把材料加入项目池，再挂进 session。
+                      当前项目还没有材料。先到“编辑”里加入项目材料，再挂进这轮会话。
                     </CardContent>
                   </Card>
                 ) : null}
@@ -259,25 +277,46 @@ export function SessionThreadPane({
                 <Card className="rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                 <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
                   {selectedSessionType === "project"
-                    ? "当前 session 还没有消息。你可以先继续 project 对话、补材料，或让系统沉淀知识点建议。"
-                    : "当前 session 还没有消息。你可以先输入这轮真正想验证的问题，让系统开始一组学习 / 复习动作。"}
+                    ? "当前还没有消息。你可以先继续研讨、补材料，或让系统沉淀知识点建议。"
+                    : "当前还没有消息。先输入这轮真正想验证的问题，再开始一组动作。"}
                 </CardContent>
               </Card>
             ) : (
               displayMessages.map((message) => {
                 const isAssistant = message.role === "assistant";
                 const rawText = getMessageText(message);
+                const isSyntheticBatchMessage =
+                  !isAssistant && isSyntheticActivityBatchMessage(rawText);
                 if (isAssistant && rawText === "") {
                   return null;
                 }
 
                 return (
                   <div className="space-y-3" key={message.id}>
-                    <div className={isAssistant ? "flex justify-start" : "flex justify-end"}>
+                    <div
+                      className={
+                        isAssistant
+                          ? "flex justify-start"
+                          : isSyntheticBatchMessage
+                            ? "flex justify-center"
+                            : "flex justify-end"
+                      }
+                    >
                       {isAssistant ? (
                         <div className="w-full max-w-[82%] py-0.5">
                           <MarkdownContent content={rawText} />
                         </div>
+                      ) : isSyntheticBatchMessage ? (
+                <Card className="w-full max-w-[78%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
+                          <CardContent className="space-y-1.5 px-4 py-3">
+                            <p className="xidea-kicker text-[var(--xidea-stone)]">
+                              学习动作结果
+                            </p>
+                            <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                              {getVisibleSyntheticActivityBatchMessage(rawText)}
+                            </p>
+                          </CardContent>
+                        </Card>
                       ) : (
                         <Card className="w-full max-w-[72%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                           <CardContent className="px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
@@ -301,6 +340,23 @@ export function SessionThreadPane({
                         />
                       </div>
                     ) : null}
+
+                    {isAssistant &&
+                    message.id === latestAssistantMessageId &&
+                    shouldShowPostReplyStatus ? (
+                      <div className="w-full max-w-[82%] pl-1">
+                        <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3">
+                          <SessionStreamingStatus label={streamingStatusLabel} />
+                          <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
+                            {activeRuntime.streamStatusPhase === "preparing-followup"
+                              ? selectedSessionType === "project"
+                                ? "正在整理知识点建议和材料线索。"
+                                : "正在整理下一组动作。"
+                              : "正在写回本轮状态。"}
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })
@@ -317,8 +373,8 @@ export function SessionThreadPane({
                         <SessionStreamingStatus label={streamingStatusLabel} />
                         <p className="text-[14px] leading-6 text-[var(--xidea-stone)]">
                           {selectedSessionType === "project"
-                            ? "回复还在生成中，这一轮会先完成 project 判断，再决定是否沉淀知识点或材料建议。"
-                            : "回复还在生成中，等这轮判断和说明完成后，才会把整组学习动作接上。"}
+                            ? "正在生成回复。"
+                            : "正在生成回复和动作。"}
                         </p>
                       </div>
                     )}
@@ -342,10 +398,10 @@ export function SessionThreadPane({
                   hasPendingActivity
                     ? "先完成当前学习动作或跳过，再继续对话。"
                     : canManageMaterials && selectedSourceAssetIds.length > 0
-                      ? "补一句你希望系统围绕这些材料先判断什么、澄清什么，或生成什么训练动作。"
+                      ? "补一句你希望系统先围绕这些材料判断什么。"
                       : selectedSessionType === "project"
-                        ? "输入这一轮你想推进的 project 问题、材料判断或知识点沉淀诉求。"
-                        : "输入这一轮你想验证的问题，系统会据此安排下一组学习动作。"
+                        ? "输入这轮想推进的方向、材料判断或知识点沉淀诉求。"
+                        : "输入这轮想验证的问题，系统会据此安排下一组动作。"
                 }
                 value={draftPrompt}
               />
@@ -368,7 +424,7 @@ export function SessionThreadPane({
               </Card>
             ) : hasPendingActivity ? (
               <p className="mt-3 text-sm leading-6 text-[var(--xidea-stone)]">
-                这轮先完成上面的学习动作，或者选择跳过，再继续自由对话。
+                先完成上面的动作，或跳过后再继续对话。
               </p>
             ) : null}
           </CardContent>
