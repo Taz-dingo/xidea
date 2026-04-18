@@ -58,11 +58,18 @@ def test_run_agent_v0_prefers_clarify_for_confusion() -> None:
     assert result.graph_state.diagnosis.primary_issue == "concept-confusion"
     assert result.graph_state.plan.selected_mode == "contrast-drill"
     assert result.graph_state.activity.kind == "quiz"
+    assert len(result.graph_state.activities) == 2
+    assert result.graph_state.activities[1].kind == "coach-followup"
+    assert result.graph_state.activity.input.type == "choice"
+    assert result.graph_state.activity.input.choices[0].is_correct is True
+    assert result.graph_state.activity.input.choices[1].is_correct is False
+    assert len(result.graph_state.activity.input.choices[1].feedback_layers) >= 3
+    assert result.graph_state.activity.input.choices[1].analysis is not None
     assert [event.event for event in result.events] == [
         "diagnosis",
         "text-delta",
         "plan",
-        "activity",
+        "activities",
         "state-patch",
         "done",
     ]
@@ -72,15 +79,17 @@ def test_iter_agent_v0_events_yields_incrementally() -> None:
     events = list(iter_agent_v0_events(build_request(), llm=build_mock_llm()))
 
     event_types = [event.event for event in events]
-    assert event_types[0] == "diagnosis"
-    assert event_types[1] == "text-delta"
-    assert "plan" in event_types[1:-2]
-    assert "activity" in event_types[1:-2]
+    assert event_types[:2] == ["status", "status"]
+    assert event_types[2] == "diagnosis"
+    assert event_types[3] == "status"
+    assert event_types[4] == "text-delta"
+    assert "plan" in event_types[4:-2]
+    assert "activities" in event_types[4:-2]
     assert event_types[-2:] == ["state-patch", "done"]
     assert event_types.count("text-delta") >= 1
 
 
-def test_iter_agent_v0_events_uses_bundled_reply_and_plan() -> None:
+def test_iter_agent_v0_events_prefers_live_reply_stream_over_local_chunking() -> None:
     import json
     from types import SimpleNamespace
     from unittest.mock import MagicMock
@@ -116,22 +125,34 @@ def test_iter_agent_v0_events_uses_bundled_reply_and_plan() -> None:
         choice = SimpleNamespace(message=message)
         return SimpleNamespace(choices=[choice])
 
+    def _stream_chunk(content: str):
+        delta = SimpleNamespace(content=content)
+        choice = SimpleNamespace(delta=delta)
+        return SimpleNamespace(choices=[choice])
+
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
         _response(main_decision_response),
+        iter([
+            _stream_chunk("先把 retrieval 和 reranking 的边界"),
+            _stream_chunk("拉清楚，再继续往项目判断里迁移。"),
+        ]),
     ]
     llm = LLMClient(client=mock_client, model="GLM-4.1V-Thinking-Flash", provider="zhipu")
 
     events = list(iter_agent_v0_events(build_request(), llm=llm))
+    event_types = [event.event for event in events]
 
-    assert [event.event for event in events][-2:] == ["state-patch", "done"]
+    assert event_types[:4] == ["status", "status", "diagnosis", "status"]
+    assert event_types[-2:] == ["state-patch", "done"]
     assert any(event.event == "plan" for event in events)
     assert "".join(event.delta for event in events if event.event == "text-delta").startswith("先把 retrieval")
-    assert mock_client.chat.completions.create.call_count == 1
+    assert mock_client.chat.completions.create.call_count == 2
 
 
 def test_run_agent_v0_emits_knowledge_point_suggestion_for_project_chat() -> None:
     request = build_request(
+        session_type="project",
         target_unit_id=None,
         topic="RAG 系统设计",
         messages=[
@@ -144,6 +165,7 @@ def test_run_agent_v0_emits_knowledge_point_suggestion_for_project_chat() -> Non
 
     result = run_agent_v0(request, llm=build_mock_llm())
 
+    assert result.graph_state.activity is None
     assert len(result.graph_state.knowledge_point_suggestions) == 1
     suggestion = result.graph_state.knowledge_point_suggestions[0]
     assert suggestion.kind == "create"
@@ -153,16 +175,107 @@ def test_run_agent_v0_emits_knowledge_point_suggestion_for_project_chat() -> Non
         "diagnosis",
         "text-delta",
         "plan",
-        "activity",
         "knowledge-point-suggestion",
         "state-patch",
         "done",
     ]
 
 
+def test_project_session_never_emits_activity_even_with_target_unit() -> None:
+    request = build_request(session_type="project")
+
+    result = run_agent_v0(request, llm=build_mock_llm())
+
+    assert result.graph_state.activity is None
+    assert result.graph_state.activities == []
+    assert "activities" not in [event.event for event in result.events]
+    assert any("skipped activity because project session" in item for item in result.graph_state.rationale)
+
+
+def test_project_session_low_info_short_circuits_without_calling_llm() -> None:
+    llm = build_mock_llm()
+    request = build_request(
+        session_type="project",
+        target_unit_id=None,
+        topic="RAG 系统设计",
+        messages=[{"role": "user", "content": "hi"}],
+    )
+
+    result = run_agent_v0(request, llm=llm)
+
+    assert result.graph_state.diagnosis is not None
+    assert result.graph_state.diagnosis.primary_issue == "missing-context"
+    assert result.graph_state.activities == []
+    assert result.graph_state.knowledge_point_suggestions == []
+    assert result.graph_state.state_patch is not None
+    assert result.graph_state.state_patch.learner_state_patch is None
+    assert "project session" in (result.graph_state.assistant_message or "")
+    assert "学习方向" in (result.graph_state.assistant_message or "")
+    assert result.graph_state.plan is not None
+    assert "补相关材料" in result.graph_state.plan.expected_outcome
+    assert [event.event for event in result.events] == [
+        "diagnosis",
+        "text-delta",
+        "plan",
+        "state-patch",
+        "done",
+    ]
+    assert any("project_chat low-info guardrail" in item for item in result.graph_state.rationale)
+    assert llm.client.chat.completions.create.call_count == 0
+
+
+def test_review_session_capability_message_short_circuits_without_calling_llm() -> None:
+    llm = build_mock_llm()
+    request = build_request(
+        session_type="review",
+        topic="RAG 系统设计",
+        messages=[{"role": "user", "content": "hi，你可以做什么"}],
+    )
+
+    result = run_agent_v0(request, llm=llm)
+
+    assert result.graph_state.diagnosis is not None
+    assert result.graph_state.diagnosis.primary_issue == "missing-context"
+    assert result.graph_state.activities == []
+    assert result.graph_state.activity is None
+    assert result.graph_state.assistant_message is not None
+    assert "review session" in result.graph_state.assistant_message
+    assert "主动回忆" in result.graph_state.assistant_message
+    assert any("session_capability guard" in item for item in result.graph_state.rationale)
+    assert [event.event for event in result.events] == [
+        "diagnosis",
+        "text-delta",
+        "plan",
+        "state-patch",
+        "done",
+    ]
+    assert llm.client.chat.completions.create.call_count == 0
+
+
+def test_project_session_does_not_write_learning_state_patch() -> None:
+    request = build_request(
+        session_type="project",
+        target_unit_id=None,
+        topic="RAG 系统设计",
+        messages=[
+            {
+                "role": "user",
+                "content": "我搞不清 retrieval 和 reranking 的边界，帮我先讲清楚它们分别控制什么。",
+            }
+        ],
+    )
+
+    result = run_agent_v0(request, llm=build_mock_llm())
+
+    assert result.graph_state.state_patch is not None
+    assert result.graph_state.state_patch.learner_state_patch is None
+    assert result.graph_state.state_patch.review_patch is None
+
+
 def test_run_agent_v0_blocks_off_topic_without_calling_llm() -> None:
     llm = build_mock_llm()
     request = build_request(
+        session_type="project",
         target_unit_id=None,
         topic="RAG 系统设计",
         messages=[{"role": "user", "content": "上海明天天气怎么样？"}],
@@ -190,6 +303,7 @@ def test_run_agent_v0_blocks_off_topic_without_calling_llm() -> None:
 def test_run_agent_v0_dedupes_boundary_suggestion_when_pair_order_changes(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "agent.db")
     first_request = build_request(
+        session_type="project",
         target_unit_id=None,
         topic="RAG 系统设计",
         messages=[
@@ -204,6 +318,7 @@ def test_run_agent_v0_dedupes_boundary_suggestion_when_pair_order_changes(tmp_pa
 
     second_request = build_request(
         thread_id="thread-2",
+        session_type="project",
         target_unit_id=None,
         topic="RAG 系统设计",
         messages=[
@@ -249,12 +364,14 @@ def test_run_agent_v0_emits_archive_suggestion_for_stable_knowledge_point(tmp_pa
     )
 
     request = build_request(
+        session_type="project",
         target_unit_id=None,
         topic="RAG 系统设计",
         messages=[{"role": "user", "content": "继续看看这个 project 现在还剩什么要处理。"}],
     )
     result = run_agent_v0(request, repository=repository, llm=build_mock_llm_for_teach())
 
+    assert result.graph_state.activity is None
     assert len(result.graph_state.knowledge_point_suggestions) == 1
     suggestion = result.graph_state.knowledge_point_suggestions[0]
     assert suggestion.kind == "archive"
@@ -300,17 +417,30 @@ def test_iter_agent_v0_events_streams_reply_in_multiple_chunks() -> None:
         choice = SimpleNamespace(message=message)
         return SimpleNamespace(choices=[choice])
 
+    def _stream_chunk(content: str):
+        from types import SimpleNamespace
+
+        delta = SimpleNamespace(content=content)
+        choice = SimpleNamespace(delta=delta)
+        return SimpleNamespace(choices=[choice])
+
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
         _response(main_decision_response),
+        iter([
+            _stream_chunk("这不是简单拼接，因为检索、筛选、重排"),
+            _stream_chunk("和上下文压缩各自承担不同职责，需要一起控制噪声、相关性和可解释性。"),
+        ]),
     ]
     llm = LLMClient(client=mock_client, model="GLM-4.1V-Thinking-Flash", provider="zhipu")
 
     events = list(iter_agent_v0_events(build_request(), llm=llm))
 
     event_types = [event.event for event in events]
-    assert event_types[0] == "diagnosis"
-    assert event_types[1] == "text-delta"
+    assert event_types[:2] == ["status", "status"]
+    assert event_types[2] == "diagnosis"
+    assert event_types[3] == "status"
+    assert event_types[4] == "text-delta"
     text_deltas = [event.delta for event in events if event.event == "text-delta"]
     assert len(text_deltas) >= 2
     assert "".join(text_deltas) == long_reply
@@ -351,6 +481,7 @@ def test_run_agent_v0_schedules_review_for_recall_requests() -> None:
 
 def test_run_agent_v0_preloads_review_context_for_review_requests() -> None:
     request = build_request(
+        session_type="review",
         messages=[{"role": "user", "content": "我最近总忘这些概念，想做一次复习巩固"}],
     )
     llm = build_mock_llm_for_review()
@@ -361,6 +492,21 @@ def test_run_agent_v0_preloads_review_context_for_review_requests() -> None:
     assert result.graph_state.tool_result.kind == "review-context"
     assert result.graph_state.tool_intent == "none"
     assert llm.client.chat.completions.create.call_count == 1
+
+
+def test_review_session_coerces_non_review_diagnosis_when_confusion_is_not_high() -> None:
+    request = build_request(
+        session_type="review",
+        messages=[{"role": "user", "content": "继续这一轮吧，我想稳一下刚学过的内容。"}],
+    )
+
+    result = run_agent_v0(request, llm=build_mock_llm_for_teach())
+
+    assert result.graph_state.diagnosis is not None
+    assert result.graph_state.activity is not None
+    assert result.graph_state.diagnosis.recommended_action == "review"
+    assert result.graph_state.diagnosis.primary_issue == "weak-recall"
+    assert result.graph_state.activity.kind == "recall"
 
 
 def test_run_agent_v0_reuses_preloaded_unit_detail_when_main_decision_requests_tool() -> None:

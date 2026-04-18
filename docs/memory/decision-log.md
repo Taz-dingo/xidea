@@ -3,6 +3,133 @@
 只保留"当前仍生效、后续会反复影响协作或实现"的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-18 — 学习卡的正确性与分层提示由 backend activity contract 显式提供，前端只负责即时反馈与整组回看
+
+### 决策
+
+- `study / review session` 的 choice activity 现在由 backend 显式下发 `is_correct / feedback_layers / analysis`，前端不再自己猜哪一项是对的，也不自己拼错误分析
+- 单张卡在前端本地执行“选了就判、错了继续、对了再进下一张”的即时交互；整组卡仍然要在本地全部完成后，作为一次统一 `activity_result` 回传给 agent
+- 已完成 card deck 要保留在右侧 inspector，可回看每张卡的尝试轨迹、最终作答，以及错误选择暴露出的分析
+
+### 原因
+
+- 这类 pedagogical judgment 属于 learning engine 语义，长期不能继续放在前端 heuristic 里，否则不同入口和 mock/fallback 很容易再次漂移
+- 用户要的是强反馈学习体验，而不是“做完再等 agent 才知道对不对”；但与此同时，agent loop 仍应保持“一组卡完成后再统一进入下一轮”
+
+### 影响
+
+- 后续新增或调整 activity 时，默认一起维护 choice feedback contract，而不是只给 label / detail
+- 前端后续如果继续打磨互动反馈，只能消费这份 contract 做表现层增强，不能反向发明新的 correctness / hint 语义
+
+## 2026-04-18 — `study / review session` 遇到 capability / meta 提问时先说明 session 能力，不直接出卡
+
+### 决策
+
+- 当用户在 `study / review session` 里问的是 “你可以做什么 / 你能怎么帮我 / 你是谁” 这类 capability / meta 问题时，agent 先返回 session 说明，不直接进入学习卡或复习卡
+- 这类 turn 的主目标是把当前 session 的职责边界讲清楚，并把下一条消息收成具体的学习切入点，而不是把 meta 提问误当成知识点作答
+- 当前 UI 也不再把“最新 assistant 文本提问”和“pending activity 卡组”同时摊在中栏；有待完成卡组时，assistant 区只保留一条简短引导
+
+### 原因
+
+- 当前实现会把 `hi，你可以做什么` 这类消息直接丢进 study/review 编排链，导致 assistant 一边发卡一边继续提问，体验上像两套交互同时抢主导权
+- 一部分 fallback activity 文案也过于 demo 内部化，容易让题干看起来像在问系统自己，而不是围绕用户当前主题学习
+
+### 影响
+
+- 后续 review 要显式检查：meta / capability turn 是否被错误编排成正式学习动作
+- study / review 的 activity 文案默认继续朝“围绕当前知识点和用户主题”收敛，避免出现“为什么系统这样安排你”这类自指题干
+
+## 2026-04-18 — `project session` 的默认语义收敛为“学习方向 / 材料 / 主题讨论 / 知识点更新”
+
+### 决策
+
+- `project session` 的默认目标不再表述为泛化的 “project chat / project orchestration”，而是明确收敛为四类推进动作：对齐学习方向、围绕学习主题讨论、补充相关材料、提出 knowledge point 更新建议
+- `project session` 的 prompt、template fallback、low-info 澄清文案和 session guidance 摘要都要使用同一套语义，不允许 prompt 说一套、runtime fallback 又退回“继续 project 讨论 / 设计判断”
+- 如果用户在 `project session` 里问的是系统 / 操作层面的 meta 问题，可以简短回答，但回答后仍要自然拉回当前学习主题、材料或知识点推进
+
+### 原因
+
+- 当前实现虽然已经阻断了 `project session` 发题，但 reply / fallback 文案仍然偏“泛 project 对话”，导致实际回复经常不贴用户的学习意图，也不符合 spec 对 `project session` 的定义
+- 用户从 UI 视角看到的结果是：文本没有跑偏到 study/review，但仍然像在做空泛的 project 管理对话，缺少“你现在要学什么 / 缺什么材料 / 哪个知识点该更新”的明确推进感
+
+### 影响
+
+- 后续 review 不只要检查 `project session` 会不会发题，还要检查回复是否真正落到这四类推进目标之一
+- 后续如果继续优化 `project session` 的 LLM 质量，few-shot 和 fallback reply 也要围绕这四类目标组织，不能再回到抽象的 “继续 project 讨论”
+
+## 2026-04-18 — `project session` 必须先按 project chat 推进，低信息输入不触发学习编排
+
+### 决策
+
+- `project session` 新增 deterministic low-info guard：像 `hi / hello / 在吗 / 继续` 这类低信息输入，不再走 LLM 学习诊断和学习动作链路
+- 这类输入会直接返回 project-chat 澄清回复，只提示用户明确这轮是要继续讨论设计问题、补材料、沉淀知识点，还是切到 `study / review session`
+- `project session` 的 LLM prompt 必须显式看到 `session_type`，并遵守“只能 project chat，不得把回复写成回忆 / 练习 / 作答 / 情境模拟”这条约束
+- `project session` 的空 fallback 计划和空 state patch 也要遵守这条边界：不再把 project chat 写回成 learner state / review patch
+
+### 原因
+
+- 之前即使前端已经不再渲染题卡，backend prompt 仍把所有 session 都当成 pedagogical turn，导致 `project session` 文本语义继续漂成“来做个快速回顾”
+- 对低信息输入缺少专门 guard，会让 `hi` 这类消息也被硬套进 diagnosis / reply 模板，既慢又明显不符合 spec
+- 回复生成链路里还存在把整个 `Message` 对象而不是纯 `content` 传进 LLM prompt 的问题，会进一步降低 reply 对用户输入的贴合度
+
+### 影响
+
+- 后续 review 要同时检查两层：`project session` 不仅不能发题卡，reply / plan 语义本身也不能漂回学习 session 口吻
+- `project session` 默认不再写 learner/review state patch；这类 session 的主产物应回到 project chat、本轮解释和 knowledge point suggestion
+- 后续 prompt 设计默认按“共享 base prompt + session-specific prompt”分层，不再继续把 `project / study / review` 的行为差异堆进一份超长共享 prompt
+- 后续若继续优化响应速度，`project session` 的 greeting / continue 类 turn 已经有了稳定的无 LLM 快路径
+
+## 2026-04-18 — `project / study / review` 的边界按 session 类型硬收口，学习动作改成整组 `activities[]`
+
+### 决策
+
+当前 session 语义固定为：
+
+- `project session` 只负责 project 对话、材料挂载、topic / rules 调整和 knowledge point suggestion / archive suggestion，不直接下发学习题卡
+- `study session` 和 `review session` 才允许下发学习动作；这两类 session 不再支持挂 project materials，也不再把右栏渲染成 project 级材料 / 知识点治理面板
+- learning activity contract 正式收成一组 `activities[]`，而不是单张 `activity`
+- 前端必须先在本地完成整组 card，再把整组结果作为一次统一输入回传给 agent，进入下一轮 agent loop
+- 第一版 study / review activity 统一收成 choice-based 卡片，不再混用文本作答卡
+
+### 原因
+
+- 之前虽然 request 已显式带 `session_type`，但 UI、inspector 和 activity loop 仍保留了大量跨 session 泄漏：project session 会提前看到学习卡，study / review 也还能挂材料
+- 单张 `activity` + 一卡一轮回复会把学习动作打散成很多碎 agent turn，既不符合 spec，也会让 session 节奏变成“做一题就等一次长回复”
+- 如果不把这些边界收死，后面前端很容易再次靠 fallback / heuristic 把 session 语义补乱
+
+### 影响
+
+- 后续 backend / frontend 联调默认按 `activities[]` 检查 contract，不再以单张 `activity` 为主路径
+- `project session` 的 inspector、材料入口和 backend preload 默认继续按 project orchestration 语义收敛；study / review 则默认围绕当前 knowledge point 和回忆 / 学习编排展开
+- 后续若要支持更开放的学习形式，需要先在 spec 里显式放开 choice-only 约束，而不是在前端直接混入文本题
+- 后续 review 要显式检查：是否又出现 project session 发题、study / review 挂材料、或 activity 完一张就立刻进新一轮 agent 的回归
+
+## 2026-04-18 — `AgentRequest` 显式携带 `session_type`，`project session` 不再默认伪装成 unit session
+
+### 决策
+
+当前 web -> agent contract 固定为：
+
+- `AgentRequest` 显式携带 `session_type = project | study | review`
+- `project session` 默认不再为了复用旧链路而塞一个 fallback `target_unit_id`
+- `project session` 不直接下发学习 / 复习 `activity`；这一类 session 只负责围绕 project topic 推进对话、补材料、输出知识点 suggestion 等 project-level 编排结果
+- knowledge point create / archive suggestion 只在 `project session` 下产出
+- `review session` 默认优先保持“回忆校准 / 短反馈”语义；除非混淆非常明显，否则不回退成普通 teach / apply 问答
+- `/runs/v0/stream` 在第一条 diagnosis 前先发 typed `status` 事件，前端据此渲染等待态和阶段提示
+
+### 原因
+
+- 之前前端会把 `project session` 连同一个默认 unit 一起发给 agent，导致 project chat 被误判成“围绕固定知识点的 session”
+- 这会直接压缩 project 级 suggestion、session 差异化 prompt 和 lifecycle judgment 的空间，让 `project / study / review` 只剩 UI 标签区别
+- 流式链路虽然会很快打开 SSE 连接，但在 diagnosis 前长期没有 typed event，前端只能靠本地 running state 硬撑等待区，无法表达真实阶段
+
+### 影响
+
+- 前端后续创建 request 时，必须显式传 `session_type`，并仅在有真实知识点焦点时传 `target_unit_id`
+- 前端后续消费 `project session` 结果时，不得继续沿用 fallback / mock `activity` 把 project chat 渲染成“待做题”状态
+- 学习引擎后续关于 session 差异、activity 节奏和 suggestion 边界的讨论，都以这条 contract 为前提，不再默认从 thread id 或 fallback unit 猜 session 语义
+- 流式 UI 后续要优先消费 `status -> diagnosis -> text-delta -> ...` 这一顺序，而不是假设首个 typed event 一定是 diagnosis
+
 ## 2026-04-18 — 确定性 tool context 默认前置到主决策前，后置 tool loop 只保留给少数动态缺口
 
 ### 决策

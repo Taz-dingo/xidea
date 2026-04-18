@@ -6,7 +6,13 @@ from fastapi.testclient import TestClient
 
 from xidea_agent.api import create_app
 from xidea_agent.repository import SQLiteRepository
-from xidea_agent.state import KnowledgePoint, KnowledgePointState
+from xidea_agent.state import (
+    KnowledgePoint,
+    KnowledgePointState,
+    KnowledgePointSuggestion,
+    ProjectLearningProfile,
+    ProjectMemory,
+)
 
 from conftest import build_mock_llm, build_mock_llm_for_review, build_mock_llm_for_teach
 
@@ -160,6 +166,7 @@ def test_persisted_run_is_queryable_from_storage_endpoints(
 _SAMPLE_REQUEST = {
     "project_id": "rag-demo",
     "thread_id": "thread-1",
+    "session_type": "study",
     "entry_mode": "chat-question",
     "topic": "RAG retrieval design",
     "target_unit_id": "unit-rag-retrieval",
@@ -171,6 +178,7 @@ _SAMPLE_REQUEST = {
 _SUGGESTION_REQUEST = {
     "project_id": "rag-demo",
     "thread_id": "thread-project-1",
+    "session_type": "project",
     "entry_mode": "chat-question",
     "topic": "RAG 系统设计",
     "messages": [
@@ -184,6 +192,7 @@ _SUGGESTION_REQUEST = {
 _ARCHIVE_REQUEST = {
     "project_id": "rag-demo",
     "thread_id": "thread-project-archive",
+    "session_type": "project",
     "entry_mode": "chat-question",
     "topic": "RAG 系统设计",
     "messages": [
@@ -207,10 +216,12 @@ def test_stream_endpoint_returns_sse_events(client: TestClient) -> None:
         if line.startswith("event: "):
             event_types.append(line[len("event: "):])
 
-    assert event_types[0] == "diagnosis"
-    assert event_types[1] == "text-delta"
-    assert "plan" in event_types[1:-2]
-    assert "activity" in event_types[1:-2]
+    assert event_types[:2] == ["status", "status"]
+    assert event_types[2] == "diagnosis"
+    assert event_types[3] == "status"
+    assert event_types[4] == "text-delta"
+    assert "plan" in event_types[4:-2]
+    assert "activities" in event_types[4:-2]
     assert event_types[-2:] == ["state-patch", "done"]
     assert event_types.count("text-delta") >= 1
 
@@ -237,11 +248,14 @@ def test_stream_endpoint_emits_activity_payload(client: TestClient) -> None:
 
     data_lines = [line[len("data: "):] for line in raw.splitlines() if line.startswith("data: ")]
     activity_payload = next(
-        json.loads(data_line) for data_line in data_lines if json.loads(data_line)["event"] == "activity"
+        json.loads(data_line)
+        for data_line in data_lines
+        if json.loads(data_line)["event"] == "activities"
     )
 
-    assert activity_payload["activity"]["kind"] == "quiz"
-    assert activity_payload["activity"]["knowledge_point_id"] == "unit-rag-retrieval"
+    assert len(activity_payload["activities"]) == 2
+    assert activity_payload["activities"][0]["kind"] == "quiz"
+    assert activity_payload["activities"][0]["knowledge_point_id"] == "unit-rag-retrieval"
 
 
 def test_stream_endpoint_emits_knowledge_point_suggestion_payload(client: TestClient) -> None:
@@ -251,14 +265,25 @@ def test_stream_endpoint_emits_knowledge_point_suggestion_payload(client: TestCl
     raw = response.text
 
     data_lines = [line[len("data: "):] for line in raw.splitlines() if line.startswith("data: ")]
+    payloads = [json.loads(data_line) for data_line in data_lines]
     suggestion_payload = next(
-        json.loads(data_line)
-        for data_line in data_lines
-        if json.loads(data_line)["event"] == "knowledge-point-suggestion"
+        payload
+        for payload in payloads
+        if payload["event"] == "knowledge-point-suggestion"
     )
 
     assert suggestion_payload["suggestions"][0]["kind"] == "create"
     assert suggestion_payload["suggestions"][0]["title"] == "embedding 与 reranking 的边界"
+    assert "activities" not in [payload["event"] for payload in payloads]
+
+
+def test_run_v0_project_session_returns_suggestion_without_activity(client: TestClient) -> None:
+    response = client.post("/runs/v0", json=_SUGGESTION_REQUEST)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["graph_state"]["activity"] is None
+    assert payload["graph_state"]["knowledge_point_suggestions"][0]["kind"] == "create"
 
 
 def test_stream_endpoint_off_topic_does_not_emit_activity_or_suggestion(client: TestClient) -> None:
@@ -278,9 +303,10 @@ def test_stream_endpoint_off_topic_does_not_emit_activity_or_suggestion(client: 
     data_lines = [json.loads(line[len("data: "):]) for line in raw.splitlines() if line.startswith("data: ")]
 
     event_types = [item["event"] for item in data_lines]
-    assert event_types[0] == "diagnosis"
+    assert event_types[0] == "status"
+    assert event_types[1] == "diagnosis"
     assert event_types[-3:] == ["plan", "state-patch", "done"]
-    assert "activity" not in event_types
+    assert "activities" not in event_types
     assert "knowledge-point-suggestion" not in event_types
 
 
@@ -291,7 +317,7 @@ def test_stream_diagnosis_contains_action_scores(client: TestClient) -> None:
     raw = response.text
 
     data_lines = [line[len("data: "):] for line in raw.splitlines() if line.startswith("data: ")]
-    diagnosis_data = json.loads(data_lines[0])
+    diagnosis_data = next(json.loads(line) for line in data_lines if json.loads(line)["event"] == "diagnosis")
     assert diagnosis_data["event"] == "diagnosis"
     assert diagnosis_data["diagnosis"]["recommended_action"] == "clarify"
 
@@ -431,6 +457,130 @@ def test_run_v0_persists_activity_result_writeback(tmp_path: Path) -> None:
     knowledge_point_state = repository.get_knowledge_point_state("kp-rag-boundary")
     assert knowledge_point_state is not None
     assert knowledge_point_state.review_status == "scheduled"
+
+
+def test_consolidation_preview_summarizes_project_state(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.create_or_update_project_memory(
+        ProjectMemory(
+            project_id="rag-demo",
+            summary="最近 project chat 反复暴露 retrieval 与 reranking 的边界问题。",
+            updated_at=now,
+        )
+    )
+    repository.create_or_update_project_learning_profile(
+        ProjectLearningProfile(
+            project_id="rag-demo",
+            current_stage="正在把 RAG 基础概念压成稳定判断",
+            primary_weaknesses=["retrieval / reranking 边界", "query routing"],
+            learning_preferences=["先辨析再练习"],
+            freshness="fresh",
+            updated_at=now,
+        )
+    )
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-rag-boundary",
+                project_id="rag-demo",
+                title="retrieval 与 reranking 的边界",
+                description="说明 retrieval 与 reranking 在 RAG 里的职责边界。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            ),
+            KnowledgePoint(
+                id="kp-query-routing",
+                project_id="rag-demo",
+                title="query routing 的判断条件",
+                description="说明什么时候要把问题路由到不同检索链路。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-2"],
+                created_at=now,
+                updated_at=now,
+            ),
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-rag-boundary",
+                mastery=52,
+                learning_status="learning",
+                review_status="scheduled",
+                next_review_at=now - timedelta(days=1),
+                archive_suggested=False,
+                updated_at=now,
+            ),
+            KnowledgePointState(
+                knowledge_point_id="kp-query-routing",
+                mastery=91,
+                learning_status="stable",
+                review_status="stable",
+                next_review_at=now + timedelta(days=14),
+                archive_suggested=True,
+                updated_at=now,
+            ),
+        ],
+    )
+    repository.save_knowledge_point_suggestions(
+        [
+            KnowledgePointSuggestion(
+                id="suggest-create-boundary",
+                kind="create",
+                project_id="rag-demo",
+                session_id="thread-project-1",
+                title="hybrid search 与 reranking 的边界",
+                description="沉淀 hybrid search 与 reranking 的差异。",
+                reason="project chat 里持续出现边界混淆。",
+                source_material_refs=["asset-2"],
+                status="pending",
+                created_at=now,
+                updated_at=now,
+            ),
+            KnowledgePointSuggestion(
+                id="suggest-archive-routing",
+                kind="archive",
+                project_id="rag-demo",
+                session_id="thread-project-1",
+                knowledge_point_id="kp-query-routing",
+                title="query routing 的判断条件",
+                description="说明什么时候要把问题路由到不同检索链路。",
+                reason="已经稳定，可考虑归档。",
+                source_material_refs=["asset-2"],
+                status="pending",
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+    )
+
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
+    response = client.get("/projects/rag-demo/consolidation-preview")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["project_id"] == "rag-demo"
+    assert payload["knowledge_point_stats"]["total"] == 2
+    assert payload["knowledge_point_stats"]["due_for_review"] == 1
+    assert payload["knowledge_point_stats"]["pending_create_suggestions"] == 1
+    assert payload["knowledge_point_stats"]["pending_archive_suggestions"] == 1
+    assert payload["due_for_review"][0]["knowledge_point_id"] == "kp-rag-boundary"
+    assert payload["project_learning_profile"]["primary_weaknesses"][0] == "retrieval / reranking 边界"
+    assert any("review session" in item for item in payload["recommended_actions"])
+
+
+def test_consolidation_preview_returns_404_without_project_state(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
+
+    response = client.get("/projects/missing/consolidation-preview")
+
+    assert response.status_code == 404
 
 
 def test_thread_context_returns_no_content_before_first_persist(

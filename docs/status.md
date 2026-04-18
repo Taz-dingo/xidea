@@ -6,6 +6,28 @@
 
 #### 本轮方向确认
 
+- `apps/agent` 已把 choice activity contract 扩成 backend-owned 正确性结构：每个选项现在显式带 `is_correct / feedback_layers / analysis`，前端不再自己猜正确项或错误分析
+- `apps/web` 已把学习卡交互改成“点选即判、错了继续、对了自动进下一张”的强反馈节奏；多次纠偏轨迹会一并记进本轮 card deck，而不是中途反复触发 agent
+- `apps/web` 已把完成的 card deck 收进右侧 inspector，可回看每张卡的尝试次数、最终作答，以及错误选择对应的分析
+- `apps/web` 已把 session 边界继续收死：`project session` 才显示材料入口和 project 级 inspector，`study / review session` 不再支持挂 project materials，也不再在右栏展示 project chat 风格的“当前知识点 / 材料 / 复习”混合面板
+- `apps/web` 已把学习动作 loop 改成整组卡组节奏：当前会先在本地完成一组 `activities[]`，再把整组结果作为一次统一输入回传给 agent，不再“一做完一张卡就触发一轮新回复”
+- `apps/web` 已修正学习卡提前出现的问题：agent 回复未完成时，中栏只展示等待态和文本流，不再在 assistant 还没回完前提前把学习卡片插出来
+- `apps/agent` 已将学习动作 contract 从单张 `activity` 扩成整组 `activities[]`，`graph_state` 与 stream event 都会带 card deck；`graph_state.activity` 仅保留为首张卡兼容字段
+- `apps/agent` 已将 study / review session 的第一版 activity 收成 choice-based 卡片，并把非 project session 的材料上下文预取收掉，避免 study / review 被 thread context 里的旧材料拖慢或污染
+- `apps/web` 已收掉中间对话流里的 `Agent` 文本标签；assistant 回复区域改为纯内容呈现，避免继续把系统回复做成聊天角色展示
+- `apps/web` 已为等待回复补上真实流式等待态：当前会消费 backend typed `status` 事件，并在中栏显示带循环动效的阶段提示，不再用静态占位文案硬撑
+- `apps/web` 已修正 session request contract：当前会显式把 `session_type` 发给 agent，且 `project session` 不再默认塞 fallback `target_unit_id`
+- `apps/agent` 已将 `session_type` 正式接进 runtime：`project / study / review` 三类 session 不再只停留在前端标签；`project session` 不再下发学习动作卡，knowledge point suggestion 仅在 `project session` 里触发，`review session` 也会优先保持回忆校准语义
+- `apps/agent` 已继续把 `project session` 收成真正的 project chat：低信息输入（如 `hi / 继续 / 在吗`）会直接走 deterministic project-chat 澄清，不再进入学习诊断、题卡编排或 learner state 写回
+- `apps/agent` 已修正 reply 生成链路里的用户消息传递：`compose_response` / `stream reply` 现在传入的是纯 `message.content`，不再把整个 `Message(role=..., content=...)` 对象塞进 prompt
+- `apps/agent` 已把 system prompt 结构升级成“共享 base prompt + 按 `project / study / review` 分轨的 session prompt”，不再只靠在同一份 prompt 里追加 `session_type` 说明
+- `apps/agent` 已把 `project session` 的默认语义进一步收成“学习方向 / 主题讨论 / 材料线索 / 知识点更新”四类推进目标；prompt、template fallback、low-info 澄清文案和 session guidance 摘要不再退回空泛的 “继续 project 讨论”
+- `apps/agent` 已为 `study / review session` 增加 capability / meta guard：像“你可以做什么”这类消息会先返回当前 session 的能力说明，不再直接掉进学习卡 / 复习卡
+- `apps/agent` 已为 `/runs/v0/stream` 补 typed `status` 事件：当前顺序是 `status -> status -> diagnosis -> ...`，前端可以在 diagnosis 前就拿到阶段反馈
+- `apps/agent` 已把 `/runs/v0/stream` 的 reply 主路径改成真实 `stream_assistant_reply`：stream 端点不再把 bundled reply 拿回后本地切片伪装成 `text-delta`
+- `apps/agent` 已顺手压缩主决策 prompt 里的 observation 摘要长度，减少结构化主调用里无效上下文膨胀；首个 typed event 已不再等到 diagnosis 才出现
+- `apps/web` 已收掉 `project session` 的 fallback / mock activity 泄漏：当 backend 不发 `activity` 时，前端不再把 project chat 渲染成“先做题再继续”的受约束态
+- `apps/web` 已修正“assistant 文本提问 + pending activity 卡组”同时显示的问题：当前有待完成卡组时，中栏不再把同一轮 assistant 原文和卡组并排当成两套指令
 - `apps/web` 已修复 agent 健康探测与 session 数据同步里的重复请求问题：`useAgentHealth` 与 `useSessionDataSync` 不再依赖每次 render 都变化的整块 workspace data，并对 abort cleanup 做去重处理，避免 `/health`、`inspector-bootstrap` 等接口因 render cleanup 反复重发
 - 明确新增一条团队级实现约束：不允许把过多逻辑持续堆进单个文件；这条规则同时适用于前端、后端和 agent，`App` / page / screen / endpoint / graph 入口默认只负责编排，领域逻辑、adapter、repository、prompt 和可复用实现细节必须按职责拆分
 - 已新增 repo-local `clean-code-guardrails` skill，并接入项目技能清单，用来在前端、后端和 agent 里显式检查单文件职责漂移与入口文件过载
@@ -201,6 +223,7 @@
 - 收敛学习引擎下一步运行形态：在已补 project context preload 的基础上，继续把 project materials、project memory、learning profile、review context 收进同一主决策证据上下文
 - 将当前展示型 `StudyPlan` 过渡收敛为 session 内可执行 activity contract，支持 agent 在对话里直接触发学习 / 复习动作；前端已停止本地脑补 activity
 - 收敛 web-agent contract：从当前 `diagnosis / plan` 过渡适配切到结构化 activity / tool result 事件
+- 已将 waiting feedback 接到 backend typed `status` 事件，但首个真正的 diagnosis / reply 体感仍明显受 provider 时延影响；后续继续盯主模型调用耗时，而不是只靠前端动画掩盖
 - 收敛前端 activity gating：当前学习动作未完成前，主输入区改成受约束交互
 - 收敛用户侧 activity 节奏：让"作答完成 -> 下一轮简短诊断 / 动作反馈"更自然，避免重新把内部证据摊回中间学习线程
 - 规划后续可借鉴的学习模式扩展项：`hint / more questions / performance feedback / 材料直出 quiz 或 study guide`，但不作为第一版选择题 session 的阻塞项

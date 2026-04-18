@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 EntryMode = Literal["chat-question", "material-import", "coach-followup"]
 ResponseMode = Literal["sync", "stream"]
+SessionType = Literal["project", "study", "review"]
 MessageRole = Literal["system", "user", "assistant"]
 ActivityKind = Literal["quiz", "recall", "coach-followup"]
 ActivityResultType = Literal["exercise", "review"]
@@ -48,6 +49,12 @@ LearningMode = Literal[
     "image-recall",
     "audio-recall",
     "scenario-sim",
+]
+StatusPhase = Literal[
+    "loading-context",
+    "making-decision",
+    "retrieving-context",
+    "composing-response",
 ]
 
 
@@ -159,6 +166,9 @@ class ActivityChoice(StrictModel):
     id: str = Field(min_length=1)
     label: str = Field(min_length=1)
     detail: str = Field(min_length=1)
+    is_correct: bool = False
+    feedback_layers: list[str] = Field(default_factory=list)
+    analysis: str | None = None
 
 
 class ActivityChoiceInput(StrictModel):
@@ -304,6 +314,7 @@ class ToolResult(StrictModel):
 class AgentRequest(StrictModel):
     project_id: str = Field(min_length=1)
     thread_id: str = Field(min_length=1)
+    session_type: SessionType = "study"
     entry_mode: EntryMode
     topic: str = Field(min_length=1)
     messages: list[Message] = Field(min_length=1)
@@ -333,6 +344,7 @@ class GraphState(StrictModel):
     tool_result: ToolResult | None = None
     plan: StudyPlan | None = None
     activity: Activity | None = None
+    activities: list[Activity] = Field(default_factory=list)
     knowledge_point_suggestions: list[KnowledgePointSuggestion] = Field(default_factory=list)
     knowledge_point_state_writebacks: list[KnowledgePointState] = Field(default_factory=list)
     project_memory_writeback: ProjectMemory | None = None
@@ -348,6 +360,12 @@ class TextDeltaEvent(StrictModel):
     delta: str = Field(min_length=1)
 
 
+class StatusEvent(StrictModel):
+    event: Literal["status"]
+    phase: StatusPhase
+    message: str = Field(min_length=1)
+
+
 class DiagnosisEvent(StrictModel):
     event: Literal["diagnosis"]
     diagnosis: Diagnosis
@@ -361,6 +379,11 @@ class PlanEvent(StrictModel):
 class ActivityEvent(StrictModel):
     event: Literal["activity"]
     activity: Activity
+
+
+class ActivitiesEvent(StrictModel):
+    event: Literal["activities"]
+    activities: list[Activity] = Field(min_length=1)
 
 
 class KnowledgePointSuggestionEvent(StrictModel):
@@ -379,10 +402,12 @@ class DoneEvent(StrictModel):
 
 
 StreamEvent = Annotated[
-    TextDeltaEvent
+    StatusEvent
+    | TextDeltaEvent
     | DiagnosisEvent
     | PlanEvent
     | ActivityEvent
+    | ActivitiesEvent
     | KnowledgePointSuggestionEvent
     | StatePatchEvent
     | DoneEvent,
@@ -397,6 +422,21 @@ class AgentRunResult(StrictModel):
 
 def build_initial_observations(request: AgentRequest) -> list[Observation]:
     observations: list[Observation] = []
+    session_guidance = {
+        "project": "当前是 project session：优先围绕学习方向、主题讨论、材料和知识点池决定下一步，可提出知识点新增或归档建议。",
+        "study": "当前是 study session：优先围绕当前知识点建立理解、澄清边界或推进受约束练习。",
+        "review": "当前是 review session：优先做主动回忆、短反馈和复盘校准，除非混淆明显，不要扩散成普通 project 问答。",
+    }
+
+    observations.append(
+        Observation(
+            observation_id="session-type",
+            kind="project-note",
+            source="request-session",
+            summary=session_guidance[request.session_type],
+            detail={"sessionType": request.session_type},
+        )
+    )
 
     for index, message in enumerate(request.messages, start=1):
         kind: ObservationKind = (

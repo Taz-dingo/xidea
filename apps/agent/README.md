@@ -34,20 +34,27 @@ LLM 是核心 pedagogical agent，规则仅作为 guardrails：
 ### 启动 API
 
 ```bash
+cd apps/agent
 export XIDEA_LLM_API_KEY="你的key"
 export XIDEA_LLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4/"
 export XIDEA_AGENT_DB_PATH="$PWD/output/xidea-agent.db"
 
-uv run python -m xidea_agent
+uv --native-tls run python -m xidea_agent
 ```
 
 ### 运行测试
 
 ```bash
-uv run pytest tests/ -v
+cd apps/agent
+uv --native-tls run pytest tests/ -v
 ```
 
-测试使用 mock LLM，不需要真实 API key。
+默认测试使用 mock LLM，不需要真实 API key。真实 LLM 冒烟测试可单独执行：
+
+```bash
+cd apps/agent
+uv --native-tls run pytest tests/test_real_llm.py -v -m real_llm
+```
 
 ## 核心模块
 
@@ -72,6 +79,7 @@ uv run pytest tests/ -v
 | `/graph` | GET | 查看编排图结构 |
 | `/runs/v0` | POST | 执行一次完整 agent 循环 |
 | `/runs/v0/stream` | POST | SSE 流式输出 |
+| `/projects/{project_id}/consolidation-preview` | GET | 手动触发一份 project consolidation 预览快照 |
 | `/storage/status` | GET | 持久化状态 |
 | `/threads/{id}/recent-messages` | GET | 会话历史 |
 | `/threads/{id}/units/{uid}` | GET | 学习者状态 |

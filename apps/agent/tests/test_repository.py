@@ -58,6 +58,7 @@ def test_repository_initializes_and_persists_run(tmp_path: Path) -> None:
 def test_repository_persists_and_resolves_knowledge_point_suggestion(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "agent.db")
     request = build_request(
+        session_type="project",
         target_unit_id=None,
         topic="RAG 系统设计",
         messages=[

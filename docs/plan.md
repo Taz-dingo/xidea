@@ -25,6 +25,8 @@
 - 本轮 checklist：
   - [ ] 继续把主链路收敛到“预取证据上下文 -> 单次主决策 -> 少量动态 tool loop -> writeback”
   - [ ] 将 `project / study / review` 三类 session 的行为差异落实到 runtime / prompt / activity 决策
+    - 当前进展：`AgentRequest` 已显式带 `session_type`，`project session` 不再默认塞 fallback `target_unit_id`
+    - 当前进展：`project session` 才会产出 knowledge point suggestion，且不再直接下发 learning activity；`review session` 会优先保持回忆校准语义
   - [ ] 收敛知识点生命周期：bootstrap、project chat create suggestion、archive suggestion、confirm 后状态变化
   - [ ] 将 project materials、project memory、learning profile、review context 进一步收口为同一主决策证据包
   - [ ] 定出当前 `Consolidation` 的最小演示路径，优先手动触发
@@ -80,6 +82,18 @@
     - 已将 `reply + plan` bundling 为 1 次调用；sync 与 stream 目前都收敛到 2 次主模型调用
     - 已补 `main_decision` 单次主决策调用：当 `diagnosis.needs_tool=false` 时，sync / stream 会在同一次主调用里同时拿到 `signals + diagnosis + reply + plan`
     - 已把可预判的 tool context 前置到主决策前：`material-import -> asset-summary`、`coach-followup -> thread-memory`、`review -> review-context`、带 `target_unit_id` 的常规问答 -> `unit-detail`
+    - 已补 typed `status` stream 事件，首个可消费事件不再等到 diagnosis；前端可在主调用未返回时先展示阶段反馈
+    - 已把 stream 端点的 reply 路径切到真实 `stream_assistant_reply`，不再把 bundled reply 在服务端切块伪装成流式
+    - 已压缩 observation 摘要长度，减少结构化主调用里的无效 prompt 膨胀
+    - 已把非 project session 的材料上下文预取收掉，避免 study / review 被 thread context 里的旧材料拖慢或污染
+    - 已补 `project session` 的 low-info 快路径：`hi / hello / 在吗 / 继续` 这类 turn 会直接短路成 project-chat 澄清，不再白跑 LLM 诊断
+    - 已补 `study / review session` 的 capability / meta guard：`你可以做什么 / 你能怎么帮我` 这类 turn 会先返回 session 能力说明，不再误触学习卡或复习卡
+    - 已把 prompt 结构升级成“共享 base prompt + `project / study / review` 分轨 session prompt”，并继续保留 runtime guard；`project session` 也已加 pedagogical reply 过滤和 template fallback，避免文本语义漂回“先做题 / 先回忆”
+    - 已把 `project session` 的默认语义进一步收成“学习方向 / 主题讨论 / 材料线索 / 知识点更新”四类推进目标，避免 prompt 和 runtime fallback 再退回空泛的 project 管理对话
+    - 已修正 reply 生成链路里的 `user_msg` 传递错误：当前使用真实 `message.content`，不再把整个 `Message` 对象字符串塞进 prompt
+    - 已把 study / review 的 activity fallback 文案改得更贴当前知识点和主题，不再继续问“为什么系统这样安排你”这类自指问题
+    - 已把 choice activity contract 扩成 `is_correct / feedback_layers / analysis`，前端据此本地执行“错了继续、对了再过”的即时反馈；整组卡完成后仍统一回传一次 `activity_result`
+    - 已把 completed deck history 收进前端 runtime store 和右侧 inspector，当前可回看每张卡的尝试轨迹与错误分析
     - 当前剩余缺口集中在 LLM 仍主动返回 `needs_tool=true` 的少数场景：这些路径现在会优先复用预取上下文，但整体仍是 `main_decision -> tool/session loop -> bundled response`
 - [ ] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
   - owner: 学习引擎 owner / 产品 owner
@@ -107,8 +121,15 @@
     - 新鲜度 / 最近更新时间
 - [x] 让学习资料、project memory、learning profile、review context 在主决策前完成预取，并进入同一证据上下文
   - owner: 学习引擎 owner
-- [ ] 定义 `project / study / review` 三类 session 的职责与状态转换
+  - [ ] 定义 `project / study / review` 三类 session 的职责与状态转换
   - owner: 产品 owner / 学习引擎 owner / 前端 owner
+  - 当前进展：
+    - request contract 已显式带 `session_type`
+    - `project session` / `review session` 的最小运行时差异已开始落到 agent
+    - `project session` 已不再发题，且前端只在 project session 暴露材料入口 / project inspector
+    - `project session` 的低信息 turn 已不再误触学习回复；下一步重点转到更细的 project-chat judgment 质量和 `needs_tool=true` 残留路径
+    - study / review session 已切到整组 `activities[]` 卡组，并在本地做完整组后再统一进入下一轮 agent loop
+    - 剩余缺口主要在 session create/bootstrap contract、持久化字段和更完整的状态转换
 - [x] 将 Project Workspace 改成默认知识点工作台，只有进入 session 时才展开 session workspace
   - owner: 前端 owner
   - 参考：`docs/reference/project-workspace-ui.md`
@@ -121,13 +142,14 @@
   - owner: 前端 owner / 学习引擎 owner
   - 说明：
     - 前端入口可先完成，但知识点建议新增的最终判断权归 agent；当前前端本地启发式已移除，等待 backend suggestion 事件
-- [ ] 将学习 / 复习 session 第一版限制为选择题，不先接入简答题与开放式对练
+- [x] 将学习 / 复习 session 第一版限制为选择题，不先接入简答题与开放式对练
   - owner: 产品 owner / 前端 owner / 学习引擎 owner
 - [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环，让学习/复习结果真正影响知识点状态与 project learning profile
   - owner: 学习引擎 owner / 前端 owner
   - 当前进展：
     - backend typed contract、repository writeback、project-level preload 已完成
-    - frontend 仍待把 activity submit 从自由文本切到 typed `activity_result`
+    - frontend 已将整组 activity 完成结果作为 typed `activity_result` 随下一轮请求回传
+    - 当前剩余缺口是把多张 card 的表现进一步拆成更细粒度的 backend writeback，而不是只做整组聚合结果
 - [x] 明确 project 不相关内容的 guardrail：主动提醒，但不更新 memory、不新增知识点、不触发学习/复习编排
   - owner: 学习引擎 owner
 - [x] 定义 knowledge point archive 建议规则：多次复习稳定后由系统建议，用户确认执行

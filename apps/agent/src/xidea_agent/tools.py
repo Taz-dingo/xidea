@@ -349,7 +349,11 @@ def build_project_context(
         if isinstance(thread_context, dict)
         else []
     )
-    source_asset_ids = request.source_asset_ids or stored_asset_ids
+    source_asset_ids = (
+        request.source_asset_ids or stored_asset_ids
+        if request.session_type == "project"
+        else []
+    )
     focus_unit = retrieve_learning_unit(request.target_unit_id, request.topic)
     recent_messages = (
         repository_context.get("recent_messages", [])

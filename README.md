@@ -31,7 +31,7 @@ export XIDEA_LLM_MODEL="glm-5"
 
 # 启动 agent
 cd apps/agent
-uv run python -m xidea_agent
+uv --native-tls run python -m xidea_agent
 ```
 
 启动后可访问：
@@ -94,7 +94,7 @@ curl -X POST http://127.0.0.1:8000/runs/v0 \
 
 ```bash
 cd apps/agent
-uv run pytest tests/ -v
+uv --native-tls run pytest tests/ -v
 ```
 
 测试使用 mock LLM，不需要真实 API key。

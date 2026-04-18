@@ -17,6 +17,14 @@ def _mock_openai_response(content: str):
     return SimpleNamespace(choices=[choice])
 
 
+def _mock_openai_stream(chunks: list[str]):
+    stream_chunks = [
+        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=chunk))])
+        for chunk in chunks
+    ]
+    return iter(stream_chunks)
+
+
 def _build_response_bundle(reply: str, plan: dict[str, object]) -> str:
     return json.dumps({
         "reply": reply,
@@ -78,6 +86,10 @@ def _default_side_effect():
                 plan=json.loads(plan),
             )
         ),
+        _mock_openai_stream([
+            "这两个概念的关键区别在于：retrieval 负责从大量文档中召回候选集，",
+            "reranking 则在候选集上做精排。",
+        ]),
     ]
 
 
@@ -122,6 +134,10 @@ def build_mock_llm_for_review() -> LLMClient:
                 plan=plan,
             )
         ),
+        _mock_openai_stream([
+            "来做一次主动回忆吧，",
+            "看看哪些概念已经掉出工作记忆了。",
+        ]),
     ]
     return LLMClient(client=mock_client, model="gpt-4o-mini")
 
@@ -160,6 +176,9 @@ def build_mock_llm_for_teach() -> LLMClient:
                 plan=plan,
             )
         ),
+        _mock_openai_stream([
+            "我们先来建立一个理解框架。",
+        ]),
     ]
     return LLMClient(client=mock_client, model="gpt-4o-mini")
 
@@ -198,6 +217,10 @@ def build_mock_llm_for_material_import() -> LLMClient:
                 plan=plan,
             )
         ),
+        _mock_openai_stream([
+            "我先看看你导入的材料，",
+            "然后基于材料内容安排学习。",
+        ]),
     ]
     return LLMClient(client=mock_client, model="gpt-4o-mini")
 

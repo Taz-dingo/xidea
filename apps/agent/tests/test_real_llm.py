@@ -21,7 +21,11 @@ pytestmark = pytest.mark.real_llm
 
 
 def _load_env_once() -> None:
-    from dotenv import load_dotenv
+    try:
+        from dotenv import load_dotenv
+    except ModuleNotFoundError:
+        return
+
     load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 

@@ -217,6 +217,95 @@ def test_generate_reply_includes_tool_result_context() -> None:
     assert "asset-summary" in user_msg
 
 
+def test_generate_reply_uses_project_session_system_prompt() -> None:
+    llm = _make_mock_llm("当前先继续 project 对话。")
+
+    generate_assistant_reply(
+        llm,
+        _make_diagnosis(),
+        _make_plan(),
+        _make_learner_state(),
+        "继续讲讲为什么要做 reranking",
+        session_type="project",
+    )
+
+    call_args = llm.client.chat.completions.create.call_args
+    system_msg = call_args.kwargs["messages"][0]["content"]
+    assert "## Session Prompt" in system_msg
+    assert "当前 session 类型：project" in system_msg
+    assert "不要把这轮写成学习题、复习题" in system_msg
+    assert "帮用户明确当前 project 想学什么" in system_msg
+    assert "引导用户补充相关材料" in system_msg
+    assert "知识点更新" in system_msg
+
+
+def test_llm_build_reply_and_plan_uses_study_session_system_prompt() -> None:
+    bundled_json = json.dumps({
+        "reply": "这轮先把 retrieval 和 reranking 的边界拉清楚。",
+        "plan": {
+            "headline": "围绕 RAG 检索设计的辨析路径",
+            "summary": "先对比再追问",
+            "selected_mode": "contrast-drill",
+            "expected_outcome": "用户能区分 retrieval 和 reranking",
+            "steps": [
+                {"id": "compare", "title": "概念对比", "mode": "contrast-drill",
+                 "reason": "两个概念边界不清", "outcome": "能说清各自解决什么问题"},
+            ],
+        },
+    })
+    llm = _make_mock_llm(bundled_json)
+
+    result = llm_build_reply_and_plan(
+        llm,
+        "RAG",
+        "召回 vs 重排",
+        ["contrast-drill", "guided-qa"],
+        _make_diagnosis(),
+        _make_learner_state(),
+        "我分不清这两个概念",
+        session_type="study",
+    )
+
+    assert result is not None
+    call_args = llm.client.chat.completions.create.call_args
+    system_msg = call_args.kwargs["messages"][0]["content"]
+    assert "当前 session 类型：study" in system_msg
+    assert "你在处理结构化学习 session" in system_msg
+
+
+def test_llm_build_plan_uses_review_session_system_prompt() -> None:
+    from xidea_agent.llm import llm_build_plan
+
+    plan_json = json.dumps({
+        "headline": "围绕复习校准的路径",
+        "summary": "先回忆再短反馈",
+        "selected_mode": "guided-qa",
+        "expected_outcome": "确认记忆断点",
+        "steps": [
+            {"id": "recall-core", "title": "主动回忆", "mode": "guided-qa",
+             "reason": "先校准记忆", "outcome": "确认断点"},
+        ],
+    })
+    llm = _make_mock_llm(plan_json)
+
+    result = llm_build_plan(
+        llm,
+        "RAG",
+        "召回 vs 重排",
+        ["guided-qa", "contrast-drill"],
+        _make_diagnosis(recommended_action="review", primary_issue="weak-recall", reason="记忆走弱"),
+        _make_learner_state(memory_strength=32, confusion_level=30),
+        "我有点忘了两者区别",
+        session_type="review",
+    )
+
+    assert result is not None
+    call_args = llm.client.chat.completions.create.call_args
+    system_msg = call_args.kwargs["messages"][0]["content"]
+    assert "当前 session 类型：review" in system_msg
+    assert "优先验证主动回忆是否还稳定" in system_msg
+
+
 # --- enrich_plan_steps ---
 
 

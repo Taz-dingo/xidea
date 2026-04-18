@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import TypeAdapter
 from starlette.responses import StreamingResponse
 
+from xidea_agent.consolidation import build_consolidation_preview
 from xidea_agent.graph import describe_graph
 from xidea_agent.llm import LLMClient, build_llm_client
 from xidea_agent.repository import SQLiteRepository
@@ -89,6 +90,14 @@ def create_app(
             "enabled": repository is not None,
             "db_path": str(repository.db_path) if repository is not None else None,
         }
+
+    @app.get("/projects/{project_id}/consolidation-preview")
+    def consolidation_preview(project_id: str, limit: int = 5) -> dict[str, object]:
+        repo = _require_repository(repository)
+        preview = build_consolidation_preview(project_id, repo, limit=max(1, min(limit, 20)))
+        if preview is None:
+            raise HTTPException(status_code=404, detail="Project consolidation state not found")
+        return preview
 
     @app.get("/assets/summary")
     def asset_summary(asset_ids: str = "") -> dict[str, object]:
