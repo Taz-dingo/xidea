@@ -4,6 +4,7 @@ dist
 .env
 .env.local
 .env.*
+!apps/agent/.env.example
 coverage
 .idea
 .vscode

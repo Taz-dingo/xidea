@@ -23,6 +23,7 @@ Xidea 是一个面向内部比赛的 **AI 学习编排系统** demo 仓库。目
 ```bash
 # 设置必须的环境变量
 export XIDEA_LLM_API_KEY="你的key"
+export XIDEA_LLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4/"
 export XIDEA_AGENT_DB_PATH="$PWD/output/xidea-agent.db"
 
 # 可选：显式指定模型（默认 glm-5）
@@ -37,7 +38,7 @@ uv run python -m xidea_agent
 - 健康检查：`http://127.0.0.1:8000/health`
 - Schema 查看：`http://127.0.0.1:8000/schemas`
 
-> **注意**：必须提供兼容的 LLM key。后端会按 `XIDEA_LLM_API_KEY -> ZAI_API_KEY -> OPENAI_API_KEY` 的顺序读取；默认把通用 key 接到智谱 OpenAI-compatible 入口。
+> **注意**：新配置只建议使用 `XIDEA_LLM_API_KEY + XIDEA_LLM_BASE_URL + XIDEA_LLM_MODEL`。`ZHIPU_API_KEY / ZAI_API_KEY / OPENAI_API_KEY` 只保留兼容回退，不建议新环境继续依赖。
 
 ### 2. 启动 Web 前端
 
@@ -78,16 +79,16 @@ curl -X POST http://127.0.0.1:8000/runs/v0 \
 
 | 变量 | 必须 | 默认值 | 说明 |
 |------|------|--------|------|
-| `XIDEA_LLM_API_KEY` | 条件必填 | 无 | 通用 LLM key；默认按智谱 OpenAI-compatible 入口使用 |
-| `ZAI_API_KEY` | 条件必填 | 无 | 智谱官方环境变量名，作为 `XIDEA_LLM_API_KEY` 的回退 |
-| `OPENAI_API_KEY` | 条件必填 | 无 | OpenAI 兼容回退，保留旧配置可直接运行 |
-| `XIDEA_LLM_BASE_URL` | 否 | 智谱 `https://open.bigmodel.cn/api/paas/v4/` 或 OpenAI 默认 | 自定义 OpenAI-compatible base URL |
+| `XIDEA_LLM_API_KEY` | 建议必填 | 无 | 通用 LLM key；应用层主配置入口 |
+| `XIDEA_LLM_BASE_URL` | 否 | OpenAI 默认 | 自定义 OpenAI-compatible base URL；接 GLM 时填 `https://open.bigmodel.cn/api/paas/v4/` |
 | `XIDEA_LLM_MODEL` | 否 | `glm-5` 或 `gpt-4o-mini` | 使用的 LLM 模型 |
 | `XIDEA_LLM_TRUST_ENV` | 否 | `false` | 是否继承 `HTTP_PROXY/HTTPS_PROXY` 等代理环境变量 |
 | `XIDEA_LLM_CA_BUNDLE` | 否 | 无 | 自定义 CA 证书文件路径；证书链异常时优先使用 |
 | `XIDEA_LLM_ZHIPU_THINKING` | 否 | `disabled` | 智谱默认关闭 thinking，避免结构化输出落到空正文或 `reasoning_content` |
 | `XIDEA_AGENT_DB_PATH` | 否 | 无（不持久化） | SQLite 数据库路径，用于持久化会话和学习状态 |
 | `XIDEA_AGENT_ALLOW_ORIGINS` | 否 | `localhost:5173` | CORS 允许的前端域名（逗号分隔） |
+
+兼容说明：旧环境仍可继续使用 `ZHIPU_API_KEY / ZAI_API_KEY / OPENAI_API_KEY`，但仅作为回退读取来源，不再作为推荐配置口径。
 
 ## 运行测试
 

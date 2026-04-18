@@ -1,6 +1,6 @@
 """End-to-end tests using a real LLM API.
 
-Requires OPENAI_API_KEY (or equivalent) and network access.
+Requires a configured LLM API key and network access.
 Skipped automatically when no API key is configured.
 
 Run with:
@@ -27,7 +27,7 @@ def _load_env_once() -> None:
 
 def _has_api_key() -> bool:
     _load_env_once()
-    for key in ("OPENAI_API_KEY", "XIDEA_LLM_API_KEY", "ZAI_API_KEY"):
+    for key in ("XIDEA_LLM_API_KEY", "ZHIPU_API_KEY", "ZAI_API_KEY", "OPENAI_API_KEY"):
         if os.getenv(key, "").strip():
             return True
     return False
