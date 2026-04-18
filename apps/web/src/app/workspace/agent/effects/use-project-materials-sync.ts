@@ -38,7 +38,7 @@ export function useProjectMaterialsSync({
     const abortController = new AbortController();
     void listProjectMaterials(projectId, { signal: abortController.signal })
       .then((materials) => {
-        if (abortController.signal.aborted || materials.length === 0) {
+        if (abortController.signal.aborted) {
           return;
         }
 

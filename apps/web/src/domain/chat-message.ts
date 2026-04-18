@@ -51,3 +51,65 @@ export function getLatestUserDraft(
 
   return draftPrompt.trim();
 }
+
+function getMessageSignature(message: UIMessage): string {
+  return `${message.role}:${getMessageText(message)}`;
+}
+
+function hasMatchingPrefix(
+  left: ReadonlyArray<UIMessage>,
+  right: ReadonlyArray<UIMessage>,
+): boolean {
+  return right.every(
+    (message, index) => getMessageSignature(left[index] as UIMessage) === getMessageSignature(message),
+  );
+}
+
+export function areSameMessageHistory(
+  left: ReadonlyArray<UIMessage>,
+  right: ReadonlyArray<UIMessage>,
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((message, index) => getMessageSignature(message) === getMessageSignature(right[index] as UIMessage))
+  );
+}
+
+export function mergeMessageHistory(
+  base: ReadonlyArray<UIMessage>,
+  incoming: ReadonlyArray<UIMessage>,
+): UIMessage[] {
+  if (incoming.length === 0) {
+    return [...base];
+  }
+  if (base.length === 0) {
+    return [...incoming];
+  }
+  if (areSameMessageHistory(base, incoming)) {
+    return [...base];
+  }
+  if (base.length >= incoming.length && hasMatchingPrefix(base, incoming)) {
+    return [...base];
+  }
+  if (incoming.length >= base.length && hasMatchingPrefix(incoming, base)) {
+    return [...incoming];
+  }
+
+  const baseSignatures = base.map(getMessageSignature);
+  const incomingSignatures = incoming.map(getMessageSignature);
+
+  for (
+    let overlap = Math.min(baseSignatures.length, incomingSignatures.length);
+    overlap > 0;
+    overlap -= 1
+  ) {
+    const baseTail = baseSignatures.slice(-overlap);
+    const incomingHead = incomingSignatures.slice(0, overlap);
+    const matched = baseTail.every((signature, index) => signature === incomingHead[index]);
+    if (matched) {
+      return [...base, ...incoming.slice(overlap)];
+    }
+  }
+
+  return [...base, ...incoming];
+}

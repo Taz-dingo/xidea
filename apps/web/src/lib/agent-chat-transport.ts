@@ -42,6 +42,9 @@ export function createAgentChatTransport(input: {
   readonly projectId: string;
   readonly sessionId: string;
   readonly sessionType: SessionType;
+  readonly sessionTitle: string | null;
+  readonly sessionSummary: string | null;
+  readonly knowledgePointId: string | null;
   readonly entryMode: AgentEntryMode;
   readonly project: ProjectContext;
   readonly getSourceAssets: () => ReadonlyArray<SourceAsset>;
@@ -59,6 +62,9 @@ export function createAgentChatTransport(input: {
         projectId: input.projectId,
         sessionId: input.sessionId,
         sessionType: input.sessionType,
+        sessionTitle: input.sessionTitle,
+        sessionSummary: input.sessionSummary,
+        knowledgePointId: input.knowledgePointId,
         entryMode: input.entryMode,
         project: input.project,
         prompt,

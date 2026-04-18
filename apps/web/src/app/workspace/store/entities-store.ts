@@ -4,7 +4,6 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import {
   initialKnowledgePoints,
   initialProjects,
-  initialSessions,
 } from "@/data/project-workspace-demo";
 import { sourceAssets } from "@/data/demo";
 import type {
@@ -73,7 +72,7 @@ export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
     (set) => ({
       projects: initialProjects,
       knowledgePoints: initialKnowledgePoints,
-      sessions: initialSessions,
+      sessions: [],
       projectMaterialIdsByProject: initialProjectMaterials,
       projectAssetsByProject: initialProjectAssets,
       setProjects: (nextState) =>
@@ -103,10 +102,9 @@ export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
         projectAssetsByProject: state.projectAssetsByProject,
         projectMaterialIdsByProject: state.projectMaterialIdsByProject,
         projects: state.projects,
-        sessions: state.sessions,
       }),
       storage: createJSONStorage(() => localStorage),
-      version: 1,
+      version: 2,
     },
   ),
 );

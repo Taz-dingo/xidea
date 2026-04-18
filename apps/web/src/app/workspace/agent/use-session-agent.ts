@@ -7,6 +7,7 @@ import {
   buildMockRuntimeSnapshot,
   getRequestSourceAssetIds,
 } from "@/domain/agent-runtime";
+import { mergeMessageHistory } from "@/domain/chat-message";
 import {
   buildEmptyReviewHeatmap,
   buildReviewHeatmap,
@@ -29,6 +30,7 @@ import { createSessionActions } from "@/app/workspace/agent/session-actions";
 import { useAgentHealth } from "@/app/workspace/agent/effects/use-agent-health";
 import { useFixtureSync } from "@/app/workspace/agent/effects/use-fixture-sync";
 import { useProjectMaterialsSync } from "@/app/workspace/agent/effects/use-project-materials-sync";
+import { useProjectSessionsSync } from "@/app/workspace/agent/effects/use-project-sessions-sync";
 import { useSessionDataSync } from "@/app/workspace/agent/effects/use-session-data-sync";
 import { useSessionRuntimeSync } from "@/app/workspace/agent/effects/use-session-runtime-sync";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
@@ -225,6 +227,9 @@ export function useSessionAgent({
         projectId: data.selectedProject.id,
         sessionId: transportSessionId,
         sessionType: transportSessionType,
+        sessionTitle: data.selectedSession?.title ?? null,
+        sessionSummary: data.selectedSession?.summary ?? null,
+        knowledgePointId: data.selectedSession?.knowledgePointId ?? null,
         entryMode: effectiveEntryMode,
         project: requestProjectContext,
         getSourceAssets: () => activeSourceAssetsRef.current,
@@ -243,6 +248,9 @@ export function useSessionAgent({
       }),
     [
       data.selectedProject.id,
+      data.selectedSession?.knowledgePointId,
+      data.selectedSession?.summary,
+      data.selectedSession?.title,
       effectiveEntryMode,
       handleTransportRunStateChange,
       handleTransportSnapshot,
@@ -258,7 +266,17 @@ export function useSessionAgent({
     messages: data.selectedSession ? data.sessionMessagesById[data.selectedSession.id] ?? [] : [],
     transport,
   });
-  const displayMessages = isUsingDevTutorFixture ? data.devTutorFixtureState?.messages ?? [] : messages;
+  const persistedMessages =
+    data.selectedSession === undefined
+      ? []
+      : data.sessionMessagesById[data.selectedSession.id] ?? [];
+  const displayMessages = useMemo(
+    () =>
+      isUsingDevTutorFixture
+        ? data.devTutorFixtureState?.messages ?? []
+        : mergeMessageHistory(persistedMessages, messages),
+    [data.devTutorFixtureState?.messages, isUsingDevTutorFixture, messages, persistedMessages],
+  );
   const latestAssistantMessageId =
     [...displayMessages].reverse().find((message) => message.role === "assistant")?.id ?? null;
   const errorMessage = isUsingDevTutorFixture
@@ -271,6 +289,11 @@ export function useSessionAgent({
   useProjectMaterialsSync({
     data,
     projectId: data.selectedProject.id,
+  });
+  useProjectSessionsSync({
+    data,
+    projectId: data.selectedProject.id,
+    selectedSessionKey,
   });
 
   useEffect(() => {
@@ -363,7 +386,7 @@ export function useSessionAgent({
     currentActivityKey,
     data,
     error,
-    messages,
+    messages: displayMessages,
     projectContext: requestProjectContext,
     runtimeUnit,
     sendMessage,
@@ -372,7 +395,7 @@ export function useSessionAgent({
     assetSummaryKey,
     data,
     isAgentRunning,
-    messagesLength: messages.length,
+    messagesLength: displayMessages.length,
     projectId: data.selectedProject.id,
     requestSourceAssetIds,
     seedRuntime,

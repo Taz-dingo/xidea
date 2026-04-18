@@ -1,6 +1,8 @@
 import type {
   AgentAssetSummary,
   AgentInspectorBootstrap,
+  AgentMessage,
+  AgentProjectThreadRecord,
   AgentLearnerUnitState,
   AgentRequest,
   AgentReviewInspector,
@@ -229,6 +231,55 @@ export async function getThreadContext(
   }
 
   return (await response.json()) as AgentThreadContext;
+}
+
+export async function listProjectThreads(
+  projectId: string,
+  options?: { signal?: AbortSignal },
+): Promise<ReadonlyArray<AgentProjectThreadRecord>> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    throw new Error("未配置 agent API 地址。开发环境可直接启动本地代理，或设置 VITE_AGENT_API_BASE_URL。");
+  }
+
+  const response = await fetch(`${baseUrl}/projects/${projectId}/threads`, {
+    method: "GET",
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Project threads 请求失败（${response.status}）。`);
+  }
+
+  return (await response.json()) as ReadonlyArray<AgentProjectThreadRecord>;
+}
+
+export async function getThreadMessages(
+  threadId: string,
+  options?: { signal?: AbortSignal; limit?: number },
+): Promise<ReadonlyArray<AgentMessage>> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    throw new Error("未配置 agent API 地址。开发环境可直接启动本地代理，或设置 VITE_AGENT_API_BASE_URL。");
+  }
+
+  const messagesUrl = new URL(`${baseUrl}/threads/${threadId}/messages`, window.location.origin);
+  if (options?.limit !== undefined) {
+    messagesUrl.searchParams.set("limit", String(options.limit));
+  }
+
+  const response = await fetch(messagesUrl.toString(), {
+    method: "GET",
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Thread messages 请求失败（${response.status}）。`);
+  }
+
+  return (await response.json()) as ReadonlyArray<AgentMessage>;
 }
 
 export async function getInspectorBootstrap(

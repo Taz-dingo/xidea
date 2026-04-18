@@ -37,6 +37,9 @@ export interface AgentRequest {
   readonly project_id: string;
   readonly thread_id: string;
   readonly session_type: SessionType;
+  readonly session_title: string | null;
+  readonly session_summary: string | null;
+  readonly knowledge_point_id: string | null;
   readonly entry_mode: AgentEntryMode;
   readonly topic: string;
   readonly messages: ReadonlyArray<AgentMessage>;
@@ -217,6 +220,21 @@ export interface AgentThreadContext {
   readonly thread_id: string;
   readonly entry_mode: AgentEntryMode;
   readonly source_asset_ids: ReadonlyArray<string>;
+  readonly updated_at: string;
+}
+
+export interface AgentProjectThreadRecord {
+  readonly thread_id: string;
+  readonly project_id: string;
+  readonly topic: string;
+  readonly session_type: SessionType;
+  readonly knowledge_point_id: string | null;
+  readonly title: string;
+  readonly summary: string;
+  readonly status: string;
+  readonly entry_mode: AgentEntryMode;
+  readonly source_asset_ids: ReadonlyArray<string>;
+  readonly created_at: string;
   readonly updated_at: string;
 }
 
@@ -608,17 +626,18 @@ function buildAttachedMaterialPromptContext(
   }
 
   const materialLines = sourceAssets.slice(0, 3).map((asset, index) => {
-    const summary = asset.summary?.trim();
     return [
       `${index + 1}. ${asset.title}`,
       asset.topic.trim() ? `主题：${asset.topic.trim()}` : null,
-      summary ? `摘要：${summary.slice(0, 140)}` : null,
     ]
       .filter(Boolean)
       .join("；");
   });
 
-  return `当前已附材料：\n${materialLines.join("\n")}`;
+  return [
+    "当前已附材料，请优先读取这些材料的正文，再判断学习主题、关键概念和知识点建议。",
+    materialLines.join("\n"),
+  ].join("\n");
 }
 
 function shouldInjectMaterialTargeting(prompt: string): boolean {
@@ -648,6 +667,9 @@ export function buildAgentRequest(input: {
   readonly projectId: string;
   readonly sessionId: string;
   readonly sessionType: SessionType;
+  readonly sessionTitle: string | null;
+  readonly sessionSummary: string | null;
+  readonly knowledgePointId: string | null;
   readonly entryMode: AgentEntryMode;
   readonly prompt: string;
   readonly project: ProjectContext;
@@ -659,31 +681,30 @@ export function buildAgentRequest(input: {
   const sourceAssetIds = getRequestSourceAssetIds(input.entryMode, input.sourceAssets);
   const materialContext = buildAttachedMaterialPromptContext(input.sourceAssets);
   const fallbackPrompt = normalizedPrompt || buildDefaultAgentPrompt(input.unit, input.project);
-  const promptWithMaterials =
+  const materialFocusHint =
     materialContext === null
-      ? fallbackPrompt
+      ? null
       : shouldInjectMaterialTargeting(normalizedPrompt)
-        ? [
-            "请优先围绕我当前附带的材料识别学习主题、关键概念和更合适的下一步编排。",
-            materialContext,
-            `我的原话：${fallbackPrompt}`,
-          ].join("\n\n")
-        : [fallbackPrompt, materialContext].join("\n\n");
+        ? materialContext
+        : materialContext;
   const contextHint =
-    materialContext === null
+    materialFocusHint === null
       ? input.project.currentThread
-      : [input.project.currentThread, materialContext].filter(Boolean).join("\n\n");
+      : [input.project.currentThread, materialFocusHint].filter(Boolean).join("\n\n");
 
   return {
     project_id: input.projectId,
     thread_id: input.sessionId,
     session_type: input.sessionType,
+    session_title: input.sessionTitle,
+    session_summary: input.sessionSummary,
+    knowledge_point_id: input.knowledgePointId,
     entry_mode: input.entryMode,
     topic:
       input.targetUnitId === null
         ? input.project.goal.trim() || input.project.name
         : input.unit.title,
-    messages: [{ role: "user", content: promptWithMaterials }],
+    messages: [{ role: "user", content: fallbackPrompt }],
     source_asset_ids: sourceAssetIds,
     target_unit_id: input.targetUnitId,
     context_hint: contextHint,
