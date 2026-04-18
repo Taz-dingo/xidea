@@ -1,8 +1,8 @@
 import type { ReactElement } from "react";
 import { tutorFixtureScenarios } from "@/data/tutor-fixtures";
 import { sourceAssets } from "@/data/demo";
+import { X } from "lucide-react";
 import { WorkspaceHeader } from "@/app/workspace/ui/header";
-import { WorkspaceHero } from "@/app/workspace/ui/hero";
 import { useSessionAgent } from "@/app/workspace/agent/use-session-agent";
 import { useWorkspaceActions } from "@/app/workspace/hooks/use-actions";
 import { useWorkspaceData } from "@/app/workspace/hooks/use-data";
@@ -37,13 +37,33 @@ export function WorkspacePage(): ReactElement {
         <div className="space-y-4">
           <WorkspaceHeader
             onCreateProject={actions.handleStartCreatingProject}
+            onEditProject={actions.handleOpenProjectMetaEditor}
             onGoHome={actions.handleGoHome}
             onSearchChange={data.setSearchQuery}
+            onStartProjectSession={() =>
+              actions.handleCreateSession(data.selectedProject.id, "project")
+            }
+            onStartReview={() =>
+              actions.handlePrepareSessionStart(
+                data.selectedProject.id,
+                "review",
+                model.reviewTargetPoint?.id ?? null,
+              )
+            }
+            onStartStudy={() =>
+              actions.handlePrepareSessionStart(
+                data.selectedProject.id,
+                "study",
+                model.studyTargetPoint?.id ?? null,
+              )
+            }
+            reviewDisabled={model.reviewTargetPoint === null}
             screen={data.screen}
             searchQuery={data.searchQuery}
             selectedProjectDescription={data.selectedProject.description}
             selectedProjectName={data.selectedProject.name}
             selectedProjectTopic={data.selectedProject.topic}
+            studyDisabled={model.studyTargetPoint === null}
           />
 
           {data.isCreatingProject ? (
@@ -83,30 +103,6 @@ export function WorkspacePage(): ReactElement {
             />
           ) : (
             <div className="space-y-4">
-              <WorkspaceHero
-                isDetailScreen={data.screen === "detail"}
-                onStartProjectSession={() =>
-                  actions.handleCreateSession(data.selectedProject.id, "project")
-                }
-                onStartReview={() =>
-                  actions.handlePrepareSessionStart(
-                    data.selectedProject.id,
-                    "review",
-                    model.reviewTargetPoint?.id ?? null,
-                  )
-                }
-                onStartStudy={() =>
-                  actions.handlePrepareSessionStart(
-                    data.selectedProject.id,
-                    "study",
-                    model.studyTargetPoint?.id ?? null,
-                  )
-                }
-                onToggleProjectMeta={actions.handleToggleProjectMeta}
-                reviewDisabled={model.reviewTargetPoint === null}
-                studyDisabled={model.studyTargetPoint === null}
-              />
-
               {data.isProjectMetaOpen ? (
                 <div className="space-y-4">
                   <MetaPanel
@@ -148,52 +144,7 @@ export function WorkspacePage(): ReactElement {
                 </div>
               ) : null}
 
-              {data.screen === "detail" && data.selectedKnowledgePoint !== null ? (
-                <KnowledgePointDetailScreen
-                  draft={data.knowledgePointDraft}
-                  isArchiveConfirmationOpen={
-                    data.archiveConfirmationPointId === data.selectedKnowledgePoint.id
-                  }
-                  isEditing={data.isEditingKnowledgePoint}
-                  knowledgePoint={data.selectedKnowledgePoint}
-                  knowledgePointAssets={data.selectedKnowledgePointAssets}
-                  onCancelArchiveConfirmation={() => data.setArchiveConfirmationPointId(null)}
-                  onBack={actions.handleBackToWorkspace}
-                  onCancelEditing={actions.handleCancelKnowledgePointEditing}
-                  onChangeDraft={data.setKnowledgePointDraft}
-                  onConfirmArchive={() =>
-                    actions.handleArchiveKnowledgePoint(data.selectedKnowledgePoint!.id)
-                  }
-                  onOpenSession={(sessionId) => {
-                    data.setPendingSessionIntent(null);
-                    data.setSelectedSessionId(sessionId);
-                    data.setScreen("workspace");
-                  }}
-                  onSave={actions.handleSaveKnowledgePoint}
-                  onStartArchiveConfirmation={() =>
-                    actions.handleStartArchiveConfirmation(data.selectedKnowledgePoint!.id)
-                  }
-                  onStartEditing={actions.handleStartEditingKnowledgePoint}
-                  onStartReview={() =>
-                    actions.handlePrepareSessionStart(
-                      data.selectedProject.id,
-                      "review",
-                      data.selectedKnowledgePoint!.id,
-                    )
-                  }
-                  onStartStudy={() =>
-                    actions.handlePrepareSessionStart(
-                      data.selectedProject.id,
-                      "study",
-                      data.selectedKnowledgePoint!.id,
-                    )
-                  }
-                  relatedSessions={data.knowledgePointRelatedSessions}
-                  reviewHeatmap={model.knowledgePointReviewHeatmap}
-                  reviewHistorySummary={model.knowledgePointReviewHistorySummary}
-                  selectedSessionId={data.selectedSessionId}
-                />
-              ) : data.selectedSession === undefined ? (
+              {data.selectedSession === undefined ? (
                 <WorkspaceBrowseScreen
                   filteredKnowledgePoints={model.filteredKnowledgePoints}
                   normalizedSearchQuery={model.normalizedSearchQuery}
@@ -280,6 +231,76 @@ export function WorkspacePage(): ReactElement {
               )}
             </div>
           )}
+
+          {data.isKnowledgePointDialogOpen && data.selectedKnowledgePoint !== null ? (
+            <div
+              className="fixed inset-0 z-50 flex items-start justify-center bg-black/20 px-4 py-8 backdrop-blur-[2px]"
+              onClick={actions.handleCloseKnowledgePointDialog}
+            >
+              <div
+                className="max-h-[88vh] w-full max-w-[1360px] overflow-y-auto"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="mb-3 flex justify-end">
+                  <Button
+                    className="rounded-full bg-[var(--xidea-white)]"
+                    onClick={actions.handleCloseKnowledgePointDialog}
+                    type="button"
+                    variant="outline"
+                  >
+                    <X className="h-4 w-4" />
+                    关闭
+                  </Button>
+                </div>
+                <KnowledgePointDetailScreen
+                  draft={data.knowledgePointDraft}
+                  isArchiveConfirmationOpen={
+                    data.archiveConfirmationPointId === data.selectedKnowledgePoint.id
+                  }
+                  isEditing={data.isEditingKnowledgePoint}
+                  knowledgePoint={data.selectedKnowledgePoint}
+                  knowledgePointAssets={data.selectedKnowledgePointAssets}
+                  onCancelArchiveConfirmation={() => data.setArchiveConfirmationPointId(null)}
+                  onBack={actions.handleCloseKnowledgePointDialog}
+                  onCancelEditing={actions.handleCancelKnowledgePointEditing}
+                  onChangeDraft={data.setKnowledgePointDraft}
+                  onConfirmArchive={() =>
+                    actions.handleArchiveKnowledgePoint(data.selectedKnowledgePoint!.id)
+                  }
+                  onOpenSession={(sessionId) => {
+                    data.setPendingSessionIntent(null);
+                    data.setSelectedSessionId(sessionId);
+                    data.setScreen("workspace");
+                    actions.handleCloseKnowledgePointDialog();
+                  }}
+                  onSave={actions.handleSaveKnowledgePoint}
+                  onStartArchiveConfirmation={() =>
+                    actions.handleStartArchiveConfirmation(data.selectedKnowledgePoint!.id)
+                  }
+                  onStartEditing={actions.handleStartEditingKnowledgePoint}
+                  onStartReview={() =>
+                    actions.handlePrepareSessionStart(
+                      data.selectedProject.id,
+                      "review",
+                      data.selectedKnowledgePoint!.id,
+                    )
+                  }
+                  onStartStudy={() =>
+                    actions.handlePrepareSessionStart(
+                      data.selectedProject.id,
+                      "study",
+                      data.selectedKnowledgePoint!.id,
+                    )
+                  }
+                  relatedSessions={data.knowledgePointRelatedSessions}
+                  reviewHeatmap={model.knowledgePointReviewHeatmap}
+                  reviewHistorySummary={model.knowledgePointReviewHistorySummary}
+                  selectedSessionId={data.selectedSessionId}
+                  showBackButton={false}
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </main>

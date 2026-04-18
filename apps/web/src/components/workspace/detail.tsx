@@ -50,6 +50,7 @@ export function KnowledgePointDetailScreen({
   reviewHistorySummary,
   relatedSessions,
   selectedSessionId,
+  showBackButton = true,
 }: {
   draft: EditableKnowledgePointDraftValue;
   isEditing: boolean;
@@ -71,20 +72,23 @@ export function KnowledgePointDetailScreen({
   reviewHistorySummary: string;
   relatedSessions: ReadonlyArray<SessionItem>;
   selectedSessionId: string;
+  showBackButton?: boolean;
 }): ReactElement {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div className="space-y-4">
         <Card className="xidea-card-motion rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
           <CardContent className="space-y-5 p-6">
-            <button
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-1.5 text-sm text-[var(--xidea-charcoal)] transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[var(--xidea-white)]"
-              onClick={onBack}
-              type="button"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              返回项目工作台
-            </button>
+            {showBackButton ? (
+              <button
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-1.5 text-sm text-[var(--xidea-charcoal)] transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[var(--xidea-white)]"
+                onClick={onBack}
+                type="button"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                返回项目工作台
+              </button>
+            ) : null}
 
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0 flex-1 space-y-3">

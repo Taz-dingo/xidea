@@ -32,6 +32,7 @@ interface WorkspaceUiState {
   readonly isCreatingProject: boolean;
   readonly isEditingProjectMeta: boolean;
   readonly isEditingKnowledgePoint: boolean;
+  readonly isKnowledgePointDialogOpen: boolean;
   readonly archiveConfirmationPointId: string | null;
   readonly pendingSessionIntent: PendingSessionIntent | null;
   readonly pendingInitialPrompt: PendingInitialPrompt | null;
@@ -47,6 +48,7 @@ interface WorkspaceUiState {
   readonly setIsCreatingProject: (nextState: SetStateAction<boolean>) => void;
   readonly setIsEditingProjectMeta: (nextState: SetStateAction<boolean>) => void;
   readonly setIsEditingKnowledgePoint: (nextState: SetStateAction<boolean>) => void;
+  readonly setIsKnowledgePointDialogOpen: (nextState: SetStateAction<boolean>) => void;
   readonly setArchiveConfirmationPointId: (
     nextState: SetStateAction<string | null>,
   ) => void;
@@ -78,6 +80,7 @@ export const useWorkspaceUiStore = create<WorkspaceUiState>()((set) => ({
   isCreatingProject: false,
   isEditingProjectMeta: false,
   isEditingKnowledgePoint: false,
+  isKnowledgePointDialogOpen: false,
   archiveConfirmationPointId: null,
   pendingSessionIntent: null,
   pendingInitialPrompt: null,
@@ -110,6 +113,10 @@ export const useWorkspaceUiStore = create<WorkspaceUiState>()((set) => ({
   setIsEditingKnowledgePoint: (nextState) =>
     set((state) => ({
       isEditingKnowledgePoint: resolveState(nextState, state.isEditingKnowledgePoint),
+    })),
+  setIsKnowledgePointDialogOpen: (nextState) =>
+    set((state) => ({
+      isKnowledgePointDialogOpen: resolveState(nextState, state.isKnowledgePointDialogOpen),
     })),
   setArchiveConfirmationPointId: (nextState) =>
     set((state) => ({

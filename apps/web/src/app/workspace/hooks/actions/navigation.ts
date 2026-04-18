@@ -25,11 +25,11 @@ export function useNavigationActions(data: WorkspaceData) {
 
   function handleOpenKnowledgePoint(pointId: string): void {
     data.setSelectedKnowledgePointId(pointId);
-    data.setSelectedSessionId("");
+    data.setIsEditingKnowledgePoint(false);
     data.setIsEditingProjectMeta(false);
     data.setIsProjectMetaOpen(false);
     data.setPendingSessionIntent(null);
-    data.setScreen("detail");
+    data.setIsKnowledgePointDialogOpen(true);
   }
 
   function handleOpenSession(sessionId: string): void {
@@ -44,7 +44,7 @@ export function useNavigationActions(data: WorkspaceData) {
   }
 
   return {
-    handleBackToWorkspace: () => data.setScreen("workspace"),
+    handleCloseKnowledgePointDialog: () => data.setIsKnowledgePointDialogOpen(false),
     handleCloseProjectMeta: () => {
       data.setIsProjectMetaOpen(false);
       data.setIsEditingProjectMeta(false);
@@ -52,6 +52,7 @@ export function useNavigationActions(data: WorkspaceData) {
     handleCloseSession: () => data.setSelectedSessionId(""),
     handleGoHome: () => {
       data.setScreen("home");
+      data.setIsKnowledgePointDialogOpen(false);
       data.setSelectedSessionId("");
     },
     handleOpenKnowledgePoint,

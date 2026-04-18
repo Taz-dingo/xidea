@@ -20,7 +20,7 @@ export function useKnowledgePointActions(data: WorkspaceData) {
     });
     data.setIsEditingKnowledgePoint(true);
     data.setPendingSessionIntent(null);
-    data.setScreen("detail");
+    data.setIsKnowledgePointDialogOpen(true);
   }
 
   function handleArchiveKnowledgePoint(pointId: string): void {

@@ -1,6 +1,6 @@
 export type SessionType = "project" | "study" | "review";
 
-export type AppScreen = "home" | "workspace" | "detail";
+export type AppScreen = "home" | "workspace";
 
 export type HomeSection =
   | "all-projects"

@@ -179,11 +179,11 @@ export function WorkspaceBrowseScreen({
 
       <div className="space-y-4">
         <Card className="xidea-card-motion rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-          <CardContent className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-start justify-between gap-4">
+          <CardContent className="space-y-5 p-5">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+              <div className="space-y-4">
                 <div className="space-y-2">
-                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">当前画像</p>
+                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">学习画像</p>
                   <p className="text-sm font-medium text-[var(--xidea-near-black)]">
                     {profileSummary.title}
                   </p>
@@ -191,23 +191,25 @@ export function WorkspaceBrowseScreen({
                     {profileSummary.evidence}
                   </p>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <MetricTile label="未学" tone="amber" value={`${projectStats.unlearned}`} />
-                  <MetricTile label="待复习" tone="sky" value={`${projectStats.dueReview}`} />
-                  <MetricTile label="已归档" tone="rose" value={`${projectStats.archived}`} />
+                <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+                  <MasteryPortrait projectStats={projectStats} />
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <MetricTile label="未学" tone="amber" value={`${projectStats.unlearned}`} />
+                    <MetricTile label="待复习" tone="sky" value={`${projectStats.dueReview}`} />
+                    <MetricTile label="已归档" tone="rose" value={`${projectStats.archived}`} />
+                  </div>
                 </div>
               </div>
-              <MasteryPortrait projectStats={projectStats} />
-            </div>
 
-            <div className="rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] p-4">
-              <div className="mb-3 space-y-1">
-                <p className="xidea-kicker text-[var(--xidea-stone)]">复习热力图</p>
-                <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                  悬停查看每天做了哪些学习或复习动作。
-                </p>
+              <div className="rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] p-4">
+                <div className="mb-3 space-y-1">
+                  <p className="xidea-kicker text-[var(--xidea-stone)]">复习热力图</p>
+                  <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                    悬停查看每天做了哪些学习或复习动作。
+                  </p>
+                </div>
+                <ReviewHeatmap weeks={projectReviewHeatmap} />
               </div>
-              <ReviewHeatmap weeks={projectReviewHeatmap} />
             </div>
           </CardContent>
         </Card>
@@ -259,15 +261,34 @@ export function WorkspaceBrowseScreen({
         ) : null}
 
         {filteredKnowledgePoints.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {filteredKnowledgePoints.map((point) => (
-              <KnowledgePointCard
-                key={point.id}
-                onClick={() => onOpenKnowledgePoint(point.id)}
-                point={point}
-              />
-            ))}
-          </div>
+          <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+            <CardContent className="space-y-4 p-5">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">知识卡</p>
+                  <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                    当前共 {filteredKnowledgePoints.length} 张，点击可直接查看详情、关联会话和材料。
+                  </p>
+                </div>
+                <p className="text-[12px] text-[var(--xidea-stone)]">
+                  {workspaceSection === "overview"
+                    ? "展示当前活跃知识卡"
+                    : workspaceSection === "due-review"
+                      ? "展示待复习知识卡"
+                      : "展示已归档知识卡"}
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {filteredKnowledgePoints.map((point) => (
+                  <KnowledgePointCard
+                    key={point.id}
+                    onClick={() => onOpenKnowledgePoint(point.id)}
+                    point={point}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <Card className="rounded-[1.3rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
             <CardContent className="px-5 py-6 text-sm text-[var(--xidea-stone)]">

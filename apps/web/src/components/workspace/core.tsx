@@ -82,16 +82,6 @@ function getReviewTimingAccent(label: string): string {
   return "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)]";
 }
 
-function getUpdatedAtAccent(label: string): string {
-  if (label.includes("刚刚") || label.includes("今天") || label.includes("1h")) {
-    return "border-[#cadecf] bg-[#eef5ef] text-[#56795e]";
-  }
-  if (label.includes("昨天") || label.includes("2d") || label.includes("天前")) {
-    return "border-[#d9d4c8] bg-[#f3f0e7] text-[#786c57]";
-  }
-  return "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)]";
-}
-
 function getMasteryFillCount(mastery: number): number {
   if (mastery >= 80) return 4;
   if (mastery >= 55) return 3;
@@ -210,22 +200,25 @@ export function KnowledgePointCard({
 
   return (
     <button
-      className="flex h-full w-full flex-col rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-4 text-left shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
+      className="group flex h-full w-full flex-col rounded-[1.3rem] border border-[#e6dbcf] bg-[linear-gradient(180deg,#fffdf9_0%,#f8f2ea_100%)] p-4 text-left shadow-none transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--xidea-selection-border)] hover:shadow-[0_18px_36px_rgba(177,112,82,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
       onClick={onClick}
       type="button"
     >
-      <div className="min-w-0">
+      <div className="min-w-0 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <Badge
+            className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
+            variant="outline"
+          >
+            {point.stageLabel}
+          </Badge>
+          <span className="text-[12px] text-[var(--xidea-stone)]">{point.updatedAt}</span>
+        </div>
         <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">{point.title}</p>
-        <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">{point.description}</p>
+        <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">{point.description}</p>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Badge
-          className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
-          variant="outline"
-        >
-          {point.stageLabel}
-        </Badge>
         {point.nextReviewLabel ? (
           <Badge
             className={`border px-2 py-1 text-[12px] shadow-none ${getReviewTimingAccent(point.nextReviewLabel)}`}
@@ -242,16 +235,12 @@ export function KnowledgePointCard({
             系统建议归档
           </Badge>
         ) : null}
-        <Badge
-          className={`border px-2 py-1 text-[12px] shadow-none ${getUpdatedAtAccent(point.updatedAt)}`}
-          variant="outline"
-        >
-          {point.updatedAt}
-        </Badge>
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5">
+      <div className="mt-auto flex items-center justify-between gap-3 pt-5">
+        <div className="flex items-center gap-3">
+          <span className="text-[12px] text-[var(--xidea-stone)]">掌握程度</span>
+          <div className="flex items-center gap-1.5">
           {Array.from({ length: 4 }, (_, index) => (
             <span
               className={
@@ -262,8 +251,11 @@ export function KnowledgePointCard({
               key={`${point.id}-dot-${index}`}
             />
           ))}
+          </div>
         </div>
-        <span className="text-[12px] text-[var(--xidea-stone)]">掌握度 {point.mastery}%</span>
+        <span className="text-[12px] text-[var(--xidea-selection-text)] transition-transform duration-200 group-hover:translate-x-0.5">
+          查看详情
+        </span>
       </div>
     </button>
   );
