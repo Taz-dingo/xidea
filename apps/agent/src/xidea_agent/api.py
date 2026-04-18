@@ -17,6 +17,7 @@ from xidea_agent.state import (
     AgentRunResult,
     Diagnosis,
     GraphState,
+    KnowledgePointSuggestionResolution,
     StatePatch,
     StreamEvent,
     StudyPlan,
@@ -147,6 +148,34 @@ def create_app(
         payload = build_review_context_payload(thread_id, unit_id, repo)
         payload["events"] = repo.list_review_events(thread_id, unit_id, since=since, limit=64)
         return payload
+
+    @app.post(
+        "/projects/{project_id}/knowledge-point-suggestions/{suggestion_id}/confirm",
+        response_model=KnowledgePointSuggestionResolution,
+    )
+    def confirm_knowledge_point_suggestion(
+        project_id: str,
+        suggestion_id: str,
+    ) -> KnowledgePointSuggestionResolution:
+        repo = _require_repository(repository)
+        resolution = repo.resolve_knowledge_point_suggestion(project_id, suggestion_id, "confirm")
+        if resolution is None:
+            raise HTTPException(status_code=404, detail="Knowledge point suggestion not found")
+        return resolution
+
+    @app.post(
+        "/projects/{project_id}/knowledge-point-suggestions/{suggestion_id}/dismiss",
+        response_model=KnowledgePointSuggestionResolution,
+    )
+    def dismiss_knowledge_point_suggestion(
+        project_id: str,
+        suggestion_id: str,
+    ) -> KnowledgePointSuggestionResolution:
+        repo = _require_repository(repository)
+        resolution = repo.resolve_knowledge_point_suggestion(project_id, suggestion_id, "dismiss")
+        if resolution is None:
+            raise HTTPException(status_code=404, detail="Knowledge point suggestion not found")
+        return resolution
 
     return app
 

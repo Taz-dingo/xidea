@@ -9,6 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field
 EntryMode = Literal["chat-question", "material-import", "coach-followup"]
 ResponseMode = Literal["sync", "stream"]
 MessageRole = Literal["system", "user", "assistant"]
+ActivityKind = Literal["quiz", "recall", "coach-followup"]
+KnowledgePointStatus = Literal["active", "archived"]
+KnowledgePointSuggestionKind = Literal["create", "archive"]
+KnowledgePointSuggestionStatus = Literal["pending", "accepted", "dismissed"]
 ObservationKind = Literal[
     "user-message",
     "assistant-message",
@@ -31,6 +35,7 @@ PrimaryIssue = Literal[
     "weak-recall",
     "poor-transfer",
     "missing-context",
+    "off-topic",
 ]
 PedagogicalAction = Literal["teach", "clarify", "practice", "review", "apply"]
 ToolIntent = Literal["none", "asset-summary", "unit-detail", "thread-memory", "review-context"]
@@ -67,6 +72,20 @@ class LearningUnit(StrictModel):
     weakness_tags: list[str] = Field(default_factory=list)
     candidate_modes: list[LearningMode] = Field(default_factory=list)
     difficulty: Literal[1, 2, 3, 4, 5] = 3
+
+
+class ProjectContext(StrictModel):
+    project_id: str = Field(min_length=1)
+    topic: str = Field(min_length=1)
+    focus_unit_id: str | None = None
+    focus_unit_title: str | None = None
+    source_asset_ids: list[str] = Field(default_factory=list)
+    source_asset_summary: str | None = None
+    thread_memory_summary: str | None = None
+    review_summary: str | None = None
+    recent_messages: list[Message] = Field(default_factory=list)
+    source: Literal["repository", "request"]
+    summary: str = Field(min_length=1)
 
 
 class Observation(StrictModel):
@@ -132,6 +151,88 @@ class StudyPlan(StrictModel):
     steps: list[StudyPlanStep] = Field(min_length=1, max_length=3)
 
 
+class ActivityChoice(StrictModel):
+    id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    detail: str = Field(min_length=1)
+
+
+class ActivityChoiceInput(StrictModel):
+    type: Literal["choice"]
+    choices: list[ActivityChoice] = Field(min_length=1)
+
+
+class ActivityTextInput(StrictModel):
+    type: Literal["text"]
+    placeholder: str = Field(min_length=1)
+    min_length: int = Field(ge=1)
+
+
+ActivityInput = Annotated[
+    ActivityChoiceInput | ActivityTextInput,
+    Field(discriminator="type"),
+]
+
+
+class Activity(StrictModel):
+    id: str = Field(min_length=1)
+    kind: ActivityKind
+    knowledge_point_id: str | None = None
+    title: str = Field(min_length=1)
+    objective: str = Field(min_length=1)
+    prompt: str = Field(min_length=1)
+    support: str = Field(min_length=1)
+    mode: LearningMode | None = None
+    evidence: list[str] = Field(default_factory=list)
+    submit_label: str = Field(min_length=1)
+    input: ActivityInput
+
+
+class KnowledgePoint(StrictModel):
+    id: str = Field(min_length=1)
+    project_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    status: KnowledgePointStatus
+    origin_type: str = Field(min_length=1)
+    origin_session_id: str | None = None
+    source_material_refs: list[str] = Field(default_factory=list)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class KnowledgePointState(StrictModel):
+    knowledge_point_id: str = Field(min_length=1)
+    mastery: int = Field(default=0, ge=0, le=100)
+    learning_status: str = Field(default="new", min_length=1)
+    review_status: str = Field(default="idle", min_length=1)
+    next_review_at: datetime | None = None
+    archive_suggested: bool = False
+    updated_at: datetime | None = None
+
+
+class KnowledgePointSuggestion(StrictModel):
+    id: str = Field(min_length=1)
+    kind: KnowledgePointSuggestionKind
+    project_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    knowledge_point_id: str | None = None
+    title: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    source_material_refs: list[str] = Field(default_factory=list)
+    status: KnowledgePointSuggestionStatus = "pending"
+    created_at: datetime | None = None
+    resolved_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class KnowledgePointSuggestionResolution(StrictModel):
+    suggestion: KnowledgePointSuggestion
+    knowledge_point: KnowledgePoint | None = None
+    knowledge_point_state: KnowledgePointState | None = None
+
+
 class LearnerStatePatch(StrictModel):
     mastery: int | None = Field(default=None, ge=0, le=100)
     understanding_level: int | None = Field(default=None, ge=0, le=100)
@@ -184,6 +285,9 @@ class AgentRequest(StrictModel):
 class GraphState(StrictModel):
     request: AgentRequest
     observations: list[Observation] = Field(default_factory=list)
+    project_context: ProjectContext | None = None
+    is_off_topic: bool = False
+    off_topic_reason: str | None = None
     source_assets: list[SourceAsset] = Field(default_factory=list)
     learning_unit: LearningUnit | None = None
     signals: list[Signal] = Field(default_factory=list)
@@ -194,6 +298,8 @@ class GraphState(StrictModel):
     tool_intent: ToolIntent = "none"
     tool_result: ToolResult | None = None
     plan: StudyPlan | None = None
+    activity: Activity | None = None
+    knowledge_point_suggestions: list[KnowledgePointSuggestion] = Field(default_factory=list)
     assistant_message: str | None = None
     state_patch: StatePatch | None = None
     recent_messages: list[Message] = Field(default_factory=list)
@@ -215,6 +321,16 @@ class PlanEvent(StrictModel):
     plan: StudyPlan
 
 
+class ActivityEvent(StrictModel):
+    event: Literal["activity"]
+    activity: Activity
+
+
+class KnowledgePointSuggestionEvent(StrictModel):
+    event: Literal["knowledge-point-suggestion"]
+    suggestions: list[KnowledgePointSuggestion] = Field(min_length=1)
+
+
 class StatePatchEvent(StrictModel):
     event: Literal["state-patch"]
     state_patch: StatePatch
@@ -226,7 +342,13 @@ class DoneEvent(StrictModel):
 
 
 StreamEvent = Annotated[
-    TextDeltaEvent | DiagnosisEvent | PlanEvent | StatePatchEvent | DoneEvent,
+    TextDeltaEvent
+    | DiagnosisEvent
+    | PlanEvent
+    | ActivityEvent
+    | KnowledgePointSuggestionEvent
+    | StatePatchEvent
+    | DoneEvent,
     Field(discriminator="event"),
 ]
 

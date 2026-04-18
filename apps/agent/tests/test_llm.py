@@ -325,8 +325,15 @@ def test_build_llm_client_raises_with_empty_api_key() -> None:
             build_llm_client()
 
 
-def test_build_llm_client_defaults_to_zhipu_for_generic_key() -> None:
-    with patch.dict("os.environ", {"XIDEA_LLM_API_KEY": "zhipu-key"}, clear=True):
+def test_build_llm_client_uses_explicit_base_url_for_generic_key() -> None:
+    with patch.dict(
+        "os.environ",
+        {
+            "XIDEA_LLM_API_KEY": "zhipu-key",
+            "XIDEA_LLM_BASE_URL": ZHIPU_OPENAI_BASE_URL,
+        },
+        clear=True,
+    ):
         with patch("openai.OpenAI") as mock_openai:
             mock_openai.return_value = object()
 
@@ -340,6 +347,39 @@ def test_build_llm_client_defaults_to_zhipu_for_generic_key() -> None:
     assert llm.model == "glm-5"
     assert llm.provider == "zhipu"
     assert llm.base_url == ZHIPU_OPENAI_BASE_URL
+    call_kwargs["http_client"].close()
+
+
+def test_build_llm_client_generic_key_defaults_to_openai_when_base_url_missing() -> None:
+    with patch.dict("os.environ", {"XIDEA_LLM_API_KEY": "generic-key"}, clear=True):
+        with patch("openai.OpenAI") as mock_openai:
+            mock_openai.return_value = object()
+
+            llm = build_llm_client()
+
+    mock_openai.assert_called_once()
+    call_kwargs = mock_openai.call_args.kwargs
+    assert call_kwargs["api_key"] == "generic-key"
+    assert "base_url" not in call_kwargs
+    assert llm.model == "gpt-4o-mini"
+    assert llm.provider == "openai"
+    assert llm.base_url is None
+    call_kwargs["http_client"].close()
+
+
+def test_build_llm_client_accepts_zhipu_api_key_alias() -> None:
+    with patch.dict("os.environ", {"ZHIPU_API_KEY": "zhipu-key"}, clear=True):
+        with patch("openai.OpenAI") as mock_openai:
+            mock_openai.return_value = object()
+
+            llm = build_llm_client()
+
+    mock_openai.assert_called_once()
+    call_kwargs = mock_openai.call_args.kwargs
+    assert call_kwargs["api_key"] == "zhipu-key"
+    assert call_kwargs["base_url"] == ZHIPU_OPENAI_BASE_URL
+    assert llm.model == "glm-5"
+    assert llm.provider == "zhipu"
     call_kwargs["http_client"].close()
 
 
@@ -468,9 +508,11 @@ def test_compose_response_step_uses_llm_when_available() -> None:
 
     assert result.graph_state.assistant_message == reply_content
     assert result.graph_state.plan is not None
+    assert result.graph_state.activity is not None
     assert result.graph_state.plan.steps[0].reason == "LLM-reason"
     assert result.graph_state.plan.headline == "围绕 retrieval vs reranking 的辨析路径"
-    assert "LLM" in result.graph_state.rationale[-2]
+    assert any("plan=LLM" in item and "reply=LLM" in item for item in result.graph_state.rationale)
+    assert any("compose_response emitted activity" in item for item in result.graph_state.rationale)
 
 
 def test_diagnose_step_raises_when_llm_diagnosis_fails() -> None:
@@ -1284,12 +1326,13 @@ def test_compose_response_uses_llm_plan_and_reply() -> None:
     result = run_agent_v0(request, llm=llm)
 
     assert result.graph_state.plan is not None
+    assert result.graph_state.activity is not None
     assert result.graph_state.plan.headline == "LLM 生成的学习路径"
     assert result.graph_state.assistant_message == reply_content
     compose_rationale = [r for r in result.graph_state.rationale if "compose_response" in r]
-    assert len(compose_rationale) == 1
-    assert "plan=LLM" in compose_rationale[0]
-    assert "reply=LLM" in compose_rationale[0]
+    assert len(compose_rationale) == 2
+    assert any("plan=LLM" in item and "reply=LLM" in item for item in compose_rationale)
+    assert any("emitted activity" in item for item in compose_rationale)
 
 
 def test_compose_response_falls_back_plan_to_template_when_llm_plan_fails() -> None:
@@ -1329,8 +1372,9 @@ def test_compose_response_falls_back_plan_to_template_when_llm_plan_fails() -> N
     result = run_agent_v0(request, llm=llm)
 
     assert result.graph_state.plan is not None
+    assert result.graph_state.activity is not None
     assert result.graph_state.assistant_message == reply_content
     compose_rationale = [r for r in result.graph_state.rationale if "compose_response" in r]
-    assert len(compose_rationale) == 1
-    assert "plan=template" in compose_rationale[0]
-    assert "reply=LLM" in compose_rationale[0]
+    assert len(compose_rationale) == 2
+    assert any("plan=template" in item and "reply=LLM" in item for item in compose_rationale)
+    assert any("emitted activity" in item for item in compose_rationale)

@@ -318,22 +318,28 @@ def _resolve_zhipu_thinking_mode() -> str:
 
 def _resolve_llm_config() -> tuple[str, str | None, str, str]:
     configured_api_key = os.getenv("XIDEA_LLM_API_KEY", "").strip()
+    configured_base_url = os.getenv("XIDEA_LLM_BASE_URL", "").strip() or None
+    zhipu_api_key = os.getenv("ZHIPU_API_KEY", "").strip()
     zai_api_key = os.getenv("ZAI_API_KEY", "").strip()
     openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
 
     if configured_api_key:
         api_key = configured_api_key
-        base_url = os.getenv("XIDEA_LLM_BASE_URL", "").strip() or ZHIPU_OPENAI_BASE_URL
+        base_url = configured_base_url
+    elif zhipu_api_key:
+        api_key = zhipu_api_key
+        base_url = configured_base_url or ZHIPU_OPENAI_BASE_URL
     elif zai_api_key:
         api_key = zai_api_key
-        base_url = os.getenv("XIDEA_LLM_BASE_URL", "").strip() or ZHIPU_OPENAI_BASE_URL
+        base_url = configured_base_url or ZHIPU_OPENAI_BASE_URL
     elif openai_api_key:
         api_key = openai_api_key
-        base_url = os.getenv("XIDEA_LLM_BASE_URL", "").strip() or None
+        base_url = configured_base_url
     else:
         raise RuntimeError(
             "LLM API key is required. "
-            "Set XIDEA_LLM_API_KEY, ZAI_API_KEY, or OPENAI_API_KEY to start the system."
+            "Set XIDEA_LLM_API_KEY to configure the runtime. "
+            "Legacy fallbacks ZHIPU_API_KEY, ZAI_API_KEY, and OPENAI_API_KEY are still supported."
         )
 
     if _is_zhipu_base_url(base_url):

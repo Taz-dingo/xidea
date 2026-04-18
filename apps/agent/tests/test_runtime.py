@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import (
@@ -12,12 +13,21 @@ from xidea_agent.runtime import (
     run_agent_v0,
 )
 from xidea_agent.review_engine import ReviewDecision
-from xidea_agent.state import AgentRequest, LearnerUnitState, Message, Observation, Signal
+from xidea_agent.state import (
+    AgentRequest,
+    KnowledgePoint,
+    KnowledgePointState,
+    LearnerUnitState,
+    Message,
+    Observation,
+    Signal,
+)
 
 from conftest import (
     build_mock_llm,
     build_mock_llm_for_material_import,
     build_mock_llm_for_review,
+    build_mock_llm_for_teach,
 )
 
 
@@ -41,14 +51,17 @@ def test_run_agent_v0_prefers_clarify_for_confusion() -> None:
 
     assert result.graph_state.diagnosis is not None
     assert result.graph_state.plan is not None
+    assert result.graph_state.activity is not None
     assert result.graph_state.state_patch is not None
     assert result.graph_state.diagnosis.recommended_action == "clarify"
     assert result.graph_state.diagnosis.primary_issue == "concept-confusion"
     assert result.graph_state.plan.selected_mode == "contrast-drill"
+    assert result.graph_state.activity.kind == "quiz"
     assert [event.event for event in result.events] == [
         "diagnosis",
         "text-delta",
         "plan",
+        "activity",
         "state-patch",
         "done",
     ]
@@ -61,8 +74,141 @@ def test_iter_agent_v0_events_yields_incrementally() -> None:
     assert event_types[0] == "diagnosis"
     assert event_types[1] == "text-delta"
     assert "plan" in event_types[1:-2]
+    assert "activity" in event_types[1:-2]
     assert event_types[-2:] == ["state-patch", "done"]
     assert event_types.count("text-delta") >= 1
+
+
+def test_run_agent_v0_emits_knowledge_point_suggestion_for_project_chat() -> None:
+    request = build_request(
+        target_unit_id=None,
+        topic="RAG 系统设计",
+        messages=[
+            {
+                "role": "user",
+                "content": "我搞不清楚 embedding 和 reranking 是不是同一回事，它们的边界到底是什么？",
+            }
+        ],
+    )
+
+    result = run_agent_v0(request, llm=build_mock_llm())
+
+    assert len(result.graph_state.knowledge_point_suggestions) == 1
+    suggestion = result.graph_state.knowledge_point_suggestions[0]
+    assert suggestion.kind == "create"
+    assert suggestion.status == "pending"
+    assert suggestion.title == "embedding 与 reranking 的边界"
+    assert [event.event for event in result.events] == [
+        "diagnosis",
+        "text-delta",
+        "plan",
+        "activity",
+        "knowledge-point-suggestion",
+        "state-patch",
+        "done",
+    ]
+
+
+def test_run_agent_v0_blocks_off_topic_without_calling_llm() -> None:
+    llm = build_mock_llm()
+    request = build_request(
+        target_unit_id=None,
+        topic="RAG 系统设计",
+        messages=[{"role": "user", "content": "上海明天天气怎么样？"}],
+    )
+
+    result = run_agent_v0(request, llm=llm)
+
+    assert result.graph_state.is_off_topic is True
+    assert result.graph_state.diagnosis is not None
+    assert result.graph_state.diagnosis.primary_issue == "off-topic"
+    assert result.graph_state.activity is None
+    assert result.graph_state.knowledge_point_suggestions == []
+    assert result.graph_state.state_patch is not None
+    assert result.graph_state.state_patch.learner_state_patch is None
+    assert [event.event for event in result.events] == [
+        "diagnosis",
+        "text-delta",
+        "plan",
+        "state-patch",
+        "done",
+    ]
+    assert llm.client.chat.completions.create.call_count == 0
+
+
+def test_run_agent_v0_dedupes_boundary_suggestion_when_pair_order_changes(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    first_request = build_request(
+        target_unit_id=None,
+        topic="RAG 系统设计",
+        messages=[
+            {
+                "role": "user",
+                "content": "我搞不清楚 embedding 和 reranking 是不是同一回事，它们的边界到底是什么？",
+            }
+        ],
+    )
+    first_result = run_agent_v0(first_request, repository=repository, llm=build_mock_llm())
+    repository.save_run(first_request, first_result)
+
+    second_request = build_request(
+        thread_id="thread-2",
+        target_unit_id=None,
+        topic="RAG 系统设计",
+        messages=[
+            {
+                "role": "user",
+                "content": "我还是分不清 reranking 和 embedding 的边界，怎么选？",
+            }
+        ],
+    )
+    second_result = run_agent_v0(second_request, repository=repository, llm=build_mock_llm())
+
+    assert second_result.graph_state.knowledge_point_suggestions == []
+
+
+def test_run_agent_v0_emits_archive_suggestion_for_stable_knowledge_point(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    now = datetime.now(timezone.utc)
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-rag-boundary",
+                project_id="rag-demo",
+                title="retrieval 与 reranking 的边界",
+                description="说明 retrieval 与 reranking 在 RAG 里的职责边界。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            )
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-rag-boundary",
+                mastery=92,
+                learning_status="stable",
+                review_status="stable",
+                next_review_at=now + timedelta(days=21),
+                archive_suggested=False,
+                updated_at=now,
+            )
+        ],
+    )
+
+    request = build_request(
+        target_unit_id=None,
+        topic="RAG 系统设计",
+        messages=[{"role": "user", "content": "继续看看这个 project 现在还剩什么要处理。"}],
+    )
+    result = run_agent_v0(request, repository=repository, llm=build_mock_llm_for_teach())
+
+    assert len(result.graph_state.knowledge_point_suggestions) == 1
+    suggestion = result.graph_state.knowledge_point_suggestions[0]
+    assert suggestion.kind == "archive"
+    assert suggestion.knowledge_point_id == "kp-rag-boundary"
+    assert suggestion.title == "retrieval 与 reranking 的边界"
 
 
 def test_iter_agent_v0_events_streams_reply_in_multiple_chunks() -> None:
@@ -171,6 +317,25 @@ def test_run_agent_v0_loads_recent_context_from_repository(tmp_path: Path) -> No
         in item
         for item in second_result.graph_state.rationale
     )
+
+
+def test_project_context_is_loaded_from_repository_not_frontend_hint(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    first_request = build_request(topic="Persisted project topic")
+    first_result = run_agent_v0(first_request, llm=build_mock_llm())
+    repository.save_run(first_request, first_result)
+
+    second_request = build_request(
+        topic="Frontend hint topic",
+        context_hint="前端拼出来的 project 叙事",
+        messages=[{"role": "user", "content": "继续这个 project 的下一步"}],
+    )
+    second_result = run_agent_v0(second_request, repository=repository, llm=build_mock_llm())
+
+    assert second_result.graph_state.project_context is not None
+    assert second_result.graph_state.project_context.source == "repository"
+    assert second_result.graph_state.project_context.topic == "Persisted project topic"
+    assert second_result.graph_state.project_context.summary.startswith("当前 project 主题：Persisted project topic")
 
 
 # ---------------------------------------------------------------------------

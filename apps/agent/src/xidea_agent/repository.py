@@ -3,10 +3,16 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from typing import Literal
 
+from xidea_agent.knowledge_points import build_knowledge_point_id
 from xidea_agent.state import (
     AgentRequest,
     AgentRunResult,
+    KnowledgePoint,
+    KnowledgePointState,
+    KnowledgePointSuggestion,
+    KnowledgePointSuggestionResolution,
     LearnerUnitState,
     Message,
     ReviewPatch,
@@ -89,6 +95,48 @@ CREATE TABLE IF NOT EXISTS review_events (
   created_at TEXT NOT NULL,
   FOREIGN KEY(thread_id) REFERENCES threads(thread_id)
 );
+
+CREATE TABLE IF NOT EXISTS knowledge_points (
+  knowledge_point_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  status TEXT NOT NULL,
+  origin_type TEXT NOT NULL,
+  origin_session_id TEXT,
+  source_material_refs TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(project_id)
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_point_state (
+  knowledge_point_id TEXT PRIMARY KEY,
+  mastery INTEGER NOT NULL DEFAULT 0,
+  learning_status TEXT NOT NULL,
+  review_status TEXT NOT NULL,
+  next_review_at TEXT,
+  archive_suggested INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(knowledge_point_id) REFERENCES knowledge_points(knowledge_point_id)
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_point_suggestions (
+  suggestion_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  knowledge_point_id TEXT,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  source_material_refs TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  resolved_at TEXT,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(project_id)
+);
 """
 
 
@@ -153,6 +201,9 @@ class SQLiteRepository:
                     now_value,
                 )
 
+            if state.is_off_topic:
+                return
+
             if state.learner_unit_state:
                 self._upsert_learner_unit_state(connection, request.thread_id, state.learner_unit_state)
 
@@ -169,6 +220,18 @@ class SQLiteRepository:
                     request.thread_id,
                     state.learner_unit_state.unit_id if state.learner_unit_state else request.target_unit_id,
                     state.state_patch,
+                    now_value,
+                )
+
+            if state.knowledge_point_suggestions:
+                self._upsert_knowledge_point_suggestions(
+                    connection,
+                    state.knowledge_point_suggestions,
+                    now_value,
+                )
+                self._mark_archive_suggestion_states(
+                    connection,
+                    state.knowledge_point_suggestions,
                     now_value,
                 )
 
@@ -215,6 +278,37 @@ class SQLiteRepository:
             updated_at=row["updated_at"],
         )
 
+    def get_project_context(
+        self,
+        project_id: str,
+        thread_id: str,
+        *,
+        recent_message_limit: int = 5,
+    ) -> dict[str, object] | None:
+        with self._connect() as connection:
+            project_row = connection.execute(
+                """
+                SELECT project_id, topic, updated_at
+                FROM projects
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+
+        thread_context = self.get_thread_context(thread_id)
+        recent_messages = self.list_recent_messages(thread_id, limit=recent_message_limit)
+
+        if project_row is None and thread_context is None and not recent_messages:
+            return None
+
+        return {
+            "project_id": project_row["project_id"] if project_row is not None else project_id,
+            "project_topic": project_row["topic"] if project_row is not None else None,
+            "project_updated_at": project_row["updated_at"] if project_row is not None else None,
+            "thread_context": thread_context,
+            "recent_messages": recent_messages,
+        }
+
     def get_review_state(self, thread_id: str, unit_id: str) -> ReviewPatch | None:
         with self._connect() as connection:
             row = connection.execute(
@@ -236,6 +330,242 @@ class SQLiteRepository:
             review_count=row["review_count"],
             lapse_count=row["lapse_count"],
         )
+
+    def list_project_knowledge_points(self, project_id: str) -> list[KnowledgePoint]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM knowledge_points
+                WHERE project_id = ?
+                ORDER BY created_at ASC, knowledge_point_id ASC
+                """,
+                (project_id,),
+            ).fetchall()
+
+        return [self._row_to_knowledge_point(row) for row in rows]
+
+    def get_knowledge_point(
+        self,
+        project_id: str,
+        knowledge_point_id: str,
+    ) -> KnowledgePoint | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM knowledge_points
+                WHERE project_id = ? AND knowledge_point_id = ?
+                """,
+                (project_id, knowledge_point_id),
+            ).fetchone()
+
+        return self._row_to_knowledge_point(row) if row is not None else None
+
+    def get_knowledge_point_state(self, knowledge_point_id: str) -> KnowledgePointState | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM knowledge_point_state
+                WHERE knowledge_point_id = ?
+                """,
+                (knowledge_point_id,),
+            ).fetchone()
+
+        return self._row_to_knowledge_point_state(row) if row is not None else None
+
+    def list_knowledge_point_suggestions(
+        self,
+        project_id: str,
+        *,
+        statuses: list[str] | None = None,
+    ) -> list[KnowledgePointSuggestion]:
+        query = """
+            SELECT *
+            FROM knowledge_point_suggestions
+            WHERE project_id = ?
+        """
+        params: list[object] = [project_id]
+        if statuses:
+            placeholders = ", ".join("?" for _ in statuses)
+            query += f" AND status IN ({placeholders})"
+            params.extend(statuses)
+        query += " ORDER BY created_at ASC, suggestion_id ASC"
+
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+
+        return [self._row_to_knowledge_point_suggestion(row) for row in rows]
+
+    def get_knowledge_point_suggestion(
+        self,
+        project_id: str,
+        suggestion_id: str,
+    ) -> KnowledgePointSuggestion | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM knowledge_point_suggestions
+                WHERE project_id = ? AND suggestion_id = ?
+                """,
+                (project_id, suggestion_id),
+            ).fetchone()
+
+        return self._row_to_knowledge_point_suggestion(row) if row is not None else None
+
+    def save_knowledge_point_suggestions(self, suggestions: list[KnowledgePointSuggestion]) -> None:
+        if not suggestions:
+            return
+
+        self.initialize()
+        now_value = _utc_now()
+        with self._connect() as connection:
+            self._upsert_knowledge_point_suggestions(connection, suggestions, now_value)
+            self._mark_archive_suggestion_states(connection, suggestions, now_value)
+
+    def save_knowledge_points(
+        self,
+        knowledge_points: list[KnowledgePoint],
+        *,
+        states: list[KnowledgePointState] | None = None,
+    ) -> None:
+        if not knowledge_points and not states:
+            return
+
+        self.initialize()
+        now_value = _utc_now()
+        with self._connect() as connection:
+            for knowledge_point in knowledge_points:
+                self._upsert_knowledge_point(connection, knowledge_point, now_value)
+            for knowledge_point_state in states or []:
+                self._upsert_knowledge_point_state(connection, knowledge_point_state, now_value)
+
+    def resolve_knowledge_point_suggestion(
+        self,
+        project_id: str,
+        suggestion_id: str,
+        action: Literal["confirm", "dismiss"],
+    ) -> KnowledgePointSuggestionResolution | None:
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM knowledge_point_suggestions
+                WHERE project_id = ? AND suggestion_id = ?
+                """,
+                (project_id, suggestion_id),
+            ).fetchone()
+
+            if row is None:
+                return None
+
+            suggestion = self._row_to_knowledge_point_suggestion(row)
+            if suggestion.status != "pending":
+                return self._build_knowledge_point_suggestion_resolution(connection, suggestion)
+
+            now_value = _utc_now()
+            if action == "dismiss":
+                connection.execute(
+                    """
+                    UPDATE knowledge_point_suggestions
+                    SET status = ?, resolved_at = ?, updated_at = ?
+                    WHERE project_id = ? AND suggestion_id = ?
+                    """,
+                    ("dismissed", now_value, now_value, project_id, suggestion_id),
+                )
+                refreshed_row = connection.execute(
+                    """
+                    SELECT *
+                    FROM knowledge_point_suggestions
+                    WHERE project_id = ? AND suggestion_id = ?
+                    """,
+                    (project_id, suggestion_id),
+                ).fetchone()
+                if refreshed_row is None:
+                    return None
+                suggestion = self._row_to_knowledge_point_suggestion(refreshed_row)
+                return self._build_knowledge_point_suggestion_resolution(connection, suggestion)
+
+            knowledge_point_id = suggestion.knowledge_point_id or build_knowledge_point_id(
+                suggestion.project_id,
+                suggestion.title,
+            )
+            if suggestion.kind == "create":
+                self._upsert_knowledge_point(
+                    connection,
+                    KnowledgePoint(
+                        id=knowledge_point_id,
+                        project_id=suggestion.project_id,
+                        title=suggestion.title,
+                        description=suggestion.description,
+                        status="active",
+                        origin_type="session-suggestion",
+                        origin_session_id=suggestion.session_id,
+                        source_material_refs=suggestion.source_material_refs,
+                        created_at=now_value,
+                        updated_at=now_value,
+                    ),
+                    now_value,
+                )
+                self._upsert_knowledge_point_state(
+                    connection,
+                    KnowledgePointState(
+                        knowledge_point_id=knowledge_point_id,
+                        mastery=0,
+                        learning_status="new",
+                        review_status="idle",
+                        archive_suggested=False,
+                        updated_at=now_value,
+                    ),
+                    now_value,
+                )
+            else:
+                if suggestion.knowledge_point_id is None:
+                    raise ValueError("archive suggestion requires knowledge_point_id before confirm")
+                connection.execute(
+                    """
+                    UPDATE knowledge_points
+                    SET status = ?, updated_at = ?
+                    WHERE project_id = ? AND knowledge_point_id = ?
+                    """,
+                    ("archived", now_value, project_id, suggestion.knowledge_point_id),
+                )
+                self._upsert_knowledge_point_state(
+                    connection,
+                    KnowledgePointState(
+                        knowledge_point_id=suggestion.knowledge_point_id,
+                        mastery=0,
+                        learning_status="archived",
+                        review_status="archived",
+                        archive_suggested=False,
+                        updated_at=now_value,
+                    ),
+                    now_value,
+                )
+
+            connection.execute(
+                """
+                UPDATE knowledge_point_suggestions
+                SET status = ?, knowledge_point_id = ?, resolved_at = ?, updated_at = ?
+                WHERE project_id = ? AND suggestion_id = ?
+                """,
+                ("accepted", knowledge_point_id, now_value, now_value, project_id, suggestion_id),
+            )
+            refreshed_row = connection.execute(
+                """
+                SELECT *
+                FROM knowledge_point_suggestions
+                WHERE project_id = ? AND suggestion_id = ?
+                """,
+                (project_id, suggestion_id),
+            ).fetchone()
+            if refreshed_row is None:
+                return None
+            suggestion = self._row_to_knowledge_point_suggestion(refreshed_row)
+            return self._build_knowledge_point_suggestion_resolution(connection, suggestion)
 
     def get_thread_context(self, thread_id: str) -> dict[str, object] | None:
         with self._connect() as connection:
@@ -428,6 +758,184 @@ class SQLiteRepository:
             ),
         )
 
+    def _upsert_knowledge_point_suggestions(
+        self,
+        connection: sqlite3.Connection,
+        suggestions: list[KnowledgePointSuggestion],
+        created_at: str,
+    ) -> None:
+        rows = []
+        for suggestion in suggestions:
+            created_value = (
+                suggestion.created_at.isoformat()
+                if hasattr(suggestion.created_at, "isoformat")
+                else suggestion.created_at
+                or created_at
+            )
+            updated_value = (
+                suggestion.updated_at.isoformat()
+                if hasattr(suggestion.updated_at, "isoformat")
+                else suggestion.updated_at
+                or created_value
+            )
+            resolved_value = (
+                suggestion.resolved_at.isoformat()
+                if hasattr(suggestion.resolved_at, "isoformat")
+                else suggestion.resolved_at
+            )
+            rows.append(
+                (
+                    suggestion.id,
+                    suggestion.project_id,
+                    suggestion.session_id,
+                    suggestion.kind,
+                    suggestion.knowledge_point_id,
+                    suggestion.title,
+                    suggestion.description,
+                    suggestion.reason,
+                    json.dumps(suggestion.source_material_refs, ensure_ascii=False),
+                    suggestion.status,
+                    created_value,
+                    resolved_value,
+                    updated_value,
+                )
+            )
+
+        connection.executemany(
+            """
+            INSERT INTO knowledge_point_suggestions(
+              suggestion_id, project_id, session_id, kind, knowledge_point_id,
+              title, description, reason, source_material_refs, status,
+              created_at, resolved_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(suggestion_id) DO UPDATE SET
+              knowledge_point_id = excluded.knowledge_point_id,
+              title = excluded.title,
+              description = excluded.description,
+              reason = excluded.reason,
+              source_material_refs = excluded.source_material_refs,
+              status = excluded.status,
+              resolved_at = excluded.resolved_at,
+              updated_at = excluded.updated_at
+            """,
+            rows,
+        )
+
+    def _mark_archive_suggestion_states(
+        self,
+        connection: sqlite3.Connection,
+        suggestions: list[KnowledgePointSuggestion],
+        updated_at: str,
+    ) -> None:
+        archive_ids = [
+            suggestion.knowledge_point_id
+            for suggestion in suggestions
+            if suggestion.kind == "archive"
+            and suggestion.status == "pending"
+            and suggestion.knowledge_point_id is not None
+        ]
+        if not archive_ids:
+            return
+
+        connection.executemany(
+            """
+            UPDATE knowledge_point_state
+            SET archive_suggested = 1, updated_at = ?
+            WHERE knowledge_point_id = ?
+            """,
+            [(updated_at, knowledge_point_id) for knowledge_point_id in archive_ids],
+        )
+
+    def _upsert_knowledge_point(
+        self,
+        connection: sqlite3.Connection,
+        knowledge_point: KnowledgePoint,
+        now_value: str,
+    ) -> None:
+        created_value = (
+            knowledge_point.created_at.isoformat()
+            if hasattr(knowledge_point.created_at, "isoformat")
+            else knowledge_point.created_at
+            or now_value
+        )
+        updated_value = (
+            knowledge_point.updated_at.isoformat()
+            if hasattr(knowledge_point.updated_at, "isoformat")
+            else knowledge_point.updated_at
+            or now_value
+        )
+        connection.execute(
+            """
+            INSERT INTO knowledge_points(
+              knowledge_point_id, project_id, title, description, status,
+              origin_type, origin_session_id, source_material_refs, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(knowledge_point_id) DO UPDATE SET
+              title = excluded.title,
+              description = excluded.description,
+              status = excluded.status,
+              source_material_refs = excluded.source_material_refs,
+              updated_at = excluded.updated_at
+            """,
+            (
+                knowledge_point.id,
+                knowledge_point.project_id,
+                knowledge_point.title,
+                knowledge_point.description,
+                knowledge_point.status,
+                knowledge_point.origin_type,
+                knowledge_point.origin_session_id,
+                json.dumps(knowledge_point.source_material_refs, ensure_ascii=False),
+                created_value,
+                updated_value,
+            ),
+        )
+
+    def _upsert_knowledge_point_state(
+        self,
+        connection: sqlite3.Connection,
+        knowledge_point_state: KnowledgePointState,
+        now_value: str,
+    ) -> None:
+        updated_value = (
+            knowledge_point_state.updated_at.isoformat()
+            if hasattr(knowledge_point_state.updated_at, "isoformat")
+            else knowledge_point_state.updated_at
+            or now_value
+        )
+        next_review_at = (
+            knowledge_point_state.next_review_at.isoformat()
+            if hasattr(knowledge_point_state.next_review_at, "isoformat")
+            else knowledge_point_state.next_review_at
+        )
+        connection.execute(
+            """
+            INSERT INTO knowledge_point_state(
+              knowledge_point_id, mastery, learning_status, review_status,
+              next_review_at, archive_suggested, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(knowledge_point_id) DO UPDATE SET
+              mastery = excluded.mastery,
+              learning_status = excluded.learning_status,
+              review_status = excluded.review_status,
+              next_review_at = excluded.next_review_at,
+              archive_suggested = excluded.archive_suggested,
+              updated_at = excluded.updated_at
+            """,
+            (
+                knowledge_point_state.knowledge_point_id,
+                knowledge_point_state.mastery,
+                knowledge_point_state.learning_status,
+                knowledge_point_state.review_status,
+                next_review_at,
+                1 if knowledge_point_state.archive_suggested else 0,
+                updated_value,
+            ),
+        )
+
     def _append_review_events(
         self,
         connection: sqlite3.Connection,
@@ -478,6 +986,84 @@ class SQLiteRepository:
             VALUES (?, ?, ?, ?, ?, ?)
             """,
             rows,
+        )
+
+    def _row_to_knowledge_point(self, row: sqlite3.Row) -> KnowledgePoint:
+        return KnowledgePoint(
+            id=row["knowledge_point_id"],
+            project_id=row["project_id"],
+            title=row["title"],
+            description=row["description"],
+            status=row["status"],
+            origin_type=row["origin_type"],
+            origin_session_id=row["origin_session_id"],
+            source_material_refs=json.loads(row["source_material_refs"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def _row_to_knowledge_point_state(self, row: sqlite3.Row) -> KnowledgePointState:
+        return KnowledgePointState(
+            knowledge_point_id=row["knowledge_point_id"],
+            mastery=row["mastery"],
+            learning_status=row["learning_status"],
+            review_status=row["review_status"],
+            next_review_at=row["next_review_at"],
+            archive_suggested=bool(row["archive_suggested"]),
+            updated_at=row["updated_at"],
+        )
+
+    def _row_to_knowledge_point_suggestion(self, row: sqlite3.Row) -> KnowledgePointSuggestion:
+        return KnowledgePointSuggestion(
+            id=row["suggestion_id"],
+            kind=row["kind"],
+            project_id=row["project_id"],
+            session_id=row["session_id"],
+            knowledge_point_id=row["knowledge_point_id"],
+            title=row["title"],
+            description=row["description"],
+            reason=row["reason"],
+            source_material_refs=json.loads(row["source_material_refs"]),
+            status=row["status"],
+            created_at=row["created_at"],
+            resolved_at=row["resolved_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def _build_knowledge_point_suggestion_resolution(
+        self,
+        connection: sqlite3.Connection,
+        suggestion: KnowledgePointSuggestion,
+    ) -> KnowledgePointSuggestionResolution:
+        knowledge_point = None
+        knowledge_point_state = None
+        if suggestion.knowledge_point_id is not None:
+            knowledge_point_row = connection.execute(
+                """
+                SELECT *
+                FROM knowledge_points
+                WHERE project_id = ? AND knowledge_point_id = ?
+                """,
+                (suggestion.project_id, suggestion.knowledge_point_id),
+            ).fetchone()
+            if knowledge_point_row is not None:
+                knowledge_point = self._row_to_knowledge_point(knowledge_point_row)
+
+            knowledge_point_state_row = connection.execute(
+                """
+                SELECT *
+                FROM knowledge_point_state
+                WHERE knowledge_point_id = ?
+                """,
+                (suggestion.knowledge_point_id,),
+            ).fetchone()
+            if knowledge_point_state_row is not None:
+                knowledge_point_state = self._row_to_knowledge_point_state(knowledge_point_state_row)
+
+        return KnowledgePointSuggestionResolution(
+            suggestion=suggestion,
+            knowledge_point=knowledge_point,
+            knowledge_point_state=knowledge_point_state,
         )
 
 

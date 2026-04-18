@@ -161,9 +161,16 @@
 - `apps/web` 已将 knowledge point archive 从“通用手动按钮”收口为“系统建议归档 -> 用户确认接受建议”，浏览卡与详情页都会显式展示归档建议；未收到建议前不再默认给出归档入口
 - `apps/web` 已在 `project session` 顶部补上 `topic / rules` 快捷入口，用户在会话中就能直接打开 `Project Meta` 面板，不必退回浏览态再改 project 叙事
 - `apps/web` 已在 session 右侧的相关知识点卡片上补上“查看 / 编辑”双入口，project chat 中涉及的知识点现在可以直接进入详情或编辑态，补齐“知识点轻量编辑”路径
-- `apps/web` 已移除 `project chat` 的本地知识点 suggestion heuristic；当前等待 backend 输出正式 `knowledge-point-suggestion` 事件后再恢复这条能力
+- `apps/web` 已移除 `project chat` 的本地知识点 suggestion heuristic；当前可直接消费 backend 发出的 `knowledge-point-suggestion` 事件，不再需要本地猜新增知识点
 - `apps/web` 已移除把 `diagnosis / plan` 归一化成 activity card 的过渡逻辑；当前学习动作只消费 backend 显式 `activity` 事件
 - 已补一份 backend / agent 实施文档，明确当前 web 对接所需接口、stream 事件、repository 扩展和 acceptance checklist，供新开的学习引擎 session 直接照着实现：`docs/reference/learning-engine-backend-integration.md`
+- `apps/agent` 已在 `load_context` 主决策前预取 `project context`：优先从 repository 读取 project topic、thread context 与 recent messages，缺失时再回退到 request 输入
+- `apps/agent` 已为 `/runs/v0` 与 `/runs/v0/stream` 补显式 `activity` 事件；当前先输出单个可执行 activity，web 不再需要把 `diagnosis / plan` 归一化成本地 activity 卡片
+- `apps/agent` 已将 `knowledge-point-suggestion` 扩到 create + archive 两类事件：在 project chat 且未绑定 target unit 的概念边界混淆场景下，会发保守的 create suggestion；当已有 knowledge point 达到稳定区间且复习压力足够低时，会发 archive suggestion
+- `apps/agent` 已补 pair-aware project-level dedupe：类似 `embedding 与 reranking` / `reranking 与 embedding` 的边界标题按顺序无关去重，不会重复生成 suggestion 或 knowledge point id
+- `apps/agent` 已补 project-level off-topic guardrail：命中明显偏题消息时会在 runtime 前置短路，不调用主诊断 LLM、不发 learning/review activity、不发 create/archive suggestion，也不写 learner/review 状态
+- `apps/agent` 已补 `POST /projects/{project_id}/knowledge-point-suggestions/{suggestion_id}/confirm|dismiss`；confirm create 会写入 `knowledge_points / knowledge_point_state`，confirm archive 会归档对应 knowledge point/state，dismiss 只更新 suggestion 状态，两个 endpoint 都保持幂等
+- 已补 activity / project context / knowledge-point-suggestion / off-topic / archive 回归测试；当前 mock 主套件为 `129 passed, 4 deselected`，`real_llm` 套件为 `4 passed`
 
 ### In Progress
 
@@ -173,8 +180,7 @@
 - 收敛 project memory、project learning profile 与 knowledge point pool 的边界
 - 收敛 `project / study / review` 三类 session 的职责与页面展开方式
 - 收敛知识点生命周期：初始化生成、project chat 建议新增、轻量编辑、archive 建议
-- 收敛学习引擎下一步运行形态：让 project materials、project memory、learning profile、session context、review context 在主决策前完成预取，并进入同一证据上下文
-- 将 knowledge point 新增 / archive 建议从前端启发式过渡到 agent judgment：由 agent 读取 project context 后输出结构化 suggestion，前端仅渲染与确认
+- 收敛学习引擎下一步运行形态：在已补 project context preload 的基础上，继续把 project materials、project memory、learning profile、review context 收进同一主决策证据上下文
 - 将当前展示型 `StudyPlan` 过渡收敛为 session 内可执行 activity contract，支持 agent 在对话里直接触发学习 / 复习动作；前端已停止本地脑补 activity
 - 收敛 web-agent contract：从当前 `diagnosis / plan` 过渡适配切到结构化 activity / tool result 事件
 - 收敛前端 activity gating：当前学习动作未完成前，主输入区改成受约束交互
@@ -197,9 +203,8 @@
 - 将 Project Workspace 改成默认知识点工作台、按需展开 session workspace 的布局
 - 为 `project / study / review` 三类 session 定义明确交互和事件 contract
 - 支持 project chat 中的新增材料、知识点建议新增、知识点轻量编辑和 topic/rules 修改入口
-- 定义 `knowledge-point-suggestion` 事件与确认写回 contract，替换当前前端本地启发式新增逻辑
-- 支持知识点 archive 建议与确认流
-- 补稳定的 `activity` 事件，替换当前只剩 `diagnosis / plan / state-patch` 的过渡流
+- 将当前保守的 archive / off-topic 规则继续接到 project memory、learning profile 和知识点详情页读模型，避免事件层已到位但 project-level writeback 仍割裂
+- 将当前单个 `activity` 事件扩成稳定的 session activity contract，补齐多 activity / card deck / 受约束输入节奏
 - 打通 `exercise-result / review-result` 回传与状态回写闭环，让练习结果和复习表现真正影响下一轮诊断
 - 决定当前 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
 - 决定主案例稳定后优先补哪个次级 demo surface：继续放大"材料导入"，还是转向"导师对练"
@@ -211,7 +216,7 @@
 
 - 如果 Project、Knowledge Point、Session 三个对象边界没有尽快在代码里落稳，MVP 会继续带着旧的 thread-centric 结构前进，后续改动成本会放大
 - 如果知识点新增和 archive 规则不够克制，项目内知识点池会快速膨胀，削弱"系统在组织学习"的主感受
-- 如果 backend 迟迟不补 `knowledge-point-suggestion` 和 `activity` 事件，前端虽然不再脑补 contract，但对应 demo 能力会继续空缺
+- 如果 archive / off-topic 规则长期停留在当前保守启发式，而不继续接 exercise-result、project memory 和 learning profile 写回，project chat 的知识点治理仍会偏弱
 - 如果 project learning profile 做得过重或过拟人，会把 MVP 从"编排系统"拉偏成"画像产品"
 - 如果过早引入复杂 graph 或多 agent，当前 demo 容易被工程结构拖慢
 - 如果 demo 展示很多能力但没有主线，差异点会不明显
