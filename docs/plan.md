@@ -2,6 +2,45 @@
 
 ## Current Sprint
 
+### Current Parallel Split
+
+当前前端默认先不作为并行主线。
+本轮两人拆分先集中在 `apps/agent`，目标是先把 backend contract / storage 与 agent runtime / writeback 分开推进，减少共享热点文件冲突。
+
+#### Backend owner
+
+- 主目录：`apps/agent/src/xidea_agent`
+- 主文件：`state.py`、`repository.py`、`api.py`
+- 本轮 checklist：
+  - [ ] 收敛对外 request / response / stream schema，统一向 `Project / Session / KnowledgePoint` 命名靠拢
+  - [ ] 扩 `projects` 持久化字段，补齐 `title / description / special_rules`
+  - [ ] 补 `project_materials / session_attachments` 的表结构、repository 方法和最小读取接口
+  - [ ] 收敛 `project / study / review` 三类 session 的基础字段与创建 contract
+  - [ ] 补 Project 创建 / bootstrap 最小链路：topic、description、materials、special rules、初始 memory、learning profile、knowledge points、project session
+
+#### Agent owner
+
+- 主目录：`apps/agent/src/xidea_agent`
+- 主文件：`runtime.py`、`llm.py`、`tools.py`、`activity_results.py`、`review_engine.py`、`knowledge_points.py`
+- 本轮 checklist：
+  - [ ] 继续把主链路收敛到“预取证据上下文 -> 单次主决策 -> 少量动态 tool loop -> writeback”
+  - [ ] 将 `project / study / review` 三类 session 的行为差异落实到 runtime / prompt / activity 决策
+  - [ ] 收敛知识点生命周期：bootstrap、project chat create suggestion、archive suggestion、confirm 后状态变化
+  - [ ] 将 project materials、project memory、learning profile、review context 进一步收口为同一主决策证据包
+  - [ ] 定出当前 `Consolidation` 的最小演示路径，优先手动触发
+
+#### Shared Hotspots
+
+- `state.py` 是当前并行热点文件，由 backend owner 主改；agent owner 如需加字段，先对齐字段清单再合入
+- `docs/process/shared-boundary-freeze.md` 是共享 contract source of truth；先改文档，再改实现
+- 前端后续只消费稳定 contract，不反向定义 backend / agent 语义
+
+#### Suggested Sequence
+
+1. backend owner 先落 schema / repository / API 基础层
+2. agent owner 基于稳定 schema 并行推进 runtime / prompt / writeback
+3. 两块合流后，再由前端切 `typed activity_result`
+
 ### P0
 
 - [x] 锁定比赛主案例和讲述顺序

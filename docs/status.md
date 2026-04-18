@@ -184,6 +184,14 @@
 
 ### In Progress
 
+#### 当前两人并行拆分（2026-04-18）
+
+- 当前前端默认先不作为并行主线；前端 UI 侧已接近完成，等待 backend / agent contract 进一步稳定后再集中接 `typed activity_result`
+- backend owner 当前主改 `state.py / repository.py / api.py`，负责对外 schema、持久化对象、Project 创建 / bootstrap 与 session / material contract
+- agent owner 当前主改 `runtime.py / llm.py / tools.py / activity_results.py / review_engine.py / knowledge_points.py`，负责主决策链路、tool loop、知识点生命周期与 writeback
+- `state.py` 是当前共享热点文件，默认只由 backend owner 主改；agent owner 通过字段清单或小 PR 配合，避免两人同时大改 contract
+- 当前推荐落地顺序已收敛为：先 schema / repository / API，再 runtime / prompt / writeback，最后再接前端 `activity_result`
+
 - 收敛 agent 主路径到"预取 project 证据上下文 -> 单次主决策调用 -> tool / session loop -> 状态回写"，优先解决当前回复过慢与首轮等待偏长问题
 - 将当前 operating docs 从"project / thread + activity-first"进一步收敛到"project-centric MVP"叙事
 - 收敛 Project 创建流程：主题、描述、材料输入、special rules 生成和初始化编排
@@ -205,6 +213,10 @@
 
 ### Next
 
+- backend owner：补 `Project / Session / ProjectMaterial / SessionAttachment` 的正式 schema、表结构、repository 方法与最小 API
+- backend owner：打通 Project 创建 / bootstrap 最小链路，稳定初始 memory、learning profile、knowledge points 与 project session
+- agent owner：继续收敛“预取证据 -> 单次主决策 -> 少量动态 tool loop -> writeback”的主路径，优先减少仍需 `needs_tool=true` 的场景
+- agent owner：把 `project / study / review` 三类 session 的行为差异和知识点 lifecycle 真正落到 runtime
 - 定义 Project 创建与初始化编排所需的最小 schema：topic、description、materials、special rules、initial memory
 - 定义 knowledge point 最小 schema：title、description、source materials、origin session、mastery/review/archive state
 - 为 `project / study / review` 三类 session 定义明确交互和事件 contract
