@@ -34,6 +34,13 @@
 - 前端主线：稳定 `apps/web` 的 demo flow、证据链展示，并接入真实 agent 返回
 - 产品 / demo 叙事主线：稳定比赛故事线、页面讲述顺序、范围取舍、答辩表述和 demo script
 
+当前这一轮如果前端已基本收口，允许把学习引擎主线临时再拆成 backend / agent 两条并行子线：
+
+- backend 子线：主改 `state.py`、`repository.py`、`api.py`，负责 schema、storage、Project 创建 / bootstrap、session/material contract
+- agent 子线：主改 `runtime.py`、`llm.py`、`tools.py`、`activity_results.py`、`review_engine.py`、`knowledge_points.py`，负责主决策链路、prompt、tool arbitration、知识点 lifecycle、writeback
+
+这条拆分默认只服务当前执行阶段，不替代长期 owner 结构。
+
 这三条主线的默认边界是：
 
 - 学习引擎 owner 不主动改前端展示结构，除非为了联调修复明确的小接口问题
@@ -41,6 +48,8 @@
 - 产品 / demo 叙事 owner 可以调整 story、文案、演示顺序和证明重点，但涉及代码边界变化时要先同步相关技术 owner
 - 前端 owner 不负责补 learning-engine judgment：不在 `apps/web` 本地生成知识点建议、archive 建议、off-topic 判定、activity contract 或 project-level writeback 语义
 - 如果后端暂时缺 contract，前端只能显式展示“待后端接入 / 暂无结构化事件”，不能把 `diagnosis / plan / state-patch` 二次推导成正式业务对象
+- backend / agent 并行时，`state.py` 默认视为热点文件：由 backend 子线主改，agent 子线先通过字段清单或小 PR 对齐需求
+- backend / agent 并行时，`docs/process/shared-boundary-freeze.md` 仍是共享 contract source of truth；不要从当前前端实现反推后端语义
 
 ## Start-Of-Task Check
 
