@@ -6,6 +6,8 @@ from xidea_agent.repository import SQLiteRepository
 from xidea_agent.state import (
     AgentRequest,
     LearningUnit,
+    Message,
+    ProjectContext,
     SourceAsset,
     ToolIntent,
     ToolResult,
@@ -328,6 +330,94 @@ def build_asset_summary_payload(asset_ids: list[str]) -> dict[str, Any]:
     return _build_asset_summary_payload(asset_ids)
 
 
+def build_project_context(
+    request: AgentRequest,
+    repository: SQLiteRepository | None = None,
+) -> ProjectContext:
+    repository_context = (
+        repository.get_project_context(request.project_id, request.thread_id)
+        if repository is not None
+        else None
+    )
+    thread_context = (
+        repository_context.get("thread_context")
+        if repository_context is not None
+        else None
+    )
+    stored_asset_ids = (
+        thread_context.get("source_asset_ids", [])
+        if isinstance(thread_context, dict)
+        else []
+    )
+    source_asset_ids = request.source_asset_ids or stored_asset_ids
+    focus_unit = retrieve_learning_unit(request.target_unit_id, request.topic)
+    recent_messages = (
+        repository_context.get("recent_messages", [])
+        if repository_context is not None
+        else request.messages[-5:]
+        if repository is None
+        else []
+    )
+    if not isinstance(recent_messages, list):
+        recent_messages = request.messages[-5:]
+
+    asset_summary = (
+        _build_asset_summary_payload(source_asset_ids) if source_asset_ids else None
+    )
+    thread_memory = _build_thread_memory_payload(
+        request.thread_id,
+        request.target_unit_id,
+        repository,
+    )
+    review_summary = (
+        _build_review_context_payload(
+            request.thread_id,
+            request.target_unit_id,
+            repository,
+        )
+        if request.target_unit_id is not None
+        else None
+    )
+
+    topic = (
+        str(repository_context.get("project_topic")).strip()
+        if repository_context is not None and repository_context.get("project_topic")
+        else request.topic
+    )
+    source = (
+        "repository"
+        if repository_context is not None and repository_context.get("project_topic")
+        else "request"
+    )
+
+    summary_parts = [
+        f"当前 project 主题：{topic}",
+        f"当前聚焦知识点：{focus_unit.title}",
+        asset_summary["summary"] if asset_summary is not None else None,
+        thread_memory["summary"],
+        review_summary["summary"] if review_summary is not None else None,
+    ]
+    recent_message_summary = _summarize_recent_messages(recent_messages)
+    if recent_message_summary is not None:
+        summary_parts.append(f"最近会话摘要：{recent_message_summary}")
+    if source == "request" and request.context_hint:
+        summary_parts.append(f"请求上下文提示：{request.context_hint}")
+
+    return ProjectContext(
+        project_id=request.project_id,
+        topic=topic,
+        focus_unit_id=focus_unit.id,
+        focus_unit_title=focus_unit.title,
+        source_asset_ids=list(source_asset_ids),
+        source_asset_summary=asset_summary["summary"] if asset_summary is not None else None,
+        thread_memory_summary=thread_memory["summary"],
+        review_summary=review_summary["summary"] if review_summary is not None else None,
+        recent_messages=[message for message in recent_messages if isinstance(message, Message)],
+        source=source,
+        summary="；".join(item for item in summary_parts if item) + "。",
+    )
+
+
 def _build_unit_detail_payload(unit: LearningUnit) -> dict[str, Any]:
     enrichment = _UNIT_ENRICHMENT.get(unit.id, {})
     return {
@@ -501,3 +591,15 @@ def _infer_trend_hint(memory_strength: int, confusion_level: int) -> str:
     if confusion_level >= 60:
         return "记忆尚可但混淆风险偏高，建议在复习中加入对比辨析环节。"
     return "当前记忆状态相对稳定，可按常规节奏复习。"
+
+
+def _summarize_recent_messages(messages: list[Message]) -> str | None:
+    if not messages:
+        return None
+
+    items: list[str] = []
+    for message in messages[-3:]:
+        prefix = "用户" if message.role == "user" else "系统"
+        items.append(f"{prefix}：{message.content[:40]}")
+
+    return " / ".join(items)

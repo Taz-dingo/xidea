@@ -529,11 +529,11 @@ system prompt 至少需要明确以下节奏：
 
 | 变量 | 必须 | 默认值 | 说明 |
 |---|---|---|---|
-| `XIDEA_LLM_API_KEY` | 条件必填 | 无（缺失时启动报错） | 通用 LLM key，默认按智谱 OpenAI-compatible 入口使用 |
-| `ZAI_API_KEY` | 条件必填 | 无（缺失时启动报错） | 智谱官方环境变量名 |
-| `OPENAI_API_KEY` | 条件必填 | 无（缺失时启动报错） | OpenAI 兼容回退 |
-| `XIDEA_LLM_BASE_URL` | 否 | 智谱 `https://open.bigmodel.cn/api/paas/v4/` 或 OpenAI 默认 | 自定义 OpenAI-compatible base URL |
+| `XIDEA_LLM_API_KEY` | 建议必填 | 无（缺失时启动报错） | 通用 LLM key；应用层主配置入口 |
+| `XIDEA_LLM_BASE_URL` | 否 | OpenAI 默认 | 自定义 OpenAI-compatible base URL；接 GLM 时填 `https://open.bigmodel.cn/api/paas/v4/` |
 | `XIDEA_LLM_MODEL` | 否 | `glm-5` 或 `gpt-4o-mini` | 使用的模型 |
+
+兼容说明：`ZHIPU_API_KEY / ZAI_API_KEY / OPENAI_API_KEY` 仍可继续使用，但只作为旧环境回退读取来源，不再作为推荐配置口径。
 
 ## 前后端字段映射
 

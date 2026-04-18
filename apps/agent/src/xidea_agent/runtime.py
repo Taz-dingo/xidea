@@ -1,12 +1,24 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from collections.abc import Iterator
+from datetime import datetime, timedelta, timezone
+import re
 
 from xidea_agent.guardrails import get_violations, validate_diagnosis
+from xidea_agent.knowledge_points import (
+    COMPARISON_PATTERN,
+    build_boundary_title,
+    build_suggestion_id,
+    knowledge_point_identity_key,
+)
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.review_engine import ReviewDecision, should_enter_review, schedule_next_review
 from xidea_agent.state import (
+    Activity,
+    ActivityChoice,
+    ActivityChoiceInput,
+    ActivityEvent,
+    ActivityTextInput,
     AgentRequest,
     AgentRunResult,
     Diagnosis,
@@ -14,6 +26,9 @@ from xidea_agent.state import (
     DoneEvent,
     Explanation,
     GraphState,
+    KnowledgePoint,
+    KnowledgePointSuggestion,
+    KnowledgePointSuggestionEvent,
     LearnerStatePatch,
     LearnerUnitState,
     LearningMode,
@@ -29,11 +44,17 @@ from xidea_agent.state import (
     StudyPlan,
     StudyPlanStep,
     TextDeltaEvent,
+    KnowledgePointState,
     ToolIntent,
     ToolResult,
     build_initial_graph_state,
 )
-from xidea_agent.tools import resolve_tool_result, retrieve_learning_unit, retrieve_source_assets
+from xidea_agent.tools import (
+    build_project_context,
+    resolve_tool_result,
+    retrieve_learning_unit,
+    retrieve_source_assets,
+)
 
 
 UTC = timezone.utc
@@ -43,6 +64,35 @@ UNDERSTANDING_KEYWORDS = ("为什么", "原理", "什么意思", "怎么理解",
 RECALL_KEYWORDS = ("复习", "忘", "记不住", "回忆", "巩固")
 TRANSFER_KEYWORDS = ("项目", "方案", "设计", "落地", "评审", "答辩", "bad case", "场景")
 PRACTICE_KEYWORDS = ("练习", "试试", "演练", "模拟")
+SUGGESTION_HINTS = CONFUSION_KEYWORDS + ("同一回事", "怎么选", "什么时候用")
+OFF_TOPIC_CUE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("天气", ("今天天气", "明天天气", "天气怎么样", "会下雨吗", "气温多少")),
+    ("餐饮", ("吃什么", "餐厅推荐", "外卖推荐", "奶茶推荐", "咖啡店推荐")),
+    ("娱乐", ("讲个笑话", "写首诗", "推荐电影", "推荐歌曲", "歌词是什么")),
+    ("生活服务", ("旅游攻略", "酒店推荐", "机票", "星座运势", "彩票开奖")),
+)
+PROJECT_CHAT_RELEVANCE_HINTS = (
+    "学习",
+    "复习",
+    "知识点",
+    "概念",
+    "原理",
+    "材料",
+    "项目",
+    "答辩",
+    "架构",
+    "检索",
+    "rag",
+    "retrieval",
+    "reranking",
+    "embedding",
+    "agent",
+    "workflow",
+)
+ARCHIVE_READY_LEARNING_STATUSES = {"stable", "complete", "learned"}
+ARCHIVE_READY_REVIEW_STATUSES = {"stable", "mastered"}
+ARCHIVE_READY_MIN_MASTERY = 90
+ARCHIVE_READY_MIN_REVIEW_GAP = timedelta(days=14)
 
 MODE_LABELS: dict[LearningMode, str] = {
     "socratic": "苏格拉底追问",
@@ -67,6 +117,168 @@ ACTION_REASON: dict[PedagogicalAction, str] = {
     "apply": "概念基础已基本具备，但还需要在项目场景里验证是否真的会用。",
     "practice": "当前适合通过练习把已有理解转成更稳定的应用能力。",
 }
+
+
+def _build_activity_choice_set(mode: LearningMode):
+    if mode == "contrast-drill":
+        return ActivityChoiceInput(
+            type="choice",
+            choices=[
+                ActivityChoice(
+                    id="trace-boundary",
+                    label="先区分是召回、重排还是上下文构造出了问题。",
+                    detail="先定位失真环节，再决定该改检索、重排还是上下文拼装。",
+                ),
+                ActivityChoice(
+                    id="increase-chunks",
+                    label="先把 chunk 数量继续加大，尽量把更多信息塞给模型。",
+                    detail="这是常见直觉，但会跳过问题定位，容易继续放大噪音。",
+                ),
+                ActivityChoice(
+                    id="skip-diagnosis",
+                    label="暂时不定位，直接让模型自由生成一版回答再说。",
+                    detail="会把检索链路问题掩盖成生成问题，不利于后续设计取舍。",
+                ),
+            ],
+        )
+
+    return ActivityTextInput(
+        type="text",
+        placeholder="先用你自己的话作答，系统会基于这次作答继续追问或改排下一步。",
+        min_length=24,
+    )
+
+
+def _build_activity_title(mode: LearningMode, action: PedagogicalAction) -> str:
+    if mode == "contrast-drill":
+        return "先做一个边界辨析"
+
+    if mode == "scenario-sim" or action == "apply":
+        return "先做一轮项目情境作答"
+
+    if action == "review" or mode in ("image-recall", "audio-recall"):
+        return "先做一次主动回忆"
+
+    return "先接住导师追问"
+
+
+def _build_activity_prompt(
+    action: PedagogicalAction,
+    mode: LearningMode,
+    unit_title: str,
+) -> str:
+    if mode == "contrast-drill":
+        return (
+            f"围绕「{unit_title}」，如果线上 bad case 出现“召回看起来命中了，但回答仍然不准”，"
+            "你会先把问题定位到哪一层？"
+        )
+
+    if mode == "scenario-sim" or action == "apply":
+        return (
+            f"假设你正在向评审解释「{unit_title}」，请用 3 到 5 句说明为什么不能只做"
+            "“检索后直接拼接给模型”。"
+        )
+
+    if action == "review" or mode in ("image-recall", "audio-recall"):
+        return (
+            f"不要看材料，回忆一下「{unit_title}」里最关键的判断标准：什么情况下应该先怀疑"
+            "记忆走弱，什么情况下应该先怀疑概念混淆？"
+        )
+
+    return (
+        f"先用你自己的话解释「{unit_title}」：为什么这轮系统没有直接让你进入自由练习，"
+        "而是先安排一个更受约束的学习动作？"
+    )
+
+
+def build_activity(
+    diagnosis: Diagnosis,
+    plan: StudyPlan,
+    learner_state: LearnerUnitState,
+    learning_unit: LearningUnit | None,
+) -> Activity | None:
+    mode = plan.selected_mode
+    unit_id = learning_unit.id if learning_unit is not None else diagnosis.focus_unit_id
+    unit_title = (
+        learning_unit.title
+        if learning_unit is not None
+        else diagnosis.focus_unit_id or "当前知识点"
+    )
+
+    kind = (
+        "quiz"
+        if mode == "contrast-drill"
+        else "recall"
+        if diagnosis.recommended_action == "review" or mode in ("image-recall", "audio-recall")
+        else "coach-followup"
+    )
+    evidence = learner_state.weak_signals[:3] or (
+        diagnosis.explanation.evidence[:3] if diagnosis.explanation is not None else []
+    )
+
+    return Activity(
+        id=f"activity-{unit_id or 'current'}-{mode}",
+        kind=kind,
+        knowledge_point_id=unit_id,
+        title=_build_activity_title(mode, diagnosis.recommended_action),
+        objective=plan.expected_outcome,
+        prompt=_build_activity_prompt(diagnosis.recommended_action, mode, unit_title),
+        support=diagnosis.reason,
+        mode=mode,
+        evidence=evidence,
+        submit_label=(
+            "提交判断"
+            if kind == "quiz"
+            else "提交回忆"
+            if kind == "recall"
+            else "提交作答"
+        ),
+        input=_build_activity_choice_set(mode),
+    )
+
+
+def _build_project_context_observations(project_context) -> list[Observation]:
+    observations = [
+        Observation(
+            observation_id="project-context-topic",
+            kind="project-note",
+            source=f"{project_context.source}-project-context",
+            summary=f"当前 project 主题：{project_context.topic}",
+            detail={"projectId": project_context.project_id},
+        )
+    ]
+
+    if project_context.source_asset_summary:
+        observations.append(
+            Observation(
+                observation_id="project-context-assets",
+                kind="project-note",
+                source="project-assets",
+                summary=project_context.source_asset_summary,
+            )
+        )
+
+    if project_context.thread_memory_summary:
+        observations.append(
+            Observation(
+                observation_id="project-context-thread-memory",
+                kind="project-note",
+                source="thread-memory",
+                summary=project_context.thread_memory_summary,
+            )
+        )
+
+    if project_context.review_summary:
+        observations.append(
+            Observation(
+                observation_id="project-context-review",
+                kind="project-note",
+                source="review-context",
+                summary=project_context.review_summary,
+            )
+        )
+
+    return observations
 
 
 def latest_user_message(messages: list[Message]) -> str:
@@ -592,14 +804,288 @@ def build_state_patch(
     )
 
 
-def build_events(message: str, diagnosis: Diagnosis, plan: StudyPlan, state_patch: StatePatch):
-    return [
+def _build_project_relevance_keywords(topic: str) -> set[str]:
+    keywords = {keyword.lower() for keyword in PROJECT_CHAT_RELEVANCE_HINTS}
+    keywords.update(match.group(0).lower() for match in re.finditer(r"[A-Za-z0-9_-]{2,}", topic))
+    keywords.update(match.group(0) for match in re.finditer(r"[\u4e00-\u9fff]{2,8}", topic))
+    return keywords
+
+
+def _detect_off_topic_reason(state: GraphState) -> str | None:
+    if state.request.entry_mode != "chat-question":
+        return None
+    if state.request.target_unit_id is not None:
+        return None
+
+    message = latest_user_message(state.request.messages).strip()
+    if not message:
+        return None
+
+    project_topic = state.project_context.topic if state.project_context is not None else state.request.topic
+    lowered_message = message.lower()
+    if any(keyword in lowered_message for keyword in _build_project_relevance_keywords(project_topic)):
+        return None
+
+    for category, cues in OFF_TOPIC_CUE_GROUPS:
+        if any(cue in lowered_message for cue in cues):
+            return (
+                f"这条消息已经偏离当前 project「{project_topic}」了，"
+                f"现在更像是在问{category}类问题。"
+            )
+    return None
+
+
+def _build_off_topic_plan(project_topic: str) -> StudyPlan:
+    return StudyPlan(
+        headline=f"先回到「{project_topic}」这个 project",
+        summary="当前消息明显偏离 project 范围，这轮不会推进学习编排或知识点治理。",
+        selected_mode="guided-qa",
+        expected_outcome="下一条消息重新落到当前 project 的主题、材料、知识点或答辩场景里。",
+        steps=[
+            StudyPlanStep(
+                id="return-to-project",
+                title="回到当前 project",
+                mode="guided-qa",
+                reason="继续按 off-topic 消息做学习编排会污染 project memory 和知识点池。",
+                outcome="把问题拉回当前 project 的主题、材料、知识点或答辩场景。",
+            )
+        ],
+    )
+
+
+def _apply_off_topic_guardrail(state: GraphState, reason: str) -> GraphState:
+    project_topic = state.project_context.topic if state.project_context is not None else state.request.topic
+    assistant_message = (
+        f"{reason} 这轮我不会把它写入学习状态、knowledge point 或 review 轨迹。"
+        "如果继续当前 project，请直接回到主题、材料、知识点或答辩场景。"
+    )
+    state.is_off_topic = True
+    state.off_topic_reason = reason
+    state.diagnosis = Diagnosis(
+        recommended_action="teach",
+        reason=reason,
+        confidence=0.95,
+        focus_unit_id=None,
+        primary_issue="off-topic",
+        needs_tool=False,
+        explanation=Explanation(
+            summary="当前消息明显偏离 project 范围，先阻断写回并提醒用户回到主线。",
+            evidence=[
+                f"project_topic={project_topic}",
+                f"latest_message={latest_user_message(state.request.messages)}",
+            ],
+            confidence=0.95,
+        ),
+    )
+    state.plan = _build_off_topic_plan(project_topic)
+    state.assistant_message = assistant_message
+    state.activity = None
+    state.knowledge_point_suggestions = []
+    state.state_patch = StatePatch()
+    state.rationale.append("off_topic guardrail short-circuited the learning path before LLM diagnosis.")
+    return state
+
+
+def guard_off_topic_step(state: GraphState) -> GraphState:
+    reason = _detect_off_topic_reason(state)
+    if reason is None:
+        return state
+    return _apply_off_topic_guardrail(state, reason)
+
+
+def _infer_knowledge_point_candidate(message: str) -> tuple[str, str, str] | None:
+    compact_message = " ".join(message.strip().split())
+    if not compact_message or not any(hint in compact_message for hint in SUGGESTION_HINTS):
+        return None
+
+    pair = COMPARISON_PATTERN.search(compact_message)
+    if pair is None:
+        return None
+
+    left = pair.group("left").strip()
+    right = pair.group("right").strip()
+    title = build_boundary_title(left, right)
+    canonical_left, canonical_right = title.removesuffix(" 的边界").split(" 与 ", maxsplit=1)
+    description = (
+        f"沉淀「{canonical_left} 与 {canonical_right}」这组概念边界，"
+        "避免 project chat 里反复出现同类混淆。"
+    )
+    reason = (
+        f"当前 project chat 直接暴露出「{canonical_left}」与「{canonical_right}」的概念边界混淆，"
+        "建议把它收成独立知识点，后续学习和复习都围绕这条边界组织。"
+    )
+    return title, description, reason
+
+
+def _build_create_knowledge_point_suggestion(
+    state: GraphState,
+    repository: SQLiteRepository | None,
+    timestamp: datetime,
+) -> KnowledgePointSuggestion | None:
+    if state.diagnosis is None or state.diagnosis.primary_issue != "concept-confusion":
+        return None
+
+    latest_message_text = next(
+        (message.content for message in reversed(state.request.messages) if message.role == "user"),
+        "",
+    )
+    candidate = _infer_knowledge_point_candidate(latest_message_text)
+    if candidate is None:
+        return None
+
+    title, description, reason = candidate
+    candidate_key = knowledge_point_identity_key(title)
+    existing_keys: set[str] = set()
+    if repository is not None:
+        existing_keys.update(
+            knowledge_point_identity_key(point.title)
+            for point in repository.list_project_knowledge_points(state.request.project_id)
+        )
+        existing_keys.update(
+            knowledge_point_identity_key(suggestion.title)
+            for suggestion in repository.list_knowledge_point_suggestions(
+                state.request.project_id,
+                statuses=["pending", "accepted"],
+            )
+            if suggestion.kind == "create"
+        )
+    if candidate_key in existing_keys:
+        return None
+
+    return KnowledgePointSuggestion(
+        id=build_suggestion_id(
+            state.request.project_id,
+            state.request.thread_id,
+            title,
+        ),
+        kind="create",
+        project_id=state.request.project_id,
+        session_id=state.request.thread_id,
+        title=title,
+        description=description,
+        reason=reason,
+        source_material_refs=list(
+            state.project_context.source_asset_ids if state.project_context is not None else []
+        ),
+        status="pending",
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+
+
+def _is_archive_ready(now: datetime, point: KnowledgePoint, point_state: KnowledgePointState) -> bool:
+    if point.status != "active":
+        return False
+    if point_state.archive_suggested:
+        return False
+    if point_state.mastery < ARCHIVE_READY_MIN_MASTERY:
+        return False
+
+    learning_ready = point_state.learning_status.lower() in ARCHIVE_READY_LEARNING_STATUSES
+    review_ready = point_state.review_status.lower() in ARCHIVE_READY_REVIEW_STATUSES
+    if not (learning_ready or review_ready):
+        return False
+    if point_state.next_review_at is None:
+        return True
+    return point_state.next_review_at >= now + ARCHIVE_READY_MIN_REVIEW_GAP
+
+
+def _build_archive_knowledge_point_suggestion(
+    state: GraphState,
+    repository: SQLiteRepository | None,
+    timestamp: datetime,
+) -> KnowledgePointSuggestion | None:
+    if repository is None:
+        return None
+
+    existing_archive_ids = {
+        suggestion.knowledge_point_id
+        for suggestion in repository.list_knowledge_point_suggestions(
+            state.request.project_id,
+            statuses=["pending", "accepted"],
+        )
+        if suggestion.kind == "archive" and suggestion.knowledge_point_id is not None
+    }
+    for point in repository.list_project_knowledge_points(state.request.project_id):
+        if point.id in existing_archive_ids:
+            continue
+        point_state = repository.get_knowledge_point_state(point.id)
+        if point_state is None or not _is_archive_ready(timestamp, point, point_state):
+            continue
+        return KnowledgePointSuggestion(
+            id=build_suggestion_id(
+                state.request.project_id,
+                state.request.thread_id,
+                point.title,
+            ),
+            kind="archive",
+            project_id=state.request.project_id,
+            session_id=state.request.thread_id,
+            knowledge_point_id=point.id,
+            title=point.title,
+            description=point.description,
+            reason=(
+                f"「{point.title}」已经连续处在稳定区间，短期内没有新的复习压力，"
+                "继续留在 active 知识点池只会增加噪声，建议归档。"
+            ),
+            source_material_refs=list(point.source_material_refs),
+            status="pending",
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+    return None
+
+
+def build_knowledge_point_suggestions(
+    state: GraphState,
+    repository: SQLiteRepository | None = None,
+) -> list[KnowledgePointSuggestion]:
+    if state.diagnosis is None or state.is_off_topic:
+        return []
+    if state.request.entry_mode != "chat-question":
+        return []
+    if state.request.target_unit_id is not None:
+        return []
+
+    timestamp = datetime.now(UTC)
+    create_suggestion = _build_create_knowledge_point_suggestion(state, repository, timestamp)
+    if create_suggestion is not None:
+        return [create_suggestion]
+
+    archive_suggestion = _build_archive_knowledge_point_suggestion(state, repository, timestamp)
+    if archive_suggestion is not None:
+        return [archive_suggestion]
+
+    return []
+
+
+def build_events(
+    message: str,
+    diagnosis: Diagnosis,
+    plan: StudyPlan,
+    state_patch: StatePatch,
+    activity: Activity | None = None,
+    knowledge_point_suggestions: list[KnowledgePointSuggestion] | None = None,
+):
+    events = [
         DiagnosisEvent(event="diagnosis", diagnosis=diagnosis),
         TextDeltaEvent(event="text-delta", delta=message),
         PlanEvent(event="plan", plan=plan),
+    ]
+    if activity is not None:
+        events.append(ActivityEvent(event="activity", activity=activity))
+    if knowledge_point_suggestions:
+        events.append(
+            KnowledgePointSuggestionEvent(
+                event="knowledge-point-suggestion",
+                suggestions=knowledge_point_suggestions,
+            )
+        )
+    events.extend([
         StatePatchEvent(event="state-patch", state_patch=state_patch),
         DoneEvent(event="done", final_message=message),
-    ]
+    ])
+    return events
 
 
 def _run_agent_v0_state(
@@ -609,12 +1095,16 @@ def _run_agent_v0_state(
     llm: "LLMClient",
 ) -> GraphState:
     state = build_initial_graph_state(request)
+    state = load_context_step(state, repository=repository)
+    state = guard_off_topic_step(state)
+    if state.is_off_topic:
+        return state
+
     for step in (
-        lambda current: load_context_step(current, repository=repository),
         lambda current: diagnose_step(current, llm=llm),
         decide_action_step,
         lambda current: maybe_tool_step(current, repository=repository),
-        lambda current: compose_response_step(current, llm=llm),
+        lambda current: compose_response_step(current, llm=llm, repository=repository),
         writeback_step,
     ):
         state = step(state)
@@ -637,6 +1127,8 @@ def _build_run_result(state: GraphState) -> AgentRunResult:
             state.diagnosis,
             state.plan,
             state.state_patch,
+            state.activity,
+            state.knowledge_point_suggestions,
         ),
     )
 
@@ -651,6 +1143,30 @@ def iter_agent_v0_events(
     events: list[StreamEvent] = []
 
     state = load_context_step(state, repository=repository)
+    state = guard_off_topic_step(state)
+    if state.is_off_topic:
+        if state.diagnosis is None or state.plan is None or state.state_patch is None:
+            raise RuntimeError("off-topic guardrail did not produce a complete response payload.")
+        diagnosis_event = DiagnosisEvent(event="diagnosis", diagnosis=state.diagnosis)
+        events.append(diagnosis_event)
+        yield diagnosis_event
+        for chunk in _chunk_text_for_ui_local(state.assistant_message or state.off_topic_reason or ""):
+            text_event = TextDeltaEvent(event="text-delta", delta=chunk)
+            events.append(text_event)
+            yield text_event
+        plan_event = PlanEvent(event="plan", plan=state.plan)
+        events.append(plan_event)
+        yield plan_event
+        state_patch_event = StatePatchEvent(event="state-patch", state_patch=state.state_patch)
+        events.append(state_patch_event)
+        yield state_patch_event
+        done_event = DoneEvent(event="done", final_message=state.assistant_message)
+        events.append(done_event)
+        yield done_event
+        if repository is not None:
+            repository.save_run(request, AgentRunResult(graph_state=state, events=events))
+        return
+
     state = diagnose_step(state, llm=llm)
     if state.diagnosis is None:
         raise RuntimeError("diagnose_step completed without diagnosis.")
@@ -665,9 +1181,10 @@ def iter_agent_v0_events(
 
     from xidea_agent.llm import llm_build_plan, stream_assistant_reply
 
-    unit_title = state.learning_unit.title if state.learning_unit else state.request.topic
+    project_topic = state.project_context.topic if state.project_context is not None else state.request.topic
+    unit_title = state.learning_unit.title if state.learning_unit else project_topic
     candidate_modes = state.learning_unit.candidate_modes if state.learning_unit else []
-    user_msg = state.request.messages[-1] if state.request.messages else state.request.topic
+    user_msg = state.request.messages[-1] if state.request.messages else project_topic
 
     reply_parts: list[str] = []
     for chunk in stream_assistant_reply(
@@ -702,7 +1219,7 @@ def iter_agent_v0_events(
 
     llm_plan = llm_build_plan(
         llm,
-        state.request.topic,
+        project_topic,
         unit_title,
         candidate_modes,
         state.diagnosis,
@@ -714,7 +1231,7 @@ def iter_agent_v0_events(
         plan_source = "LLM"
     else:
         state.plan = build_plan(
-            state.request.topic,
+            project_topic,
             unit_title,
             candidate_modes,
             state.diagnosis,
@@ -730,10 +1247,37 @@ def iter_agent_v0_events(
     events.append(plan_event)
     yield plan_event
 
+    state.activity = build_activity(
+        state.diagnosis,
+        state.plan,
+        state.learner_unit_state,
+        state.learning_unit,
+    )
+    if state.activity is not None:
+        activity_event = ActivityEvent(event="activity", activity=state.activity)
+        events.append(activity_event)
+        yield activity_event
+    state.knowledge_point_suggestions = build_knowledge_point_suggestions(state, repository=repository)
+    if state.knowledge_point_suggestions:
+        suggestion_event = KnowledgePointSuggestionEvent(
+            event="knowledge-point-suggestion",
+            suggestions=state.knowledge_point_suggestions,
+        )
+        events.append(suggestion_event)
+        yield suggestion_event
+
     state.rationale.append(
         f"compose_response built a {len(state.plan.steps)}-step plan "
         f"with mode {state.plan.selected_mode} (plan={plan_source}, reply={reply_source})."
     )
+    if state.activity is not None:
+        state.rationale.append(
+            f"stream emitted activity {state.activity.id} ({state.activity.kind})."
+        )
+    if state.knowledge_point_suggestions:
+        state.rationale.append(
+            f"stream emitted {len(state.knowledge_point_suggestions)} knowledge point suggestion(s)."
+        )
 
     state = writeback_step(state)
     if state.state_patch is None:
@@ -755,7 +1299,11 @@ def load_context_step(
     state: GraphState, repository: SQLiteRepository | None = None, message_limit: int = 5
 ) -> GraphState:
     if repository is not None:
-        prior_messages = repository.list_recent_messages(state.request.thread_id, limit=message_limit)
+        repository.initialize()
+    state.project_context = build_project_context(state.request, repository=repository)
+
+    if repository is not None:
+        prior_messages = state.project_context.recent_messages[-message_limit:]
         if prior_messages:
             merged_messages = [*prior_messages, *state.request.messages]
             state.recent_messages = merged_messages[-8:]
@@ -779,11 +1327,26 @@ def load_context_step(
                 state.prior_next_review_at = review_patch.scheduled_at
                 state.rationale.append("load_context loaded prior review schedule from repository.")
 
-    if state.request.source_asset_ids:
-        state.source_assets = retrieve_source_assets(state.request.source_asset_ids)
+    if state.project_context is not None:
+        state.observations = [
+            *_build_project_context_observations(state.project_context),
+            *state.observations,
+        ]
+        state.rationale.append(
+            f"load_context preloaded project context from {state.project_context.source}."
+        )
+
+    source_asset_ids = (
+        state.project_context.source_asset_ids
+        if state.project_context is not None
+        else state.request.source_asset_ids
+    )
+    if source_asset_ids:
+        state.source_assets = retrieve_source_assets(source_asset_ids)
         state.rationale.append(f"load_context attached {len(state.source_assets)} source assets.")
 
-    state.learning_unit = retrieve_learning_unit(state.request.target_unit_id, state.request.topic)
+    topic = state.project_context.topic if state.project_context is not None else state.request.topic
+    state.learning_unit = retrieve_learning_unit(state.request.target_unit_id, topic)
     state.rationale.append(f"load_context selected learning unit {state.learning_unit.id}.")
     return state
 
@@ -923,6 +1486,8 @@ def decide_action_step(state: GraphState) -> GraphState:
 
 
 def maybe_tool_step(state: GraphState, repository: SQLiteRepository | None = None) -> GraphState:
+    if state.is_off_topic:
+        return state
     state.tool_result = resolve_tool_result(state.tool_intent, state.request, repository=repository)
     if state.tool_result is not None:
         state.rationale.append(f"maybe_tool loaded {state.tool_result.kind} context.")
@@ -931,15 +1496,22 @@ def maybe_tool_step(state: GraphState, repository: SQLiteRepository | None = Non
     return state
 
 
-def compose_response_step(state: GraphState, llm: "LLMClient") -> GraphState:
+def compose_response_step(
+    state: GraphState,
+    llm: "LLMClient",
+    repository: SQLiteRepository | None = None,
+) -> GraphState:
+    if state.is_off_topic:
+        return state
     if state.diagnosis is None or state.learner_unit_state is None:
         return state
 
     from xidea_agent.llm import generate_assistant_reply, llm_build_plan
 
-    unit_title = state.learning_unit.title if state.learning_unit else state.request.topic
+    project_topic = state.project_context.topic if state.project_context is not None else state.request.topic
+    unit_title = state.learning_unit.title if state.learning_unit else project_topic
     candidate_modes = state.learning_unit.candidate_modes if state.learning_unit else []
-    user_msg = state.request.messages[-1] if state.request.messages else state.request.topic
+    user_msg = state.request.messages[-1] if state.request.messages else project_topic
 
     reply = generate_assistant_reply(
         llm, state.diagnosis, None, state.learner_unit_state,
@@ -957,7 +1529,7 @@ def compose_response_step(state: GraphState, llm: "LLMClient") -> GraphState:
 
     llm_plan = llm_build_plan(
         llm,
-        state.request.topic,
+        project_topic,
         unit_title,
         candidate_modes,
         state.diagnosis,
@@ -969,7 +1541,7 @@ def compose_response_step(state: GraphState, llm: "LLMClient") -> GraphState:
         plan_source = "LLM"
     else:
         state.plan = build_plan(
-            state.request.topic,
+            project_topic,
             unit_title,
             candidate_modes,
             state.diagnosis,
@@ -978,10 +1550,25 @@ def compose_response_step(state: GraphState, llm: "LLMClient") -> GraphState:
         plan_source = "template"
         state.rationale.append("LLM plan generation returned None, using template plan.")
 
+    state.activity = build_activity(
+        state.diagnosis,
+        state.plan,
+        state.learner_unit_state,
+        state.learning_unit,
+    )
+    state.knowledge_point_suggestions = build_knowledge_point_suggestions(state, repository=repository)
     state.rationale.append(
         f"compose_response built a {len(state.plan.steps)}-step plan "
         f"with mode {state.plan.selected_mode} (plan={plan_source}, reply={reply_source})."
     )
+    if state.activity is not None:
+        state.rationale.append(
+            f"compose_response emitted activity {state.activity.id} ({state.activity.kind})."
+        )
+    if state.knowledge_point_suggestions:
+        state.rationale.append(
+            f"compose_response emitted {len(state.knowledge_point_suggestions)} knowledge point suggestion(s)."
+        )
     return state
 
 
@@ -1019,6 +1606,8 @@ def _apply_guardrail_corrections(state: GraphState, violations: list) -> bool:
 
 
 def writeback_step(state: GraphState) -> GraphState:
+    if state.is_off_topic:
+        return state
     if state.diagnosis is None or state.learner_unit_state is None or state.plan is None:
         return state
 
