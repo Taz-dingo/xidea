@@ -358,6 +358,16 @@ def build_project_context(
         if repository is None
         else []
     )
+    project_memory = (
+        repository_context.get("project_memory")
+        if repository_context is not None
+        else None
+    )
+    project_learning_profile = (
+        repository_context.get("project_learning_profile")
+        if repository_context is not None
+        else None
+    )
     if not isinstance(recent_messages, list):
         recent_messages = request.messages[-5:]
 
@@ -396,6 +406,8 @@ def build_project_context(
         asset_summary["summary"] if asset_summary is not None else None,
         thread_memory["summary"],
         review_summary["summary"] if review_summary is not None else None,
+        _summarize_project_memory(project_memory),
+        _summarize_project_learning_profile(project_learning_profile),
     ]
     recent_message_summary = _summarize_recent_messages(recent_messages)
     if recent_message_summary is not None:
@@ -412,10 +424,43 @@ def build_project_context(
         source_asset_summary=asset_summary["summary"] if asset_summary is not None else None,
         thread_memory_summary=thread_memory["summary"],
         review_summary=review_summary["summary"] if review_summary is not None else None,
+        project_memory_summary=_summarize_project_memory(project_memory),
+        project_learning_profile_summary=_summarize_project_learning_profile(
+            project_learning_profile
+        ),
         recent_messages=[message for message in recent_messages if isinstance(message, Message)],
         source=source,
         summary="；".join(item for item in summary_parts if item) + "。",
     )
+
+
+def _summarize_project_memory(project_memory: object | None) -> str | None:
+    summary = getattr(project_memory, "summary", None)
+    if not isinstance(summary, str) or not summary.strip():
+        return None
+    return f"project memory：{summary.strip()}"
+
+
+def _summarize_project_learning_profile(project_learning_profile: object | None) -> str | None:
+    if project_learning_profile is None:
+        return None
+
+    stage = getattr(project_learning_profile, "current_stage", None)
+    freshness = getattr(project_learning_profile, "freshness", None)
+    weaknesses = getattr(project_learning_profile, "primary_weaknesses", [])
+    if not isinstance(weaknesses, list):
+        weaknesses = []
+
+    parts = []
+    if isinstance(stage, str) and stage.strip():
+        parts.append(f"阶段={stage.strip()}")
+    if weaknesses:
+        parts.append(f"薄弱点={', '.join(str(item) for item in weaknesses[:3])}")
+    if isinstance(freshness, str) and freshness.strip():
+        parts.append(f"freshness={freshness.strip()}")
+    if not parts:
+        return None
+    return "project learning profile：" + "，".join(parts)
 
 
 def _build_unit_detail_payload(unit: LearningUnit) -> dict[str, Any]:

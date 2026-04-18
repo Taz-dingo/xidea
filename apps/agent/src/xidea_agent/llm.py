@@ -30,10 +30,7 @@ from xidea_agent.state import (
     LearnerUnitState,
     Message,
     Observation,
-    PedagogicalAction,
-    PrimaryIssue,
     Signal,
-    SignalKind,
     StudyPlan,
     StudyPlanStep,
     ToolResult,
@@ -205,6 +202,100 @@ COMBINED_DIAGNOSIS_SYSTEM_PROMPT = """\
 - 直接输出 JSON 对象，不要包含 markdown 代码块标记
 """
 
+COMBINED_MAIN_DECISION_SYSTEM_PROMPT = """\
+你是 Xidea 学习编排系统的主决策模块。
+
+你的职责是在一次调用内完成：
+1. 提取结构化学习信号
+2. 给出 diagnosis
+3. 如果当前不需要额外 tool，则直接给出 reply 和 plan
+
+## 信号类型（signals.kind 只能使用以下值）
+
+- concept-gap
+- concept-confusion
+- memory-weakness
+- transfer-readiness
+- review-pressure
+- project-relevance
+
+## 可选动作（diagnosis.recommended_action）
+
+- teach
+- clarify
+- practice
+- review
+- apply
+
+## 问题类型（diagnosis.primary_issue）
+
+- insufficient-understanding
+- concept-confusion
+- weak-recall
+- poor-transfer
+- missing-context
+
+## 可用训练模式
+
+- socratic
+- guided-qa
+- contrast-drill
+- image-recall
+- audio-recall
+- scenario-sim
+
+## 输出格式
+
+严格输出一个 JSON 对象：
+{
+  "signals": [
+    {
+      "kind": "concept-gap|concept-confusion|memory-weakness|transfer-readiness|review-pressure|project-relevance",
+      "score": 0.0,
+      "confidence": 0.0,
+      "summary": "一句中文说明"
+    }
+  ],
+  "diagnosis": {
+    "recommended_action": "teach|clarify|practice|review|apply",
+    "reason": "一句中文说明为什么选择这个动作",
+    "confidence": 0.0,
+    "primary_issue": "问题类型枚举值",
+    "needs_tool": true
+  },
+  "reply": "当 diagnosis.needs_tool=false 时返回 2-4 句中文回复；否则可留空",
+  "plan": {
+    "headline": "当前轮学习安排的标题",
+    "summary": "为什么这样安排的简短说明",
+    "selected_mode": "主训练模式",
+    "expected_outcome": "本轮完成后希望达到的效果",
+    "steps": [
+      {
+        "id": "步骤唯一标识",
+        "title": "步骤名称",
+        "mode": "训练模式",
+        "reason": "为什么安排这一步",
+        "outcome": "完成后能检验什么"
+      }
+    ]
+  }
+}
+
+## 约束
+
+- 如果消息中没有明显信号，至少输出一个 project-relevance 信号
+- 如果理解水平 < 60，优先 teach 或 clarify，不选 review
+- 如果混淆度 > 70，优先 clarify
+- 如果理解 >= 60 且记忆 < 65，可以选 review
+- 如果上一轮选了某个动作但对应指标没改善，应该切换策略
+- diagnosis.needs_tool=true 时，reply 和 plan 可以留空
+- diagnosis.needs_tool=false 时，必须同时返回 reply 和 plan
+- 如果提供了候选模式列表，plan.steps 中的 mode 必须从候选列表中选
+- reply 必须围绕 plan 第一条 step 展开，控制在 2-4 句以内，不要以“好的”“当然”等口水话开头
+- 如果上下文里已经明确给出材料摘要、thread memory、review 摘要或其他补充上下文，不要仅因为 entry_mode 是 material-import / coach-followup 就机械地把 diagnosis.needs_tool 设为 true
+- 直接输出 JSON 对象，不要包含 markdown 代码块标记
+"""
+
 PLAN_GENERATION_SYSTEM_PROMPT = """\
 你是 Xidea 学习编排系统的学习路径规划器。
 
@@ -259,6 +350,56 @@ REPLY_SYSTEM_PROMPT = """\
 - 你的语气应该像一位有经验的导师，简洁、有方向感
 - 回复控制在 2-4 句话以内
 - 直接开始教学内容，不要以"好的"、"当然"等口水话开头
+"""
+
+COMBINED_RESPONSE_SYSTEM_PROMPT = """\
+你是 Xidea 学习编排系统的响应编排模块。
+
+你的职责是一次完成两件事：
+1. 给学习者生成自然语言 reply
+2. 给系统生成结构化的 plan
+
+## 可用训练模式
+
+- socratic
+- guided-qa
+- contrast-drill
+- image-recall
+- audio-recall
+- scenario-sim
+
+## 输出格式
+
+严格输出一个 JSON 对象：
+{
+  "reply": "2-4 句中文回复",
+  "plan": {
+    "headline": "当前轮学习安排的标题",
+    "summary": "为什么这样安排的简短说明",
+    "selected_mode": "主训练模式",
+    "expected_outcome": "本轮完成后希望达到的效果",
+    "steps": [
+      {
+        "id": "步骤唯一标识",
+        "title": "步骤名称",
+        "mode": "训练模式",
+        "reason": "为什么安排这一步",
+        "outcome": "完成后能检验什么"
+      }
+    ]
+  }
+}
+
+## 约束
+
+- reply 必须围绕 plan 第一条 step 展开
+- reply 不能改变既有 diagnosis 结论
+- reply 控制在 2-4 句以内，不要以“好的”“当然”等口水话开头
+- plan.steps 数量限制在 1 到 3 步
+- 如果提供了候选模式列表，plan.steps 中的 mode 必须从候选列表中选
+- plan.selected_mode 取第一步的 mode
+- reason / outcome 必须针对用户的具体问题
+- 直接输出 JSON 对象，不要包含 markdown 代码块标记
 """
 
 PLAN_ENRICH_SYSTEM_PROMPT = """\
@@ -603,8 +744,6 @@ def _parse_diagnosis_payload(
 
     confidence = max(0.0, min(1.0, float(parsed.get("confidence", 0.7))))
     needs_tool = bool(parsed.get("needs_tool", False))
-    if entry_mode == "material-import":
-        needs_tool = True
 
     return Diagnosis(
         recommended_action=action,  # type: ignore[arg-type]
@@ -624,6 +763,61 @@ def _parse_diagnosis_payload(
             ],
             confidence=confidence,
         ),
+    )
+
+
+def _parse_study_plan_payload(
+    parsed: object,
+    candidate_modes: list[str],
+) -> StudyPlan | None:
+    if not isinstance(parsed, dict):
+        return None
+
+    steps_raw = parsed.get("steps", [])
+    if not isinstance(steps_raw, list) or not steps_raw or len(steps_raw) > 3:
+        return None
+
+    candidates = set(candidate_modes) if candidate_modes else None
+    steps: list[StudyPlanStep] = []
+    for item in steps_raw:
+        if not isinstance(item, dict):
+            continue
+        mode = item.get("mode", "")
+        if mode not in VALID_MODES:
+            continue
+        if candidates and mode not in candidates:
+            continue
+        step_id = str(item.get("id", f"step-{len(steps)+1}")).strip()
+        title = str(item.get("title", "")).strip()
+        reason = str(item.get("reason", "")).strip()
+        outcome = str(item.get("outcome", "")).strip()
+        if not step_id or not title or not reason or not outcome:
+            continue
+        steps.append(
+            StudyPlanStep(
+                id=step_id,
+                title=title,
+                mode=mode,
+                reason=reason,
+                outcome=outcome,
+            )
+        )
+
+    if not steps:
+        return None
+
+    headline = str(parsed.get("headline", "")).strip()
+    summary = str(parsed.get("summary", "")).strip()
+    expected_outcome = str(parsed.get("expected_outcome", "")).strip()
+    if not headline or not summary or not expected_outcome:
+        return None
+
+    return StudyPlan(
+        headline=headline,
+        summary=summary,
+        selected_mode=steps[0].mode,
+        expected_outcome=expected_outcome,
+        steps=steps,
     )
 
 
@@ -1153,10 +1347,287 @@ def llm_build_signals_and_diagnosis(
         return None
 
 
+def llm_build_main_decision(
+    llm: LLMClient,
+    messages: list[Message],
+    observations: list[Observation],
+    entry_mode: str,
+    learner_state: LearnerUnitState,
+    target_unit_id: str | None,
+    topic: str,
+    unit_title: str,
+    candidate_modes: list[str],
+    prior_state: LearnerUnitState | None = None,
+    review_should: bool = False,
+    review_priority: float = 0.0,
+    review_reason: str = "",
+    tool_result: ToolResult | None = None,
+) -> tuple[list[Signal], Diagnosis, str | None, StudyPlan | None] | None:
+    user_texts = [message.content for message in messages if message.role == "user"]
+    if not user_texts:
+        return None
+
+    context_parts = [
+        f"学习者最新消息：{user_texts[-1]}",
+    ]
+    if len(user_texts) > 1:
+        context_parts.append(f"历史消息（最近 {len(user_texts)} 轮）：")
+        for index, text in enumerate(user_texts[:-1], 1):
+            context_parts.append(f"  第{index}轮：{text}")
+
+    context_parts.extend([
+        f"入口方式：{entry_mode}",
+        f"学习主题：{topic}",
+        f"学习单元：{unit_title}",
+        f"学习者当前状态：理解={learner_state.understanding_level}, "
+        f"记忆={learner_state.memory_strength}, "
+        f"混淆={learner_state.confusion_level}, "
+        f"迁移={learner_state.transfer_readiness}, "
+        f"掌握={learner_state.mastery}",
+        f"是否有明确学习单元：{'是' if target_unit_id else '否'}",
+    ])
+    if candidate_modes:
+        context_parts.append(f"候选训练模式（plan.steps 的 mode 必须从中选）：{', '.join(candidate_modes)}")
+
+    if learner_state.weak_signals:
+        context_parts.append(f"薄弱信号：{', '.join(learner_state.weak_signals)}")
+
+    if observations:
+        observation_summaries = [observation.summary for observation in observations[:5]]
+        context_parts.append(f"观测摘要：{'; '.join(observation_summaries)}")
+
+    if tool_result is not None:
+        context_parts.extend(_build_tool_context_parts(tool_result))
+
+    if review_should:
+        context_parts.append(f"复习引擎建议：应复习 (priority={review_priority:.2f}, reason={review_reason})")
+    else:
+        context_parts.append("复习引擎建议：暂不需要复习")
+
+    if prior_state is not None:
+        context_parts.append(
+            f"上轮状态：理解={prior_state.understanding_level}, "
+            f"记忆={prior_state.memory_strength}, "
+            f"混淆={prior_state.confusion_level}, "
+            f"迁移={prior_state.transfer_readiness}"
+        )
+        if prior_state.recommended_action:
+            context_parts.append(f"上轮推荐动作：{prior_state.recommended_action}")
+
+    user_prompt = "\n".join(context_parts)
+
+    try:
+        response = _chat_completion(
+            llm,
+            messages=[
+                {"role": "system", "content": COMBINED_MAIN_DECISION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.4,
+            max_tokens=1200,
+            expect_json_object=True,
+            _caller="main_decision",
+        )
+        raw = _extract_message_text(response)
+        raw = _prepare_structured_output(raw, prefer="{")
+        parsed = _load_structured_json(raw)
+        if not isinstance(parsed, dict):
+            return None
+
+        signals = _parse_signal_list(parsed.get("signals"), observations)
+        diagnosis = _parse_diagnosis_payload(
+            parsed.get("diagnosis"),
+            learner_state,
+            entry_mode,
+            target_unit_id,
+        )
+        if signals is None or diagnosis is None:
+            return None
+
+        reply = str(parsed.get("reply", "")).strip() or None
+        plan = _parse_study_plan_payload(parsed.get("plan"), candidate_modes)
+        if diagnosis.needs_tool:
+            return signals, diagnosis, None, None
+        return signals, diagnosis, reply, plan
+    except Exception as exc:
+        if _is_provider_safety_error(exc):
+            logger.warning(
+                "LLM main decision hit provider safety filter; using safety diagnosis fallback."
+            )
+            return (
+                _build_provider_safety_signals(observations),
+                _build_provider_safety_diagnosis(learner_state, target_unit_id),
+                None,
+                None,
+            )
+        logger.warning(
+            "LLM main decision failed, falling back to staged path. raw preview: %r",
+            raw[:160] if "raw" in locals() else "",
+            exc_info=True,
+        )
+        return None
+
+
 VALID_MODES: set[str] = {
     "socratic", "guided-qa", "contrast-drill",
     "image-recall", "audio-recall", "scenario-sim",
 }
+
+
+def _build_plan_context_parts(
+    topic: str,
+    unit_title: str,
+    candidate_modes: list[str],
+    diagnosis: Diagnosis,
+    learner_state: LearnerUnitState,
+    user_message: str,
+) -> list[str]:
+    context_parts = [
+        f"用户问题：{user_message}",
+        f"学习主题：{topic}",
+        f"学习单元：{unit_title}",
+        f"诊断结果：recommended_action={diagnosis.recommended_action}, "
+        f"primary_issue={diagnosis.primary_issue}, reason={diagnosis.reason}",
+        f"学习者状态：理解={learner_state.understanding_level}, "
+        f"记忆={learner_state.memory_strength}, "
+        f"混淆={learner_state.confusion_level}, "
+        f"迁移={learner_state.transfer_readiness}",
+    ]
+    if candidate_modes:
+        context_parts.append(f"候选训练模式（steps 的 mode 必须从中选）：{', '.join(candidate_modes)}")
+    return context_parts
+
+
+def _join_prompt_items(items: object, limit: int = 3) -> str | None:
+    if not isinstance(items, list):
+        return None
+    normalized = [str(item).strip() for item in items if str(item).strip()]
+    if not normalized:
+        return None
+    return "；".join(normalized[:limit])
+
+
+def _build_tool_context_parts(tool_result: ToolResult) -> list[str]:
+    payload = tool_result.payload
+    context_parts = [f"已预取补充上下文类型：{tool_result.kind}"]
+
+    summary = payload.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        context_parts.append(f"补充上下文摘要：{summary.strip()}")
+
+    if tool_result.kind == "asset-summary":
+        assets = payload.get("assets")
+        if isinstance(assets, list) and assets:
+            titles = [
+                str(asset.get("title", "")).strip()
+                for asset in assets[:2]
+                if isinstance(asset, dict) and str(asset.get("title", "")).strip()
+            ]
+            if titles:
+                context_parts.append(f"材料标题：{'；'.join(titles)}")
+            excerpts = [
+                str(asset.get("contentExcerpt", "")).strip()
+                for asset in assets[:2]
+                if isinstance(asset, dict) and str(asset.get("contentExcerpt", "")).strip()
+            ]
+            if excerpts:
+                context_parts.append(f"材料摘录：{'；'.join(excerpts)}")
+        concepts = _join_prompt_items(payload.get("keyConcepts"))
+        if concepts is not None:
+            context_parts.append(f"材料核心概念：{concepts}")
+    elif tool_result.kind == "unit-detail":
+        prerequisites = _join_prompt_items(payload.get("prerequisites"))
+        misconceptions = _join_prompt_items(payload.get("commonMisconceptions"))
+        core_questions = _join_prompt_items(payload.get("coreQuestions"))
+        if prerequisites is not None:
+            context_parts.append(f"前置条件：{prerequisites}")
+        if misconceptions is not None:
+            context_parts.append(f"常见误区：{misconceptions}")
+        if core_questions is not None:
+            context_parts.append(f"核心追问：{core_questions}")
+    elif tool_result.kind == "thread-memory":
+        learning_progress = payload.get("learningProgress")
+        if isinstance(learning_progress, dict):
+            context_parts.append(
+                "thread 进度："
+                f"mastery={learning_progress.get('mastery')}，"
+                f"理解={learning_progress.get('understandingLevel')}，"
+                f"记忆={learning_progress.get('memoryStrength')}"
+            )
+        last_diagnosis = payload.get("lastDiagnosis")
+        if isinstance(last_diagnosis, dict) and last_diagnosis.get("action"):
+            context_parts.append(f"上轮建议动作：{last_diagnosis['action']}")
+    elif tool_result.kind == "review-context":
+        decay_risk = payload.get("decayRisk")
+        if isinstance(decay_risk, str) and decay_risk.strip():
+            context_parts.append(f"记忆衰减风险：{decay_risk.strip()}")
+        due_units = payload.get("dueUnitIds")
+        if isinstance(due_units, list) and due_units:
+            context_parts.append(f"待复盘单元：{', '.join(str(item) for item in due_units[:3])}")
+
+    return context_parts
+
+
+def llm_build_reply_and_plan(
+    llm: LLMClient,
+    topic: str,
+    unit_title: str,
+    candidate_modes: list[str],
+    diagnosis: Diagnosis,
+    learner_state: LearnerUnitState,
+    user_message: str,
+    tool_result: ToolResult | None = None,
+) -> tuple[str, StudyPlan] | None:
+    if _is_provider_safety_diagnosis(diagnosis):
+        return None
+
+    context_parts = _build_plan_context_parts(
+        topic,
+        unit_title,
+        candidate_modes,
+        diagnosis,
+        learner_state,
+        user_message,
+    )
+    if tool_result is not None:
+        context_parts.extend(_build_tool_context_parts(tool_result))
+    user_prompt = "\n".join(context_parts)
+
+    try:
+        response = _chat_completion(
+            llm,
+            messages=[
+                {"role": "system", "content": COMBINED_RESPONSE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.5,
+            max_tokens=800,
+            expect_json_object=True,
+            _caller="build_response_bundle",
+        )
+        raw = _extract_message_text(response)
+        raw = _prepare_structured_output(raw, prefer="{")
+        parsed = _load_structured_json(raw)
+        if not isinstance(parsed, dict):
+            return None
+
+        reply = str(parsed.get("reply", "")).strip()
+        plan = _parse_study_plan_payload(parsed.get("plan"), candidate_modes)
+        if not reply or plan is None:
+            return None
+        return reply, plan
+    except Exception as exc:
+        if _is_provider_safety_error(exc):
+            logger.warning(
+                "LLM bundled reply+plan hit provider safety filter; falling back to split path."
+            )
+            return None
+        logger.warning(
+            "LLM bundled reply+plan failed, falling back to split path. raw preview: %r",
+            raw[:160] if "raw" in locals() else "",
+            exc_info=True,
+        )
+        return None
 
 
 def llm_build_plan(
@@ -1173,21 +1644,16 @@ def llm_build_plan(
     Returns a StudyPlan on success, None on failure so caller can fall back
     to rule-based plan generation.
     """
-    context_parts = [
-        f"用户问题：{user_message}",
-        f"学习主题：{topic}",
-        f"学习单元：{unit_title}",
-        f"诊断结果：recommended_action={diagnosis.recommended_action}, "
-        f"primary_issue={diagnosis.primary_issue}, reason={diagnosis.reason}",
-        f"学习者状态：理解={learner_state.understanding_level}, "
-        f"记忆={learner_state.memory_strength}, "
-        f"混淆={learner_state.confusion_level}, "
-        f"迁移={learner_state.transfer_readiness}",
-    ]
-    if candidate_modes:
-        context_parts.append(f"候选训练模式（steps 的 mode 必须从中选）：{', '.join(candidate_modes)}")
-
-    user_prompt = "\n".join(context_parts)
+    user_prompt = "\n".join(
+        _build_plan_context_parts(
+            topic,
+            unit_title,
+            candidate_modes,
+            diagnosis,
+            learner_state,
+            user_message,
+        )
+    )
 
     try:
         response = _chat_completion(
@@ -1205,47 +1671,7 @@ def llm_build_plan(
         raw = _prepare_structured_output(raw, prefer="{")
 
         parsed = _load_structured_json(raw)
-        if not isinstance(parsed, dict):
-            return None
-
-        steps_raw = parsed.get("steps", [])
-        if not isinstance(steps_raw, list) or not steps_raw or len(steps_raw) > 3:
-            return None
-
-        candidates = set(candidate_modes) if candidate_modes else None
-        steps: list[StudyPlanStep] = []
-        for s in steps_raw:
-            mode = s.get("mode", "")
-            if mode not in VALID_MODES:
-                continue
-            if candidates and mode not in candidates:
-                continue
-            step_id = str(s.get("id", f"step-{len(steps)+1}")).strip()
-            title = str(s.get("title", "")).strip()
-            reason = str(s.get("reason", "")).strip()
-            outcome = str(s.get("outcome", "")).strip()
-            if not step_id or not title or not reason or not outcome:
-                continue
-            steps.append(StudyPlanStep(id=step_id, title=title, mode=mode, reason=reason, outcome=outcome))
-
-        if not steps:
-            return None
-
-        headline = str(parsed.get("headline", "")).strip()
-        summary = str(parsed.get("summary", "")).strip()
-        selected_mode = steps[0].mode
-        expected_outcome = str(parsed.get("expected_outcome", "")).strip()
-
-        if not headline or not summary or not expected_outcome:
-            return None
-
-        return StudyPlan(
-            headline=headline,
-            summary=summary,
-            selected_mode=selected_mode,
-            expected_outcome=expected_outcome,
-            steps=steps,
-        )
+        return _parse_study_plan_payload(parsed, candidate_modes)
 
     except Exception:
         logger.warning(
@@ -1280,7 +1706,7 @@ def generate_assistant_reply(
     if plan is not None:
         context_parts.append(f"学习计划第一步：{plan.steps[0].title}（{plan.steps[0].mode}）")
     if tool_result is not None:
-        context_parts.append(f"补充上下文类型：{tool_result.kind}")
+        context_parts.extend(_build_tool_context_parts(tool_result))
 
     user_prompt = "\n".join(context_parts)
 
@@ -1336,7 +1762,7 @@ def stream_assistant_reply(
     if plan is not None:
         context_parts.append(f"学习计划第一步：{plan.steps[0].title}（{plan.steps[0].mode}）")
     if tool_result is not None:
-        context_parts.append(f"补充上下文类型：{tool_result.kind}")
+        context_parts.extend(_build_tool_context_parts(tool_result))
 
     user_prompt = "\n".join(context_parts)
 

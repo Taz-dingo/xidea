@@ -8,8 +8,8 @@ from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import (
     compose_response_step,
     decide_action_step,
-    diagnose_step,
     load_context_step,
+    main_decision_step,
     maybe_tool_step,
     writeback_step,
 )
@@ -31,7 +31,7 @@ def build_graph(repository: SQLiteRepository | None = None, *, llm: object):
     graph = StateGraph(GraphState)
 
     graph.add_node("load_context", _load_context_node(repository))
-    graph.add_node("diagnose", _diagnose_node(llm))
+    graph.add_node("diagnose", _diagnose_node(llm, repository))
     graph.add_node("decide_action", decide_action_node)
     graph.add_node("maybe_tool", _maybe_tool_node(repository))
     graph.add_node("compose_response", _compose_response_node(llm))
@@ -84,9 +84,9 @@ def _load_context_node(repository: SQLiteRepository | None):
     return node
 
 
-def _diagnose_node(llm: object):
+def _diagnose_node(llm: object, repository: SQLiteRepository | None):
     def node(state: GraphState) -> dict[str, object]:
-        updated = diagnose_step(state, llm=llm)
+        updated = main_decision_step(state, llm=llm, repository=repository)
         return updated.model_dump(mode="python")
 
     return node

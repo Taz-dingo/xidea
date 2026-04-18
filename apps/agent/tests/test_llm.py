@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +16,7 @@ from xidea_agent.llm import (
     build_llm_client,
     enrich_plan_steps,
     generate_assistant_reply,
+    llm_build_reply_and_plan,
 )
 from xidea_agent.state import Diagnosis, LearnerUnitState, StudyPlan, StudyPlanStep
 
@@ -491,6 +491,7 @@ def test_compose_response_step_uses_llm_when_available() -> None:
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
         _mock_openai_response(bundled_response),
+        RuntimeError("bundled response failed"),
         _mock_openai_response(reply_content),
         _mock_openai_response(plan_response),
     ]
@@ -895,7 +896,7 @@ def test_llm_diagnose_infers_primary_issue_from_action() -> None:
     assert result.primary_issue == "insufficient-understanding"
 
 
-def test_llm_diagnose_forces_needs_tool_for_material_import() -> None:
+def test_llm_diagnose_respects_llm_needs_tool_for_material_import() -> None:
     from xidea_agent.llm import llm_diagnose
 
     diagnosis_json = json.dumps({
@@ -921,7 +922,7 @@ def test_llm_diagnose_forces_needs_tool_for_material_import() -> None:
     )
 
     assert result is not None
-    assert result.needs_tool is True
+    assert result.needs_tool is False
 
 
 # --- A Layer: Guardrail validation of LLM diagnosis ---
@@ -966,7 +967,7 @@ def test_diagnose_step_uses_llm_signals_and_diagnosis() -> None:
     from xidea_agent.runtime import run_agent_v0
     from xidea_agent.state import AgentRequest
 
-    bundled_json = json.dumps({
+    main_decision_json = json.dumps({
         "signals": [
             {"kind": "concept-gap", "score": 0.82, "confidence": 0.85,
              "summary": "用户不理解 RAG 的上下文构造"},
@@ -978,25 +979,23 @@ def test_diagnose_step_uses_llm_signals_and_diagnosis() -> None:
             "primary_issue": "insufficient-understanding",
             "needs_tool": False,
         },
-    })
-    reply_content = "LLM教学回复"
-    plan_response = json.dumps({
-        "headline": "围绕 RAG 上下文构造的教学路径",
-        "summary": "先建模再验证",
-        "selected_mode": "guided-qa",
-        "expected_outcome": "能解释 RAG 上下文构造的核心逻辑",
-        "steps": [
-            {"id": "guided-model", "title": "导师问答", "mode": "guided-qa",
-             "reason": "LLM-r1", "outcome": "LLM-o1"},
-            {"id": "scenario-check", "title": "情境验证", "mode": "scenario-sim",
-             "reason": "LLM-r2", "outcome": "LLM-o2"},
-        ],
+        "reply": "LLM教学回复",
+        "plan": {
+            "headline": "围绕 RAG 上下文构造的教学路径",
+            "summary": "先建模再验证",
+            "selected_mode": "guided-qa",
+            "expected_outcome": "能解释 RAG 上下文构造的核心逻辑",
+            "steps": [
+                {"id": "guided-model", "title": "导师问答", "mode": "guided-qa",
+                 "reason": "LLM-r1", "outcome": "LLM-o1"},
+                {"id": "scenario-check", "title": "情境验证", "mode": "scenario-sim",
+                 "reason": "LLM-r2", "outcome": "LLM-o2"},
+            ],
+        },
     })
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
-        _mock_openai_response(bundled_json),
-        _mock_openai_response(plan_response),
-        _mock_openai_response(reply_content),
+        _mock_openai_response(main_decision_json),
     ]
     llm = LLMClient(client=mock_client, model="gpt-4o-mini")
 
@@ -1014,8 +1013,8 @@ def test_diagnose_step_uses_llm_signals_and_diagnosis() -> None:
     assert result.graph_state.diagnosis.recommended_action == "teach"
     diagnose_rationale = [r for r in result.graph_state.rationale if "diagnose selected" in r]
     assert len(diagnose_rationale) == 1
-    assert "signals=LLM-bundled" in diagnose_rationale[0]
-    assert "diagnosis=LLM-bundled" in diagnose_rationale[0]
+    assert "signals=LLM-main-decision" in diagnose_rationale[0]
+    assert "diagnosis=LLM-main-decision" in diagnose_rationale[0]
 
 
 def test_diagnose_step_uses_rule_signals_when_llm_signals_fail() -> None:
@@ -1030,23 +1029,26 @@ def test_diagnose_step_uses_rule_signals_when_llm_signals_fail() -> None:
         "primary_issue": "concept-confusion",
         "needs_tool": False,
     })
-    plan_json = json.dumps({
-        "headline": "辨析路径",
-        "summary": "先辨析",
-        "selected_mode": "contrast-drill",
-        "expected_outcome": "能区分",
-        "steps": [
-            {"id": "s1", "title": "对比", "mode": "contrast-drill",
-             "reason": "r", "outcome": "o"},
-        ],
+    bundled_response_json = json.dumps({
+        "reply": "先把 retrieval 和 reranking 的职责边界拉清楚。",
+        "plan": {
+            "headline": "辨析路径",
+            "summary": "先辨析",
+            "selected_mode": "contrast-drill",
+            "expected_outcome": "能区分",
+            "steps": [
+                {"id": "s1", "title": "对比", "mode": "contrast-drill",
+                 "reason": "r", "outcome": "o"},
+            ],
+        },
     })
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
+        RuntimeError("main decision failed"),
         RuntimeError("bundled diagnosis failed"),
         RuntimeError("signal extraction failed"),
         _mock_openai_response(diagnosis_json),
-        _mock_openai_response(plan_json),
-        _mock_openai_response("回复内容"),
+        _mock_openai_response(bundled_response_json),
     ]
     llm = LLMClient(client=mock_client, model="gpt-4o-mini")
 
@@ -1086,22 +1088,21 @@ def test_diagnose_step_guardrail_corrects_bad_llm_diagnosis() -> None:
             "primary_issue": "weak-recall",
             "needs_tool": False,
         },
-    })
-    plan_json = json.dumps({
-        "headline": "教学路径",
-        "summary": "先教学",
-        "selected_mode": "guided-qa",
-        "expected_outcome": "理解概念",
-        "steps": [
-            {"id": "s1", "title": "导师问答", "mode": "guided-qa",
-             "reason": "r", "outcome": "o"},
-        ],
+        "reply": "教学回复",
+        "plan": {
+            "headline": "教学路径",
+            "summary": "先教学",
+            "selected_mode": "guided-qa",
+            "expected_outcome": "理解概念",
+            "steps": [
+                {"id": "s1", "title": "导师问答", "mode": "guided-qa",
+                 "reason": "r", "outcome": "o"},
+            ],
+        },
     })
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
         _mock_openai_response(bundled_json),
-        _mock_openai_response(plan_json),
-        _mock_openai_response("教学回复"),
     ]
     llm = LLMClient(client=mock_client, model="gpt-4o-mini")
 
@@ -1121,10 +1122,76 @@ def test_diagnose_step_guardrail_corrects_bad_llm_diagnosis() -> None:
     assert len(guardrail_rationale) >= 1
     diagnose_rationale = [r for r in result.graph_state.rationale if "diagnose selected" in r]
     assert len(diagnose_rationale) == 1
-    assert "diagnosis=LLM-bundled" in diagnose_rationale[0]
+    assert "diagnosis=LLM-main-decision" in diagnose_rationale[0]
 
 
 # --- B Layer: LLM plan generation tests ---
+
+
+def test_llm_build_reply_and_plan_returns_valid_payload() -> None:
+    bundled_json = json.dumps({
+        "reply": "先把 retrieval 和 reranking 的职责边界拉清楚，再继续往项目场景里迁移。",
+        "plan": {
+            "headline": "围绕 RAG 检索设计的辨析路径",
+            "summary": "先对比再追问",
+            "selected_mode": "contrast-drill",
+            "expected_outcome": "用户能区分 retrieval 和 reranking",
+            "steps": [
+                {"id": "compare", "title": "概念对比", "mode": "contrast-drill",
+                 "reason": "两个概念边界不清", "outcome": "能说清各自解决什么问题"},
+                {"id": "verify", "title": "追问验证", "mode": "guided-qa",
+                 "reason": "确认理解真正稳定", "outcome": "能独立判断何时用哪个"},
+            ],
+        },
+    })
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = _mock_openai_response(bundled_json)
+    llm = LLMClient(client=mock_client, model="gpt-4o-mini")
+
+    result = llm_build_reply_and_plan(
+        llm,
+        "RAG",
+        "召回 vs 重排",
+        ["contrast-drill", "guided-qa", "scenario-sim"],
+        _make_diagnosis(),
+        _make_learner_state(),
+        "我分不清这两个概念",
+    )
+
+    assert result is not None
+    reply, plan = result
+    assert "retrieval" in reply
+    assert plan.headline == "围绕 RAG 检索设计的辨析路径"
+    assert len(plan.steps) == 2
+    assert plan.steps[0].mode == "contrast-drill"
+
+
+def test_llm_build_reply_and_plan_returns_none_on_invalid_plan() -> None:
+    bundled_json = json.dumps({
+        "reply": "先继续。",
+        "plan": {
+            "headline": "test",
+            "summary": "test",
+            "selected_mode": "guided-qa",
+            "expected_outcome": "test",
+            "steps": [],
+        },
+    })
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = _mock_openai_response(bundled_json)
+    llm = LLMClient(client=mock_client, model="gpt-4o-mini")
+
+    result = llm_build_reply_and_plan(
+        llm,
+        "test",
+        "test",
+        ["guided-qa"],
+        _make_diagnosis(),
+        _make_learner_state(),
+        "test",
+    )
+
+    assert result is None
 
 
 def test_llm_build_plan_returns_valid_plan() -> None:
@@ -1283,7 +1350,7 @@ def test_compose_response_uses_llm_plan_and_reply() -> None:
     from xidea_agent.runtime import run_agent_v0
     from xidea_agent.state import AgentRequest
 
-    bundled_json = json.dumps({
+    diagnosis_json = json.dumps({
         "signals": [
             {"kind": "concept-confusion", "score": 0.85, "confidence": 0.88,
              "summary": "混淆"},
@@ -1295,23 +1362,21 @@ def test_compose_response_uses_llm_plan_and_reply() -> None:
             "primary_issue": "concept-confusion",
             "needs_tool": False,
         },
+        "reply": "LLM 回复",
+        "plan": {
+            "headline": "LLM 生成的学习路径",
+            "summary": "针对性辨析",
+            "selected_mode": "contrast-drill",
+            "expected_outcome": "区分清楚",
+            "steps": [
+                {"id": "s1", "title": "对比训练", "mode": "contrast-drill",
+                 "reason": "针对用户的具体混淆点", "outcome": "能说清边界"},
+            ],
+        },
     })
-    plan_json = json.dumps({
-        "headline": "LLM 生成的学习路径",
-        "summary": "针对性辨析",
-        "selected_mode": "contrast-drill",
-        "expected_outcome": "区分清楚",
-        "steps": [
-            {"id": "s1", "title": "对比训练", "mode": "contrast-drill",
-             "reason": "针对用户的具体混淆点", "outcome": "能说清边界"},
-        ],
-    })
-    reply_content = "LLM 回复"
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
-        _mock_openai_response(bundled_json),
-        _mock_openai_response(reply_content),
-        _mock_openai_response(plan_json),
+        _mock_openai_response(diagnosis_json),
     ]
     llm = LLMClient(client=mock_client, model="gpt-4o-mini")
 
@@ -1328,10 +1393,10 @@ def test_compose_response_uses_llm_plan_and_reply() -> None:
     assert result.graph_state.plan is not None
     assert result.graph_state.activity is not None
     assert result.graph_state.plan.headline == "LLM 生成的学习路径"
-    assert result.graph_state.assistant_message == reply_content
+    assert result.graph_state.assistant_message == "LLM 回复"
     compose_rationale = [r for r in result.graph_state.rationale if "compose_response" in r]
     assert len(compose_rationale) == 2
-    assert any("plan=LLM" in item and "reply=LLM" in item for item in compose_rationale)
+    assert any("plan=LLM-main-decision" in item and "reply=LLM-main-decision" in item for item in compose_rationale)
     assert any("emitted activity" in item for item in compose_rationale)
 
 
@@ -1339,7 +1404,7 @@ def test_compose_response_falls_back_plan_to_template_when_llm_plan_fails() -> N
     from xidea_agent.runtime import run_agent_v0
     from xidea_agent.state import AgentRequest
 
-    bundled_json = json.dumps({
+    diagnosis_json = json.dumps({
         "signals": [
             {"kind": "concept-confusion", "score": 0.85, "confidence": 0.88,
              "summary": "混淆"},
@@ -1355,7 +1420,8 @@ def test_compose_response_falls_back_plan_to_template_when_llm_plan_fails() -> N
     reply_content = "LLM 回复"
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
-        _mock_openai_response(bundled_json),
+        _mock_openai_response(diagnosis_json),
+        RuntimeError("bundled response failed"),
         _mock_openai_response(reply_content),
         RuntimeError("plan generation failed"),
     ]

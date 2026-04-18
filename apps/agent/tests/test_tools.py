@@ -2,8 +2,9 @@ from pathlib import Path
 
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import run_agent_v0
-from xidea_agent.state import AgentRequest
+from xidea_agent.state import AgentRequest, ProjectLearningProfile, ProjectMemory
 from xidea_agent.tools import (
+    build_project_context,
     describe_tool_registry,
     resolve_tool_result,
     retrieve_learning_unit,
@@ -149,6 +150,34 @@ def test_review_context_with_repository(tmp_path: Path) -> None:
     assert payload["performanceTrend"]["trendHint"]
     assert payload["decayRisk"] in ("low", "medium", "high", "critical")
     assert payload["lastReviewOutcome"] is not None
+
+
+def test_build_project_context_includes_project_memory_and_learning_profile(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    repository.create_or_update_project_memory(
+        ProjectMemory(
+            project_id="rag-demo",
+            summary="最近一次 exercise 已完成，系统已安排短间隔复盘。",
+        )
+    )
+    repository.create_or_update_project_learning_profile(
+        ProjectLearningProfile(
+            project_id="rag-demo",
+            current_stage="stabilizing",
+            primary_weaknesses=["weak-recall"],
+            learning_preferences=["guided-qa"],
+            freshness="fresh",
+        )
+    )
+
+    context = build_project_context(_build_request(), repository=repository)
+
+    assert context.project_memory_summary is not None
+    assert "project memory" in context.project_memory_summary
+    assert context.project_learning_profile_summary is not None
+    assert "project learning profile" in context.project_learning_profile_summary
+    assert "project memory" in context.summary
 
 
 def test_describe_tool_registry_reflects_enriched_fields() -> None:
