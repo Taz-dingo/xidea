@@ -55,6 +55,8 @@ StatusPhase = Literal[
     "making-decision",
     "retrieving-context",
     "composing-response",
+    "preparing-followup",
+    "writing-state",
 ]
 
 

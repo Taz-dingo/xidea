@@ -6,6 +6,10 @@
 
 #### 本轮方向确认
 
+- `apps/agent` 已把 `/runs/v0/stream` 的热路径再收一刀：当 `main_decision` 已带回稳定 `reply + plan` 时，stream 直接复用 bundled reply，不再额外再打一轮 reply LLM
+- `apps/agent` 与 `apps/web` 已把 stream phase 扩成 `preparing-followup / writing-state` 两段，reply 出来后到 activities / state-patch 落地前，中栏会继续显示“正在整理后续动作 / 正在写回状态”
+- `apps/web` 已把整组学习卡提交后的 synthetic follow-up message 压成短摘要，并改成中栏紧凑 note；不再把完整卡组结果当成长段用户对话展示
+- `apps/web` 已继续增强学习卡即时反馈：当前错题会触发更强的震动/低音提示/红色摇动，对题会触发回弹和亮色反馈
 - `apps/agent` 已把 `study / review` 的活动主路径切到 LLM 实时生成：当前优先消费 `main_decision` / `bundled response` 直接返回的 `activities`，只有模型没给出稳定卡组时才回退到模板 activity builder
 - `apps/web` 已撤掉 mock runtime snapshot 里的预置学习卡，避免在 backend 真流已接通后，前端 seed / fallback 状态继续泄漏 demo 题卡
 - `apps/agent` 已把 choice activity contract 扩成 backend-owned 正确性结构：每个选项现在显式带 `is_correct / feedback_layers / analysis`，前端不再自己猜正确项或错误分析

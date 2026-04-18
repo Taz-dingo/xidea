@@ -3,6 +3,26 @@
 只保留"当前仍生效、后续会反复影响协作或实现"的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-18 — `/runs/v0/stream` 要显式区分“回复生成中”和“回复后的 follow-up / writeback”，并优先复用 `main_decision` 已带回的 reply
+
+### 决策
+
+- 当 `main_decision` 已经一次性给出稳定的 `reply + plan` 时，`/runs/v0/stream` 直接复用这份 bundled reply，不再额外再打一轮 reply LLM
+- stream status contract 补成 5 段：`loading-context -> making-decision -> composing-response -> preparing-followup -> writing-state`
+- `preparing-followup` 专门覆盖“reply 已经出现，但 activities / knowledge point suggestions / state-patch 还没到”的那段后处理空窗；前端必须把这段等待显式展示出来
+- 一组学习卡做完后，发给 agent 的 follow-up 文本只保留短摘要；详细作答轨迹继续走结构化 `activity_result.meta.items`，不再把整段卡组结果原样塞进对话气泡和 prompt
+
+### 原因
+
+- 当前最明显的卡顿感不是只有 provider 首包慢，还包括 backend 在 reply 之后继续串行整理 activities / suggestions / writeback，但 UI 完全没有解释这段等待
+- 如果 `main_decision` 已经带回可用 reply，再额外打一轮 reply LLM 只会增加时延，不会提高演示链路价值
+- 卡组完成后的长段自然语言总结既拖慢后续 prompt，又把本该是结构化结果的内容重新污染回聊天流
+
+### 影响
+
+- 后续凡是改 stream 事件顺序或前端等待态，都要保留这两段后处理 phase，不得再回退成“reply 后静默等 done”
+- activity batch 的详细学习轨迹以后默认存在 structured payload 里；聊天流只保留给用户看的短摘要，不再承载完整卡组明细
+
 ## 2026-04-18 — `study / review` 的主路径学习卡优先由 LLM 实时生成；模板题卡只保留为 backend fallback，前端 mock snapshot 不再预置卡片
 
 ### 决策

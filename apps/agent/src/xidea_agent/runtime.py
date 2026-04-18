@@ -169,6 +169,8 @@ SESSION_STATUS_MESSAGES = {
     "making-decision": "正在判断这一轮更适合先学什么",
     "retrieving-context": "正在补充这轮需要的上下文证据",
     "composing-response": "正在组织本轮回复和学习动作",
+    "preparing-followup": "正在整理这轮回复后续需要展示的动作和建议",
+    "writing-state": "正在写回这轮判断和最新学习状态",
 }
 TOOL_STATUS_MESSAGES: dict[ToolIntent, str] = {
     "none": SESSION_STATUS_MESSAGES["composing-response"],
@@ -2060,6 +2062,26 @@ def _build_status_event(phase: str, message: str | None = None) -> StatusEvent:
     )
 
 
+def _build_followup_status_message(state: GraphState) -> str:
+    if state.request.session_type == "project":
+        return "回复已生成，正在整理知识点建议、材料线索和 project 结论。"
+
+    if state.request.activity_result is not None:
+        return "回复已生成，正在结合这一组作答表现整理下一组学习动作。"
+
+    return "回复已生成，正在整理下一组学习动作和跟进说明。"
+
+
+def _build_writeback_status_message(state: GraphState) -> str:
+    if state.request.session_type == "project":
+        return "正在把这轮 project 判断、知识点建议和上下文线索写回状态。"
+
+    if state.request.activity_result is not None:
+        return "正在把这一组作答表现和新的学习状态写回线程。"
+
+    return "正在把本轮判断、动作和学习状态写回线程。"
+
+
 def _candidate_modes_for_session(
     learning_unit: LearningUnit | None,
     session_type: str,
@@ -2265,58 +2287,72 @@ def iter_agent_v0_events(
     else:
         plan_source = ""
 
-    reply_parts: list[str] = []
-    for chunk in stream_assistant_reply(
-        llm,
-        state.diagnosis,
-        state.plan,
-        state.learner_unit_state,
-        user_msg,
-        state.tool_result,
-        session_type=state.request.session_type,
-    ):
-        reply_parts.append(chunk)
-        text_event = TextDeltaEvent(event="text-delta", delta=chunk)
-        events.append(text_event)
-        yield text_event
-
-    streamed_reply = "".join(reply_parts)
-    if reply_parts and _should_accept_project_session_response(state, streamed_reply, state.plan):
-        state.assistant_message = streamed_reply
-        reply_source = "LLM-stream"
+    if state.assistant_message is not None and state.plan is not None:
+        reply_source = "LLM-main-decision"
+        for chunk in _chunk_text_for_ui_local(state.assistant_message):
+            text_event = TextDeltaEvent(event="text-delta", delta=chunk)
+            events.append(text_event)
+            yield text_event
     else:
-        had_stream_reply = bool(reply_parts)
-        if (
-            bundled_reply_fallback is not None
-            and _should_accept_project_session_response(state, bundled_reply_fallback, state.plan)
+        reply_parts: list[str] = []
+        for chunk in stream_assistant_reply(
+            llm,
+            state.diagnosis,
+            state.plan,
+            state.learner_unit_state,
+            user_msg,
+            state.tool_result,
+            session_type=state.request.session_type,
         ):
-            state.assistant_message = bundled_reply_fallback
-            reply_source = "LLM-main-decision-fallback"
-            for chunk in _chunk_text_for_ui_local(state.assistant_message):
-                text_event = TextDeltaEvent(event="text-delta", delta=chunk)
-                events.append(text_event)
-                yield text_event
-            state.rationale.append(
-                "LLM reply streaming returned no visible content, falling back to bundled main-decision reply."
-            )
+            reply_parts.append(chunk)
+            text_event = TextDeltaEvent(event="text-delta", delta=chunk)
+            events.append(text_event)
+            yield text_event
+
+        streamed_reply = "".join(reply_parts)
+        if reply_parts and _should_accept_project_session_response(state, streamed_reply, state.plan):
+            state.assistant_message = streamed_reply
+            reply_source = "LLM-stream"
         else:
-            state.assistant_message = compose_assistant_message(
-                state.diagnosis,
-                state.plan,
-                state.tool_result,
-                state.request.session_type,
-            )
-            reply_source = "template"
-            for chunk in _chunk_text_for_ui_local(state.assistant_message):
-                text_event = TextDeltaEvent(event="text-delta", delta=chunk)
-                events.append(text_event)
-                yield text_event
-            if had_stream_reply:
+            had_stream_reply = bool(reply_parts)
+            if (
+                bundled_reply_fallback is not None
+                and _should_accept_project_session_response(state, bundled_reply_fallback, state.plan)
+            ):
+                state.assistant_message = bundled_reply_fallback
+                reply_source = "LLM-main-decision-fallback"
+                for chunk in _chunk_text_for_ui_local(state.assistant_message):
+                    text_event = TextDeltaEvent(event="text-delta", delta=chunk)
+                    events.append(text_event)
+                    yield text_event
                 state.rationale.append(
-                    "LLM reply streaming looked too pedagogical for project session, using template reply."
+                    "LLM reply streaming returned no visible content, falling back to bundled main-decision reply."
                 )
             else:
-                state.rationale.append("LLM reply streaming returned no content, using template reply.")
+                state.assistant_message = compose_assistant_message(
+                    state.diagnosis,
+                    state.plan,
+                    state.tool_result,
+                    state.request.session_type,
+                )
+                reply_source = "template"
+                for chunk in _chunk_text_for_ui_local(state.assistant_message):
+                    text_event = TextDeltaEvent(event="text-delta", delta=chunk)
+                    events.append(text_event)
+                    yield text_event
+                if had_stream_reply:
+                    state.rationale.append(
+                        "LLM reply streaming looked too pedagogical for project session, using template reply."
+                    )
+                else:
+                    state.rationale.append("LLM reply streaming returned no content, using template reply.")
+
+    followup_status = _build_status_event(
+        "preparing-followup",
+        _build_followup_status_message(state),
+    )
+    events.append(followup_status)
+    yield followup_status
 
     if state.plan is None:
         llm_plan = llm_build_plan(
@@ -2403,6 +2439,13 @@ def iter_agent_v0_events(
         state.rationale.append(
             f"stream emitted {len(state.knowledge_point_suggestions)} knowledge point suggestion(s)."
         )
+
+    writeback_status = _build_status_event(
+        "writing-state",
+        _build_writeback_status_message(state),
+    )
+    events.append(writeback_status)
+    yield writeback_status
 
     state = writeback_step(state)
     if state.state_patch is None:

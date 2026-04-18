@@ -92,9 +92,16 @@ def test_iter_agent_v0_events_yields_incrementally() -> None:
     assert "activities" in event_types[4:-2]
     assert event_types[-2:] == ["state-patch", "done"]
     assert event_types.count("text-delta") >= 1
+    assert [event.phase for event in events if event.event == "status"] == [
+        "loading-context",
+        "making-decision",
+        "composing-response",
+        "preparing-followup",
+        "writing-state",
+    ]
 
 
-def test_iter_agent_v0_events_prefers_live_reply_stream_over_local_chunking() -> None:
+def test_iter_agent_v0_events_reuses_bundled_reply_when_main_decision_is_complete() -> None:
     import json
     from types import SimpleNamespace
     from unittest.mock import MagicMock
@@ -189,7 +196,14 @@ def test_iter_agent_v0_events_prefers_live_reply_stream_over_local_chunking() ->
     assert event_types[-2:] == ["state-patch", "done"]
     assert any(event.event == "plan" for event in events)
     assert "".join(event.delta for event in events if event.event == "text-delta").startswith("先把 retrieval")
-    assert mock_client.chat.completions.create.call_count == 2
+    assert [event.phase for event in events if event.event == "status"] == [
+        "loading-context",
+        "making-decision",
+        "composing-response",
+        "preparing-followup",
+        "writing-state",
+    ]
+    assert mock_client.chat.completions.create.call_count == 1
 
 
 def test_run_agent_v0_emits_knowledge_point_suggestion_for_project_chat() -> None:

@@ -241,6 +241,8 @@ _ARCHIVE_REQUEST = {
 
 
 def test_stream_endpoint_returns_sse_events(client: TestClient) -> None:
+    import json
+
     response = client.post("/runs/v0/stream", json=_SAMPLE_REQUEST)
 
     assert response.status_code == 200
@@ -260,6 +262,21 @@ def test_stream_endpoint_returns_sse_events(client: TestClient) -> None:
     assert "activities" in event_types[4:-2]
     assert event_types[-2:] == ["state-patch", "done"]
     assert event_types.count("text-delta") >= 1
+
+    phases = []
+    for line in raw.splitlines():
+        if line.startswith("data: "):
+            payload = json.loads(line[len("data: "):])
+            if payload["event"] == "status":
+                phases.append(payload["phase"])
+
+    assert phases == [
+        "loading-context",
+        "making-decision",
+        "composing-response",
+        "preparing-followup",
+        "writing-state",
+    ]
 
 
 def test_stream_endpoint_events_are_valid_json(client: TestClient) -> None:
