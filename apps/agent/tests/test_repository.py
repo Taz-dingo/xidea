@@ -149,3 +149,67 @@ def test_repository_resolves_archive_suggestion_and_archives_knowledge_point(tmp
     assert resolution.knowledge_point_state.learning_status == "archived"
     assert resolution.knowledge_point_state.review_status == "archived"
     assert resolution.knowledge_point_state.archive_suggested is False
+
+
+def test_repository_persists_activity_result_writeback_to_project_level_state(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-rag-boundary",
+                project_id="rag-demo",
+                title="retrieval 与 reranking 的边界",
+                description="说明 retrieval 与 reranking 在 RAG 里的职责边界。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            )
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-rag-boundary",
+                mastery=40,
+                learning_status="learning",
+                review_status="idle",
+                updated_at=now,
+            )
+        ],
+    )
+
+    request = build_request(
+        messages=[{"role": "user", "content": "我这轮已经做完复习，继续吧。"}],
+        activity_result={
+            "run_id": "run-review-1",
+            "project_id": "rag-demo",
+            "session_id": "thread-1",
+            "activity_id": "activity-unit-rag-retrieval-guided-qa",
+            "knowledge_point_id": "kp-rag-boundary",
+            "result_type": "review",
+            "action": "submit",
+            "answer": "retrieval 负责召回候选集，reranking 负责在候选集里做精排。",
+            "meta": {"correct": True},
+        },
+    )
+    run_result = run_agent_v0(request, repository=repository, llm=build_mock_llm_for_review())
+
+    repository.save_run(request, run_result)
+
+    knowledge_point_state = repository.get_knowledge_point_state("kp-rag-boundary")
+    project_memory = repository.get_project_memory("rag-demo")
+    project_learning_profile = repository.get_project_learning_profile("rag-demo")
+    project_context = repository.get_project_context("rag-demo", "thread-1")
+
+    assert knowledge_point_state is not None
+    assert knowledge_point_state.mastery > 40
+    assert knowledge_point_state.review_status == "scheduled"
+    assert project_memory is not None
+    assert "最近一次 review 结果" in project_memory.summary
+    assert project_learning_profile is not None
+    assert project_learning_profile.current_stage == "stabilizing"
+    assert project_context is not None
+    assert project_context["project_memory"] is not None
+    assert project_context["project_learning_profile"] is not None

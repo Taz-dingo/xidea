@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 import re
+from typing import TYPE_CHECKING
 
+from xidea_agent.activity_results import apply_activity_result_writeback
 from xidea_agent.guardrails import get_violations, validate_diagnosis
 from xidea_agent.knowledge_points import (
     COMPARISON_PATTERN,
@@ -32,6 +34,7 @@ from xidea_agent.state import (
     LearnerStatePatch,
     LearnerUnitState,
     LearningMode,
+    LearningUnit,
     Message,
     Observation,
     PedagogicalAction,
@@ -43,6 +46,7 @@ from xidea_agent.state import (
     StatePatchEvent,
     StudyPlan,
     StudyPlanStep,
+    StreamEvent,
     TextDeltaEvent,
     KnowledgePointState,
     ToolIntent,
@@ -55,6 +59,9 @@ from xidea_agent.tools import (
     retrieve_learning_unit,
     retrieve_source_assets,
 )
+
+if TYPE_CHECKING:
+    from xidea_agent.llm import LLMClient
 
 
 UTC = timezone.utc
@@ -275,6 +282,26 @@ def _build_project_context_observations(project_context) -> list[Observation]:
                 kind="project-note",
                 source="review-context",
                 summary=project_context.review_summary,
+            )
+        )
+
+    if project_context.project_memory_summary:
+        observations.append(
+            Observation(
+                observation_id="project-context-memory",
+                kind="project-note",
+                source="project-memory",
+                summary=project_context.project_memory_summary,
+            )
+        )
+
+    if project_context.project_learning_profile_summary:
+        observations.append(
+            Observation(
+                observation_id="project-context-learning-profile",
+                kind="project-note",
+                source="project-learning-profile",
+                summary=project_context.project_learning_profile_summary,
             )
         )
 
@@ -631,7 +658,6 @@ def build_plan(
     diagnosis: Diagnosis,
     learner_state: LearnerUnitState,
 ) -> StudyPlan:
-    selected_mode = selected_mode_for_action(diagnosis.recommended_action)
     steps: list[StudyPlanStep] = []
     candidates = set(candidate_modes)
 
@@ -1092,7 +1118,7 @@ def _run_agent_v0_state(
     request: AgentRequest,
     repository: SQLiteRepository | None = None,
     *,
-    llm: "LLMClient",
+    llm: LLMClient,
 ) -> GraphState:
     state = build_initial_graph_state(request)
     state = load_context_step(state, repository=repository)
@@ -1101,7 +1127,7 @@ def _run_agent_v0_state(
         return state
 
     for step in (
-        lambda current: diagnose_step(current, llm=llm),
+        lambda current: main_decision_step(current, llm=llm, repository=repository),
         decide_action_step,
         lambda current: maybe_tool_step(current, repository=repository),
         lambda current: compose_response_step(current, llm=llm, repository=repository),
@@ -1137,7 +1163,7 @@ def iter_agent_v0_events(
     request: AgentRequest,
     repository: SQLiteRepository | None = None,
     *,
-    llm: "LLMClient",
+    llm: LLMClient,
 ) -> Iterator[StreamEvent]:
     state = build_initial_graph_state(request)
     events: list[StreamEvent] = []
@@ -1167,7 +1193,7 @@ def iter_agent_v0_events(
             repository.save_run(request, AgentRunResult(graph_state=state, events=events))
         return
 
-    state = diagnose_step(state, llm=llm)
+    state = main_decision_step(state, llm=llm, repository=repository)
     if state.diagnosis is None:
         raise RuntimeError("diagnose_step completed without diagnosis.")
     diagnosis_event = DiagnosisEvent(event="diagnosis", diagnosis=state.diagnosis)
@@ -1179,45 +1205,73 @@ def iter_agent_v0_events(
     if state.diagnosis is None or state.learner_unit_state is None:
         raise RuntimeError("stream response requires diagnosis and learner state.")
 
-    from xidea_agent.llm import llm_build_plan, stream_assistant_reply
+    if state.tool_intent == "none" and state.assistant_message is not None and state.plan is not None:
+        reply_source = "LLM-main-decision"
+        plan_source = "LLM-main-decision"
+        for chunk in _chunk_text_for_ui_local(state.assistant_message):
+            text_event = TextDeltaEvent(event="text-delta", delta=chunk)
+            events.append(text_event)
+            yield text_event
+        plan_event = PlanEvent(event="plan", plan=state.plan)
+        events.append(plan_event)
+        yield plan_event
+
+        state.activity = build_activity(
+            state.diagnosis,
+            state.plan,
+            state.learner_unit_state,
+            state.learning_unit,
+        )
+        if state.activity is not None:
+            activity_event = ActivityEvent(event="activity", activity=state.activity)
+            events.append(activity_event)
+            yield activity_event
+        state.knowledge_point_suggestions = build_knowledge_point_suggestions(state, repository=repository)
+        if state.knowledge_point_suggestions:
+            suggestion_event = KnowledgePointSuggestionEvent(
+                event="knowledge-point-suggestion",
+                suggestions=state.knowledge_point_suggestions,
+            )
+            events.append(suggestion_event)
+            yield suggestion_event
+
+        state.rationale.append(
+            f"compose_response built a {len(state.plan.steps)}-step plan "
+            f"with mode {state.plan.selected_mode} (plan={plan_source}, reply={reply_source})."
+        )
+        if state.activity is not None:
+            state.rationale.append(
+                f"stream emitted activity {state.activity.id} ({state.activity.kind})."
+            )
+        if state.knowledge_point_suggestions:
+            state.rationale.append(
+                f"stream emitted {len(state.knowledge_point_suggestions)} knowledge point suggestion(s)."
+            )
+
+        state = writeback_step(state)
+        if state.state_patch is None:
+            raise RuntimeError("writeback_step completed without state patch.")
+
+        state_patch_event = StatePatchEvent(event="state-patch", state_patch=state.state_patch)
+        events.append(state_patch_event)
+        yield state_patch_event
+
+        done_event = DoneEvent(event="done", final_message=state.assistant_message)
+        events.append(done_event)
+        yield done_event
+
+        if repository is not None:
+            repository.save_run(request, AgentRunResult(graph_state=state, events=events))
+        return
+
+    from xidea_agent.llm import llm_build_plan, llm_build_reply_and_plan, stream_assistant_reply
 
     project_topic = state.project_context.topic if state.project_context is not None else state.request.topic
     unit_title = state.learning_unit.title if state.learning_unit else project_topic
     candidate_modes = state.learning_unit.candidate_modes if state.learning_unit else []
     user_msg = state.request.messages[-1] if state.request.messages else project_topic
 
-    reply_parts: list[str] = []
-    for chunk in stream_assistant_reply(
-        llm,
-        state.diagnosis,
-        None,
-        state.learner_unit_state,
-        user_msg,
-        state.tool_result,
-    ):
-        reply_parts.append(chunk)
-        text_event = TextDeltaEvent(event="text-delta", delta=chunk)
-        events.append(text_event)
-        yield text_event
-
-    if reply_parts:
-        state.assistant_message = "".join(reply_parts)
-        reply_source = "LLM-stream"
-    else:
-        state.assistant_message = compose_assistant_message(
-            state.diagnosis,
-            state.plan,
-            state.tool_result,
-        )
-        reply_source = "template"
-        reply_parts = list(_chunk_text_for_ui_local(state.assistant_message))
-        state.rationale.append("LLM reply streaming returned no content, using template reply.")
-        for chunk in reply_parts:
-            text_event = TextDeltaEvent(event="text-delta", delta=chunk)
-            events.append(text_event)
-            yield text_event
-
-    llm_plan = llm_build_plan(
+    bundled_response = llm_build_reply_and_plan(
         llm,
         project_topic,
         unit_title,
@@ -1225,20 +1279,70 @@ def iter_agent_v0_events(
         state.diagnosis,
         state.learner_unit_state,
         user_msg,
+        tool_result=state.tool_result,
     )
-    if llm_plan is not None:
-        state.plan = llm_plan
-        plan_source = "LLM"
+    if bundled_response is not None:
+        state.assistant_message, state.plan = bundled_response
+        reply_source = "LLM-bundled"
+        plan_source = "LLM-bundled"
+        for chunk in _chunk_text_for_ui_local(state.assistant_message):
+            text_event = TextDeltaEvent(event="text-delta", delta=chunk)
+            events.append(text_event)
+            yield text_event
     else:
-        state.plan = build_plan(
+        reply_parts: list[str] = []
+        for chunk in stream_assistant_reply(
+            llm,
+            state.diagnosis,
+            None,
+            state.learner_unit_state,
+            user_msg,
+            state.tool_result,
+        ):
+            reply_parts.append(chunk)
+            text_event = TextDeltaEvent(event="text-delta", delta=chunk)
+            events.append(text_event)
+            yield text_event
+
+        if reply_parts:
+            state.assistant_message = "".join(reply_parts)
+            reply_source = "LLM-stream"
+        else:
+            state.assistant_message = compose_assistant_message(
+                state.diagnosis,
+                state.plan,
+                state.tool_result,
+            )
+            reply_source = "template"
+            reply_parts = list(_chunk_text_for_ui_local(state.assistant_message))
+            state.rationale.append("LLM reply streaming returned no content, using template reply.")
+            for chunk in reply_parts:
+                text_event = TextDeltaEvent(event="text-delta", delta=chunk)
+                events.append(text_event)
+                yield text_event
+
+        llm_plan = llm_build_plan(
+            llm,
             project_topic,
             unit_title,
             candidate_modes,
             state.diagnosis,
             state.learner_unit_state,
+            user_msg,
         )
-        plan_source = "template"
-        state.rationale.append("LLM plan generation returned None, using template plan.")
+        if llm_plan is not None:
+            state.plan = llm_plan
+            plan_source = "LLM"
+        else:
+            state.plan = build_plan(
+                project_topic,
+                unit_title,
+                candidate_modes,
+                state.diagnosis,
+                state.learner_unit_state,
+            )
+            plan_source = "template"
+            state.rationale.append("LLM plan generation returned None, using template plan.")
 
     if state.plan is None:
         raise RuntimeError("stream response could not build plan.")
@@ -1323,9 +1427,20 @@ def load_context_step(
             review_patch = repository.get_review_state(
                 state.request.thread_id, state.request.target_unit_id
             )
+            state.prior_review_state = review_patch
             if review_patch is not None and review_patch.scheduled_at is not None:
                 state.prior_next_review_at = review_patch.scheduled_at
                 state.rationale.append("load_context loaded prior review schedule from repository.")
+
+        activity_result = state.request.activity_result
+        if activity_result is not None:
+            state.prior_knowledge_point_state = repository.get_knowledge_point_state(
+                activity_result.knowledge_point_id
+            )
+            if state.prior_knowledge_point_state is not None:
+                state.rationale.append(
+                    "load_context loaded prior knowledge point state for activity result writeback."
+                )
 
     if state.project_context is not None:
         state.observations = [
@@ -1351,7 +1466,157 @@ def load_context_step(
     return state
 
 
-def diagnose_step(state: GraphState, llm: "LLMClient") -> GraphState:
+def _commit_llm_diagnosis(
+    state: GraphState,
+    llm_diag: Diagnosis | None,
+    *,
+    signal_source: str,
+    diag_source: str,
+) -> GraphState:
+    if llm_diag is not None:
+        violations = validate_diagnosis(llm_diag, state.learner_unit_state)
+        if violations:
+            names = ", ".join(f"{violation.rule_id}({violation.rule_name})" for violation in violations)
+            state.rationale.append(
+                f"LLM diagnosis rejected by guardrails: {names}. "
+                "Applying guardrail corrections."
+            )
+            _apply_diagnosis_guardrail_corrections(llm_diag, state, violations)
+        state.diagnosis = llm_diag
+    else:
+        raise RuntimeError(
+            "LLM diagnosis returned None. The LLM is the core decision-maker "
+            "and cannot be bypassed."
+        )
+
+    state.learner_unit_state.recommended_action = state.diagnosis.recommended_action
+    state.rationale.append(
+        f"diagnose selected {state.diagnosis.recommended_action} "
+        f"for {state.diagnosis.primary_issue} "
+        f"(signals={signal_source}, diagnosis={diag_source})."
+    )
+    return state
+
+
+def _preload_tool_context_for_main_decision(
+    state: GraphState,
+    review_decision: ReviewDecision,
+    repository: SQLiteRepository | None = None,
+) -> GraphState:
+    preload_intent: ToolIntent = "none"
+    preload_request = state.request
+
+    if state.request.entry_mode == "material-import":
+        asset_ids = (
+            state.request.source_asset_ids
+            or (state.project_context.source_asset_ids if state.project_context is not None else [])
+        )
+        if asset_ids:
+            preload_intent = "asset-summary"
+            if not state.request.source_asset_ids:
+                preload_request = state.request.model_copy(update={"source_asset_ids": list(asset_ids)})
+    elif state.request.entry_mode == "coach-followup":
+        preload_intent = "thread-memory"
+    elif review_decision.should_review and state.request.target_unit_id is not None:
+        preload_intent = "review-context"
+    elif state.request.target_unit_id is not None:
+        preload_intent = "unit-detail"
+
+    if preload_intent == "none":
+        return state
+
+    state.tool_result = resolve_tool_result(preload_intent, preload_request, repository=repository)
+    if state.tool_result is not None:
+        state.rationale.append(
+            f"main_decision_step preloaded {state.tool_result.kind} context before the primary LLM call."
+        )
+    return state
+
+
+def main_decision_step(
+    state: GraphState,
+    llm: LLMClient,
+    repository: SQLiteRepository | None = None,
+) -> GraphState:
+    from xidea_agent.llm import llm_build_main_decision
+
+    provisional_signals = build_signals(
+        state.recent_messages,
+        state.observations,
+        state.request.entry_mode,
+        prior_state=state.prior_learner_unit_state,
+    )
+    state.signals = provisional_signals
+    state.rationale.append(
+        "main_decision_step built provisional rule-based signals before attempting single-call decision."
+    )
+
+    state.learner_unit_state = estimate_learner_state(
+        state.request.target_unit_id,
+        state.signals,
+        prior_state=state.prior_learner_unit_state,
+    )
+
+    review_decision = should_enter_review(
+        understanding_level=state.learner_unit_state.understanding_level,
+        confusion_level=state.learner_unit_state.confusion_level,
+        memory_strength=state.learner_unit_state.memory_strength,
+        next_review_at=state.prior_next_review_at,
+    )
+
+    project_topic = state.project_context.topic if state.project_context is not None else state.request.topic
+    unit_title = state.learning_unit.title if state.learning_unit is not None else project_topic
+    candidate_modes = state.learning_unit.candidate_modes if state.learning_unit is not None else []
+    state = _preload_tool_context_for_main_decision(
+        state,
+        review_decision,
+        repository=repository,
+    )
+
+    bundled_main = llm_build_main_decision(
+        llm,
+        state.recent_messages,
+        state.observations,
+        state.request.entry_mode,
+        state.learner_unit_state,
+        state.request.target_unit_id,
+        project_topic,
+        unit_title,
+        candidate_modes,
+        prior_state=state.prior_learner_unit_state,
+        review_should=review_decision.should_review,
+        review_priority=review_decision.priority,
+        review_reason=review_decision.reason,
+        tool_result=state.tool_result,
+    )
+    if bundled_main is None:
+        state.rationale.append(
+            "main_decision_step fell back to staged diagnosis path because single-call decision was unavailable."
+        )
+        return diagnose_step(state, llm=llm)
+
+    state.signals, llm_diag, bundled_reply, bundled_plan = bundled_main
+    state.learner_unit_state = estimate_learner_state(
+        state.request.target_unit_id,
+        state.signals,
+        prior_state=state.prior_learner_unit_state,
+    )
+    state = _commit_llm_diagnosis(
+        state,
+        llm_diag,
+        signal_source="LLM-main-decision",
+        diag_source="LLM-main-decision",
+    )
+    if bundled_reply is not None and bundled_plan is not None and not state.diagnosis.needs_tool:
+        state.assistant_message = bundled_reply
+        state.plan = bundled_plan
+        state.rationale.append("main_decision_step bundled reply and plan into the same primary LLM call.")
+    else:
+        state.rationale.append("main_decision_step bundled diagnosis only; response remains staged.")
+    return state
+
+
+def diagnose_step(state: GraphState, llm: LLMClient) -> GraphState:
     from xidea_agent.llm import llm_build_signals, llm_diagnose, llm_build_signals_and_diagnosis
 
     provisional_signals = build_signals(
@@ -1435,30 +1700,12 @@ def diagnose_step(state: GraphState, llm: "LLMClient") -> GraphState:
         )
         diag_source = "LLM"
 
-    if llm_diag is not None:
-        violations = validate_diagnosis(llm_diag, state.learner_unit_state)
-        if violations:
-            names = ", ".join(f"{v.rule_id}({v.rule_name})" for v in violations)
-            state.rationale.append(
-                f"LLM diagnosis rejected by guardrails: {names}. "
-                "Applying guardrail corrections."
-            )
-            _apply_diagnosis_guardrail_corrections(llm_diag, state, violations)
-        state.diagnosis = llm_diag
-    else:
-        raise RuntimeError(
-            "LLM diagnosis returned None. The LLM is the core decision-maker "
-            "and cannot be bypassed."
-        )
-
-    state.learner_unit_state.recommended_action = state.diagnosis.recommended_action
-
-    state.rationale.append(
-        f"diagnose selected {state.diagnosis.recommended_action} "
-        f"for {state.diagnosis.primary_issue} "
-        f"(signals={signal_source}, diagnosis={diag_source})."
+    return _commit_llm_diagnosis(
+        state,
+        llm_diag,
+        signal_source=signal_source,
+        diag_source=diag_source,
     )
-    return state
 
 
 def _apply_diagnosis_guardrail_corrections(
@@ -1488,6 +1735,20 @@ def decide_action_step(state: GraphState) -> GraphState:
 def maybe_tool_step(state: GraphState, repository: SQLiteRepository | None = None) -> GraphState:
     if state.is_off_topic:
         return state
+
+    if state.tool_intent == "none":
+        if state.tool_result is not None:
+            state.rationale.append(
+                f"maybe_tool skipped because {state.tool_result.kind} context was already preloaded."
+            )
+        else:
+            state.rationale.append("maybe_tool skipped because no extra context was required.")
+        return state
+
+    if state.tool_result is not None and state.tool_result.kind == state.tool_intent:
+        state.rationale.append(f"maybe_tool reused preloaded {state.tool_result.kind} context.")
+        return state
+
     state.tool_result = resolve_tool_result(state.tool_intent, state.request, repository=repository)
     if state.tool_result is not None:
         state.rationale.append(f"maybe_tool loaded {state.tool_result.kind} context.")
@@ -1498,7 +1759,7 @@ def maybe_tool_step(state: GraphState, repository: SQLiteRepository | None = Non
 
 def compose_response_step(
     state: GraphState,
-    llm: "LLMClient",
+    llm: LLMClient,
     repository: SQLiteRepository | None = None,
 ) -> GraphState:
     if state.is_off_topic:
@@ -1506,28 +1767,36 @@ def compose_response_step(
     if state.diagnosis is None or state.learner_unit_state is None:
         return state
 
-    from xidea_agent.llm import generate_assistant_reply, llm_build_plan
+    from xidea_agent.llm import generate_assistant_reply, llm_build_plan, llm_build_reply_and_plan
 
     project_topic = state.project_context.topic if state.project_context is not None else state.request.topic
     unit_title = state.learning_unit.title if state.learning_unit else project_topic
     candidate_modes = state.learning_unit.candidate_modes if state.learning_unit else []
     user_msg = state.request.messages[-1] if state.request.messages else project_topic
 
-    reply = generate_assistant_reply(
-        llm, state.diagnosis, None, state.learner_unit_state,
-        user_msg, state.tool_result,
-    )
-    if reply is not None:
-        state.assistant_message = reply
-        reply_source = "LLM"
-    else:
-        state.assistant_message = compose_assistant_message(
-            state.diagnosis, None, state.tool_result
+    if state.tool_intent == "none" and state.assistant_message is not None and state.plan is not None:
+        state.activity = build_activity(
+            state.diagnosis,
+            state.plan,
+            state.learner_unit_state,
+            state.learning_unit,
         )
-        reply_source = "template"
-        state.rationale.append("LLM reply generation returned None, using template reply.")
+        state.knowledge_point_suggestions = build_knowledge_point_suggestions(state, repository=repository)
+        state.rationale.append(
+            f"compose_response built a {len(state.plan.steps)}-step plan "
+            f"with mode {state.plan.selected_mode} (plan=LLM-main-decision, reply=LLM-main-decision)."
+        )
+        if state.activity is not None:
+            state.rationale.append(
+                f"compose_response emitted activity {state.activity.id} ({state.activity.kind})."
+            )
+        if state.knowledge_point_suggestions:
+            state.rationale.append(
+                f"compose_response emitted {len(state.knowledge_point_suggestions)} knowledge point suggestion(s)."
+            )
+        return state
 
-    llm_plan = llm_build_plan(
+    bundled_response = llm_build_reply_and_plan(
         llm,
         project_topic,
         unit_title,
@@ -1535,20 +1804,49 @@ def compose_response_step(
         state.diagnosis,
         state.learner_unit_state,
         user_msg,
+        tool_result=state.tool_result,
     )
-    if llm_plan is not None:
-        state.plan = llm_plan
-        plan_source = "LLM"
+    if bundled_response is not None:
+        state.assistant_message, state.plan = bundled_response
+        reply_source = "LLM-bundled"
+        plan_source = "LLM-bundled"
     else:
-        state.plan = build_plan(
+        reply = generate_assistant_reply(
+            llm, state.diagnosis, None, state.learner_unit_state,
+            user_msg, state.tool_result,
+        )
+        if reply is not None:
+            state.assistant_message = reply
+            reply_source = "LLM"
+        else:
+            state.assistant_message = compose_assistant_message(
+                state.diagnosis, None, state.tool_result
+            )
+            reply_source = "template"
+            state.rationale.append("LLM reply generation returned None, using template reply.")
+
+        llm_plan = llm_build_plan(
+            llm,
             project_topic,
             unit_title,
             candidate_modes,
             state.diagnosis,
             state.learner_unit_state,
+            user_msg,
         )
-        plan_source = "template"
-        state.rationale.append("LLM plan generation returned None, using template plan.")
+        if llm_plan is not None:
+            state.plan = llm_plan
+            plan_source = "LLM"
+        else:
+            state.plan = build_plan(
+                project_topic,
+                unit_title,
+                candidate_modes,
+                state.diagnosis,
+                state.learner_unit_state,
+            )
+            plan_source = "template"
+            state.rationale.append("LLM plan generation returned None, using template plan.")
 
     state.activity = build_activity(
         state.diagnosis,
@@ -1624,6 +1922,9 @@ def writeback_step(state: GraphState) -> GraphState:
             state.rationale.append("Guardrail corrections applied, state_patch rebuilt.")
     else:
         state.rationale.append("Guardrail checks passed.")
+
+    if state.request.activity_result is not None:
+        state = apply_activity_result_writeback(state)
     return state
 
 
@@ -1631,7 +1932,7 @@ def run_agent_v0(
     request: AgentRequest,
     repository: SQLiteRepository | None = None,
     *,
-    llm: "LLMClient",
+    llm: LLMClient,
 ) -> AgentRunResult:
     return _build_run_result(_run_agent_v0_state(request, repository=repository, llm=llm))
 

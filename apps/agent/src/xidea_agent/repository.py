@@ -15,6 +15,8 @@ from xidea_agent.state import (
     KnowledgePointSuggestionResolution,
     LearnerUnitState,
     Message,
+    ProjectLearningProfile,
+    ProjectMemory,
     ReviewPatch,
     StatePatch,
 )
@@ -137,6 +139,23 @@ CREATE TABLE IF NOT EXISTS knowledge_point_suggestions (
   updated_at TEXT NOT NULL,
   FOREIGN KEY(project_id) REFERENCES projects(project_id)
 );
+
+CREATE TABLE IF NOT EXISTS project_memories (
+  project_id TEXT PRIMARY KEY,
+  summary TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(project_id)
+);
+
+CREATE TABLE IF NOT EXISTS project_learning_profiles (
+  project_id TEXT PRIMARY KEY,
+  current_stage TEXT NOT NULL,
+  primary_weaknesses TEXT NOT NULL,
+  learning_preferences TEXT NOT NULL,
+  freshness TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(project_id)
+);
 """
 
 
@@ -235,6 +254,20 @@ class SQLiteRepository:
                     now_value,
                 )
 
+            if state.knowledge_point_state_writebacks:
+                for knowledge_point_state in state.knowledge_point_state_writebacks:
+                    self._upsert_knowledge_point_state(connection, knowledge_point_state, now_value)
+
+            if state.project_memory_writeback is not None:
+                self._upsert_project_memory(connection, state.project_memory_writeback, now_value)
+
+            if state.project_learning_profile_writeback is not None:
+                self._upsert_project_learning_profile(
+                    connection,
+                    state.project_learning_profile_writeback,
+                    now_value,
+                )
+
     def list_recent_messages(self, thread_id: str, limit: int = 8) -> list[Message]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -294,20 +327,78 @@ class SQLiteRepository:
                 """,
                 (project_id,),
             ).fetchone()
+            project_memory_row = connection.execute(
+                """
+                SELECT *
+                FROM project_memories
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+            project_learning_profile_row = connection.execute(
+                """
+                SELECT *
+                FROM project_learning_profiles
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
 
         thread_context = self.get_thread_context(thread_id)
         recent_messages = self.list_recent_messages(thread_id, limit=recent_message_limit)
 
-        if project_row is None and thread_context is None and not recent_messages:
+        if (
+            project_row is None
+            and thread_context is None
+            and not recent_messages
+            and project_memory_row is None
+            and project_learning_profile_row is None
+        ):
             return None
 
         return {
             "project_id": project_row["project_id"] if project_row is not None else project_id,
             "project_topic": project_row["topic"] if project_row is not None else None,
             "project_updated_at": project_row["updated_at"] if project_row is not None else None,
+            "project_memory": (
+                self._row_to_project_memory(project_memory_row)
+                if project_memory_row is not None
+                else None
+            ),
+            "project_learning_profile": (
+                self._row_to_project_learning_profile(project_learning_profile_row)
+                if project_learning_profile_row is not None
+                else None
+            ),
             "thread_context": thread_context,
             "recent_messages": recent_messages,
         }
+
+    def get_project_memory(self, project_id: str) -> ProjectMemory | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM project_memories
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+
+        return self._row_to_project_memory(row) if row is not None else None
+
+    def get_project_learning_profile(self, project_id: str) -> ProjectLearningProfile | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM project_learning_profiles
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+
+        return self._row_to_project_learning_profile(row) if row is not None else None
 
     def get_review_state(self, thread_id: str, unit_id: str) -> ReviewPatch | None:
         with self._connect() as connection:
@@ -441,6 +532,21 @@ class SQLiteRepository:
                 self._upsert_knowledge_point(connection, knowledge_point, now_value)
             for knowledge_point_state in states or []:
                 self._upsert_knowledge_point_state(connection, knowledge_point_state, now_value)
+
+    def create_or_update_project_memory(self, project_memory: ProjectMemory) -> None:
+        self.initialize()
+        now_value = _utc_now()
+        with self._connect() as connection:
+            self._upsert_project_memory(connection, project_memory, now_value)
+
+    def create_or_update_project_learning_profile(
+        self,
+        project_learning_profile: ProjectLearningProfile,
+    ) -> None:
+        self.initialize()
+        now_value = _utc_now()
+        with self._connect() as connection:
+            self._upsert_project_learning_profile(connection, project_learning_profile, now_value)
 
     def resolve_knowledge_point_suggestion(
         self,
@@ -936,6 +1042,69 @@ class SQLiteRepository:
             ),
         )
 
+    def _upsert_project_memory(
+        self,
+        connection: sqlite3.Connection,
+        project_memory: ProjectMemory,
+        now_value: str,
+    ) -> None:
+        updated_value = (
+            project_memory.updated_at.isoformat()
+            if hasattr(project_memory.updated_at, "isoformat")
+            else project_memory.updated_at
+            or now_value
+        )
+        connection.execute(
+            """
+            INSERT INTO project_memories(project_id, summary, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(project_id) DO UPDATE SET
+              summary = excluded.summary,
+              updated_at = excluded.updated_at
+            """,
+            (
+                project_memory.project_id,
+                project_memory.summary,
+                updated_value,
+            ),
+        )
+
+    def _upsert_project_learning_profile(
+        self,
+        connection: sqlite3.Connection,
+        project_learning_profile: ProjectLearningProfile,
+        now_value: str,
+    ) -> None:
+        updated_value = (
+            project_learning_profile.updated_at.isoformat()
+            if hasattr(project_learning_profile.updated_at, "isoformat")
+            else project_learning_profile.updated_at
+            or now_value
+        )
+        connection.execute(
+            """
+            INSERT INTO project_learning_profiles(
+              project_id, current_stage, primary_weaknesses,
+              learning_preferences, freshness, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(project_id) DO UPDATE SET
+              current_stage = excluded.current_stage,
+              primary_weaknesses = excluded.primary_weaknesses,
+              learning_preferences = excluded.learning_preferences,
+              freshness = excluded.freshness,
+              updated_at = excluded.updated_at
+            """,
+            (
+                project_learning_profile.project_id,
+                project_learning_profile.current_stage,
+                json.dumps(project_learning_profile.primary_weaknesses, ensure_ascii=False),
+                json.dumps(project_learning_profile.learning_preferences, ensure_ascii=False),
+                project_learning_profile.freshness,
+                updated_value,
+            ),
+        )
+
     def _append_review_events(
         self,
         connection: sqlite3.Connection,
@@ -1027,6 +1196,26 @@ class SQLiteRepository:
             status=row["status"],
             created_at=row["created_at"],
             resolved_at=row["resolved_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def _row_to_project_memory(self, row: sqlite3.Row) -> ProjectMemory:
+        return ProjectMemory(
+            project_id=row["project_id"],
+            summary=row["summary"],
+            updated_at=row["updated_at"],
+        )
+
+    def _row_to_project_learning_profile(
+        self,
+        row: sqlite3.Row,
+    ) -> ProjectLearningProfile:
+        return ProjectLearningProfile(
+            project_id=row["project_id"],
+            current_stage=row["current_stage"],
+            primary_weaknesses=json.loads(row["primary_weaknesses"]),
+            learning_preferences=json.loads(row["learning_preferences"]),
+            freshness=row["freshness"],
             updated_at=row["updated_at"],
         )
 

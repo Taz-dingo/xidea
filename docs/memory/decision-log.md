@@ -3,6 +3,32 @@
 只保留"当前仍生效、后续会反复影响协作或实现"的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-18 — 确定性 tool context 默认前置到主决策前，后置 tool loop 只保留给少数动态缺口
+
+### 决策
+
+学习引擎的稳定运行形态继续朝“单次主决策调用”收敛。
+当前约束为：
+
+- `material-import` 默认在主决策前预取 `asset-summary`
+- `coach-followup` 默认在主决策前预取 `thread-memory`
+- review 倾向明确时，默认在主决策前预取 `review-context`
+- 带 `target_unit_id` 的常规问答，默认在主决策前预取 `unit-detail`
+- 只有当 LLM 在已有这些证据后仍明确返回 `needs_tool=true`，或后续确实出现新的动态缺口时，才继续走后置 `tool / session loop`
+- 后置 tool 分支若命中已前置的同类上下文，必须优先复用，不允许重复拉取同一份 evidence
+
+### 原因
+
+- 当前 tool loop 里相当一部分上下文其实是确定性可预判的，不需要先做一轮 diagnosis 才知道该读什么
+- 如果这类上下文继续留在 diagnosis 之后，主链路时延会稳定多出一轮 LLM 调用，且 prompt 口径会继续在“主决策前证据包”和“tool 后补上下文”之间漂移
+- 先把确定性 evidence 前置，才能把剩余的 `needs_tool=true` 收敛成少数真正动态的例外，而不是把整个 tool loop 当默认路径
+
+### 影响
+
+- runtime 后续默认按“预取 evidence -> main decision -> 少量动态 tool fallback -> writeback”继续收敛
+- prompt、测试和文档要统一假设：`needs_tool=true` 不是入口模式的机械映射，而是 LLM 在已有主要证据后仍认为信息不足的显式判断
+- 前后端联调时，不能再把 `material-import`、`coach-followup` 或 review 请求天然视为必须经过独立 tool round
+
 ## 2026-04-17 — 学习 agent 的智能目标对齐 coding agents 的 runtime 方法论，而不是开放域自治
 
 ### 决策

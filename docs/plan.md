@@ -36,6 +36,12 @@
   - 原因：
     - 当前实现仍存在串行 LLM 调用，首轮回复等待偏长
     - 这不仅是架构收敛问题，也是当前 demo 交互时延问题
+  - 当前进展：
+    - 已将 `signal extraction + diagnosis` bundling 为 1 次调用
+    - 已将 `reply + plan` bundling 为 1 次调用；sync 与 stream 目前都收敛到 2 次主模型调用
+    - 已补 `main_decision` 单次主决策调用：当 `diagnosis.needs_tool=false` 时，sync / stream 会在同一次主调用里同时拿到 `signals + diagnosis + reply + plan`
+    - 已把可预判的 tool context 前置到主决策前：`material-import -> asset-summary`、`coach-followup -> thread-memory`、`review -> review-context`、带 `target_unit_id` 的常规问答 -> `unit-detail`
+    - 当前剩余缺口集中在 LLM 仍主动返回 `needs_tool=true` 的少数场景：这些路径现在会优先复用预取上下文，但整体仍是 `main_decision -> tool/session loop -> bundled response`
 - [ ] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
   - owner: 学习引擎 owner / 产品 owner
 - [ ] 定义 Project 最小持久化对象：project memory、learning profile、knowledge points、sessions
@@ -46,21 +52,21 @@
     - 标题、描述、来源材料、origin session
     - 掌握度、学习/复习状态、下次复习信号
     - archive 建议与确认
-- [ ] 定义 knowledge point suggestion contract：由 agent 在 project chat 中输出结构化新增 / archive 建议，前端只负责渲染与确认
+- [x] 定义 knowledge point suggestion contract：由 agent 在 project chat 中输出结构化新增 / archive 建议，前端只负责渲染与确认
   - owner: 学习引擎 owner / 前端 owner
   - 范围：
     - project context 预取边界：project memory、special rules、已有 knowledge points、selected materials、recent session context
     - `knowledge-point-suggestion` 的 payload、去重和 off-topic 边界
     - 用户确认新增 / 忽略 / 接受 archive 建议时的 API contract
   - 参考：`docs/reference/learning-engine-backend-integration.md`
-- [ ] 定义 project-level learning profile 最小 schema，并接入后续编排上下文
+- [x] 定义 project-level learning profile 最小 schema，并接入后续编排上下文
   - owner: 学习引擎 owner
   - 范围：
     - 当前阶段
     - 主要薄弱点
     - 轻量学习偏好
     - 新鲜度 / 最近更新时间
-- [ ] 让学习资料、project memory、learning profile、review context 在主决策前完成预取，并进入同一证据上下文
+- [x] 让学习资料、project memory、learning profile、review context 在主决策前完成预取，并进入同一证据上下文
   - owner: 学习引擎 owner
 - [ ] 定义 `project / study / review` 三类 session 的职责与状态转换
   - owner: 产品 owner / 学习引擎 owner / 前端 owner
@@ -80,9 +86,12 @@
   - owner: 产品 owner / 前端 owner / 学习引擎 owner
 - [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环，让学习/复习结果真正影响知识点状态与 project learning profile
   - owner: 学习引擎 owner / 前端 owner
-- [ ] 明确 project 不相关内容的 guardrail：主动提醒，但不更新 memory、不新增知识点、不触发学习/复习编排
+  - 当前进展：
+    - backend typed contract、repository writeback、project-level preload 已完成
+    - frontend 仍待把 activity submit 从自由文本切到 typed `activity_result`
+- [x] 明确 project 不相关内容的 guardrail：主动提醒，但不更新 memory、不新增知识点、不触发学习/复习编排
   - owner: 学习引擎 owner
-- [ ] 定义 knowledge point archive 建议规则：多次复习稳定后由系统建议，用户确认执行
+- [x] 定义 knowledge point archive 建议规则：多次复习稳定后由系统建议，用户确认执行
   - owner: 学习引擎 owner / 产品 owner
 - [ ] 决定当前 `Consolidation` 是手动触发演示还是模拟定时入口
   - owner: 学习引擎 owner / 产品 owner

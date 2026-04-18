@@ -372,6 +372,67 @@ def test_confirm_archive_knowledge_point_suggestion_endpoint_updates_state(
     assert payload["knowledge_point_state"]["review_status"] == "archived"
 
 
+def test_run_v0_persists_activity_result_writeback(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-rag-boundary",
+                project_id="rag-demo",
+                title="retrieval 与 reranking 的边界",
+                description="说明 retrieval 与 reranking 在 RAG 里的职责边界。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            )
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-rag-boundary",
+                mastery=46,
+                learning_status="learning",
+                review_status="idle",
+                updated_at=now,
+            )
+        ],
+    )
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm_for_review()))
+
+    response = client.post(
+        "/runs/v0",
+        json={
+            "project_id": "rag-demo",
+            "thread_id": "thread-1",
+            "entry_mode": "chat-question",
+            "topic": "RAG retrieval design",
+            "target_unit_id": "unit-rag-retrieval",
+            "messages": [{"role": "user", "content": "我已经完成这轮复习了。"}],
+            "activity_result": {
+                "run_id": "run-review-1",
+                "project_id": "rag-demo",
+                "session_id": "thread-1",
+                "activity_id": "activity-unit-rag-retrieval-guided-qa",
+                "knowledge_point_id": "kp-rag-boundary",
+                "result_type": "review",
+                "action": "submit",
+                "answer": "retrieval 负责召回候选集，reranking 负责精排。",
+                "meta": {"correct": True},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert repository.get_project_memory("rag-demo") is not None
+    assert repository.get_project_learning_profile("rag-demo") is not None
+    knowledge_point_state = repository.get_knowledge_point_state("kp-rag-boundary")
+    assert knowledge_point_state is not None
+    assert knowledge_point_state.review_status == "scheduled"
+
+
 def test_thread_context_returns_no_content_before_first_persist(
     persisted_client: TestClient,
 ) -> None:

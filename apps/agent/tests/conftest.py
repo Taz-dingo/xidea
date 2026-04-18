@@ -17,21 +17,33 @@ def _mock_openai_response(content: str):
     return SimpleNamespace(choices=[choice])
 
 
+def _build_response_bundle(reply: str, plan: dict[str, object]) -> str:
+    return json.dumps({
+        "reply": reply,
+        "plan": plan,
+    })
+
+
+def _build_main_decision_response(
+    *,
+    signals: list[dict[str, object]],
+    diagnosis: dict[str, object],
+    reply: str | None = None,
+    plan: dict[str, object] | None = None,
+) -> str:
+    payload: dict[str, object] = {
+        "signals": signals,
+        "diagnosis": diagnosis,
+    }
+    if reply is not None:
+        payload["reply"] = reply
+    if plan is not None:
+        payload["plan"] = plan
+    return json.dumps(payload)
+
+
 def _default_side_effect():
     """Return a side_effect list that satisfies the full LLM-first pipeline."""
-    bundled = json.dumps({
-        "signals": [
-            {"kind": "concept-confusion", "score": 0.85, "confidence": 0.88,
-             "summary": "用户对 retrieval 和 reranking 概念边界混淆"},
-        ],
-        "diagnosis": {
-            "recommended_action": "clarify",
-            "reason": "用户明确表达概念边界混淆",
-            "confidence": 0.88,
-            "primary_issue": "concept-confusion",
-            "needs_tool": False,
-        },
-    })
     plan = json.dumps({
         "headline": "围绕概念辨析的学习路径",
         "summary": "先辨析边界再追问",
@@ -49,9 +61,23 @@ def _default_side_effect():
     reply = "这两个概念的关键区别在于：retrieval 负责从大量文档中召回候选集，reranking 则在候选集上做精排。"
 
     return [
-        _mock_openai_response(bundled),
-        _mock_openai_response(reply),
-        _mock_openai_response(plan),
+        _mock_openai_response(
+            _build_main_decision_response(
+                signals=[
+                    {"kind": "concept-confusion", "score": 0.85, "confidence": 0.88,
+                     "summary": "用户对 retrieval 和 reranking 概念边界混淆"},
+                ],
+                diagnosis={
+                    "recommended_action": "clarify",
+                    "reason": "用户明确表达概念边界混淆",
+                    "confidence": 0.88,
+                    "primary_issue": "concept-confusion",
+                    "needs_tool": False,
+                },
+                reply=reply,
+                plan=json.loads(plan),
+            )
+        ),
     ]
 
 
@@ -64,20 +90,7 @@ def build_mock_llm(side_effect=None) -> LLMClient:
 
 def build_mock_llm_for_review() -> LLMClient:
     """Build a mock LLMClient that recommends 'review' action."""
-    bundled = json.dumps({
-        "signals": [
-            {"kind": "memory-weakness", "score": 0.85, "confidence": 0.88,
-             "summary": "用户记忆强度偏低，需要复习巩固"},
-        ],
-        "diagnosis": {
-            "recommended_action": "review",
-            "reason": "记忆强度不足，需要复习",
-            "confidence": 0.85,
-            "primary_issue": "weak-recall",
-            "needs_tool": False,
-        },
-    })
-    plan = json.dumps({
+    plan = {
         "headline": "围绕复习巩固的学习路径",
         "summary": "先回忆再辨析",
         "selected_mode": "guided-qa",
@@ -87,34 +100,35 @@ def build_mock_llm_for_review() -> LLMClient:
              "mode": "guided-qa",
              "reason": "先做主动回忆", "outcome": "确认记忆断点"},
         ],
-    })
+    }
     reply = "来做一次主动回忆吧，看看哪些概念已经掉出工作记忆了。"
 
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
-        _mock_openai_response(bundled),
-        _mock_openai_response(reply),
-        _mock_openai_response(plan),
+        _mock_openai_response(
+            _build_main_decision_response(
+                signals=[
+                    {"kind": "memory-weakness", "score": 0.85, "confidence": 0.88,
+                     "summary": "用户记忆强度偏低，需要复习巩固"},
+                ],
+                diagnosis={
+                    "recommended_action": "review",
+                    "reason": "记忆强度不足，需要复习",
+                    "confidence": 0.85,
+                    "primary_issue": "weak-recall",
+                    "needs_tool": False,
+                },
+                reply=reply,
+                plan=plan,
+            )
+        ),
     ]
     return LLMClient(client=mock_client, model="gpt-4o-mini")
 
 
 def build_mock_llm_for_teach() -> LLMClient:
     """Build a mock LLMClient that recommends 'teach' action."""
-    bundled = json.dumps({
-        "signals": [
-            {"kind": "concept-gap", "score": 0.82, "confidence": 0.85,
-             "summary": "用户理解框架不稳"},
-        ],
-        "diagnosis": {
-            "recommended_action": "teach",
-            "reason": "用户理解框架不稳，先补建模",
-            "confidence": 0.85,
-            "primary_issue": "insufficient-understanding",
-            "needs_tool": False,
-        },
-    })
-    plan = json.dumps({
+    plan = {
         "headline": "围绕理解框架的教学路径",
         "summary": "先建模再验证",
         "selected_mode": "guided-qa",
@@ -124,34 +138,35 @@ def build_mock_llm_for_teach() -> LLMClient:
              "mode": "guided-qa",
              "reason": "先补关键设计框架", "outcome": "能复述核心判断逻辑"},
         ],
-    })
+    }
     reply = "我们先来建立一个理解框架。"
 
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
-        _mock_openai_response(bundled),
-        _mock_openai_response(reply),
-        _mock_openai_response(plan),
+        _mock_openai_response(
+            _build_main_decision_response(
+                signals=[
+                    {"kind": "concept-gap", "score": 0.82, "confidence": 0.85,
+                     "summary": "用户理解框架不稳"},
+                ],
+                diagnosis={
+                    "recommended_action": "teach",
+                    "reason": "用户理解框架不稳，先补建模",
+                    "confidence": 0.85,
+                    "primary_issue": "insufficient-understanding",
+                    "needs_tool": False,
+                },
+                reply=reply,
+                plan=plan,
+            )
+        ),
     ]
     return LLMClient(client=mock_client, model="gpt-4o-mini")
 
 
 def build_mock_llm_for_material_import() -> LLMClient:
     """Build a mock LLMClient for material-import entry mode."""
-    bundled = json.dumps({
-        "signals": [
-            {"kind": "project-relevance", "score": 0.9, "confidence": 0.9,
-             "summary": "材料导入场景"},
-        ],
-        "diagnosis": {
-            "recommended_action": "teach",
-            "reason": "材料导入，先补上下文",
-            "confidence": 0.85,
-            "primary_issue": "missing-context",
-            "needs_tool": True,
-        },
-    })
-    plan = json.dumps({
+    plan = {
         "headline": "材料导入学习路径",
         "summary": "先处理材料再教学",
         "selected_mode": "guided-qa",
@@ -161,14 +176,28 @@ def build_mock_llm_for_material_import() -> LLMClient:
              "mode": "guided-qa",
              "reason": "基于材料教学", "outcome": "理解材料核心"},
         ],
-    })
+    }
     reply = "我先看看你导入的材料，然后基于材料内容安排学习。"
 
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
-        _mock_openai_response(bundled),
-        _mock_openai_response(reply),
-        _mock_openai_response(plan),
+        _mock_openai_response(
+            _build_main_decision_response(
+                signals=[
+                    {"kind": "project-relevance", "score": 0.9, "confidence": 0.9,
+                     "summary": "材料导入场景"},
+                ],
+                diagnosis={
+                    "recommended_action": "teach",
+                    "reason": "材料摘要已经预取，可以直接基于材料组织教学",
+                    "confidence": 0.85,
+                    "primary_issue": "missing-context",
+                    "needs_tool": False,
+                },
+                reply=reply,
+                plan=plan,
+            )
+        ),
     ]
     return LLMClient(client=mock_client, model="gpt-4o-mini")
 

@@ -10,6 +10,8 @@ EntryMode = Literal["chat-question", "material-import", "coach-followup"]
 ResponseMode = Literal["sync", "stream"]
 MessageRole = Literal["system", "user", "assistant"]
 ActivityKind = Literal["quiz", "recall", "coach-followup"]
+ActivityResultType = Literal["exercise", "review"]
+ActivityResultAction = Literal["submit", "skip"]
 KnowledgePointStatus = Literal["active", "archived"]
 KnowledgePointSuggestionKind = Literal["create", "archive"]
 KnowledgePointSuggestionStatus = Literal["pending", "accepted", "dismissed"]
@@ -83,6 +85,8 @@ class ProjectContext(StrictModel):
     source_asset_summary: str | None = None
     thread_memory_summary: str | None = None
     review_summary: str | None = None
+    project_memory_summary: str | None = None
+    project_learning_profile_summary: str | None = None
     recent_messages: list[Message] = Field(default_factory=list)
     source: Literal["repository", "request"]
     summary: str = Field(min_length=1)
@@ -233,6 +237,33 @@ class KnowledgePointSuggestionResolution(StrictModel):
     knowledge_point_state: KnowledgePointState | None = None
 
 
+class ProjectMemory(StrictModel):
+    project_id: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    updated_at: datetime | None = None
+
+
+class ProjectLearningProfile(StrictModel):
+    project_id: str = Field(min_length=1)
+    current_stage: str = Field(min_length=1)
+    primary_weaknesses: list[str] = Field(default_factory=list)
+    learning_preferences: list[str] = Field(default_factory=list)
+    freshness: str = Field(min_length=1)
+    updated_at: datetime | None = None
+
+
+class ActivityResult(StrictModel):
+    run_id: str = Field(min_length=1)
+    project_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    activity_id: str = Field(min_length=1)
+    knowledge_point_id: str = Field(min_length=1)
+    result_type: ActivityResultType
+    action: ActivityResultAction
+    answer: str | None = None
+    meta: dict[str, Any] = Field(default_factory=dict)
+
+
 class LearnerStatePatch(StrictModel):
     mastery: int | None = Field(default=None, ge=0, le=100)
     understanding_level: int | None = Field(default=None, ge=0, le=100)
@@ -279,6 +310,7 @@ class AgentRequest(StrictModel):
     source_asset_ids: list[str] = Field(default_factory=list)
     target_unit_id: str | None = None
     context_hint: str | None = None
+    activity_result: ActivityResult | None = None
     response_mode: ResponseMode = "stream"
 
 
@@ -293,6 +325,8 @@ class GraphState(StrictModel):
     signals: list[Signal] = Field(default_factory=list)
     prior_learner_unit_state: LearnerUnitState | None = None
     prior_next_review_at: datetime | None = None
+    prior_review_state: ReviewPatch | None = None
+    prior_knowledge_point_state: KnowledgePointState | None = None
     learner_unit_state: LearnerUnitState | None = None
     diagnosis: Diagnosis | None = None
     tool_intent: ToolIntent = "none"
@@ -300,6 +334,9 @@ class GraphState(StrictModel):
     plan: StudyPlan | None = None
     activity: Activity | None = None
     knowledge_point_suggestions: list[KnowledgePointSuggestion] = Field(default_factory=list)
+    knowledge_point_state_writebacks: list[KnowledgePointState] = Field(default_factory=list)
+    project_memory_writeback: ProjectMemory | None = None
+    project_learning_profile_writeback: ProjectLearningProfile | None = None
     assistant_message: str | None = None
     state_patch: StatePatch | None = None
     recent_messages: list[Message] = Field(default_factory=list)
@@ -393,6 +430,28 @@ def build_initial_observations(request: AgentRequest) -> list[Observation]:
                 kind="project-note",
                 source="request-context",
                 summary=request.context_hint,
+            )
+        )
+
+    if request.activity_result is not None:
+        answer_preview = (request.activity_result.answer or "").strip()
+        summary = (
+            f"{request.activity_result.result_type} activity {request.activity_result.action}"
+            f": {answer_preview[:120]}"
+            if answer_preview
+            else f"{request.activity_result.result_type} activity {request.activity_result.action}"
+        )
+        observations.append(
+            Observation(
+                observation_id=f"activity-result-{request.activity_result.activity_id}",
+                kind=(
+                    "exercise-result"
+                    if request.activity_result.result_type == "exercise"
+                    else "review-result"
+                ),
+                source="activity-result",
+                summary=summary,
+                detail=request.activity_result.model_dump(mode="json"),
             )
         )
 

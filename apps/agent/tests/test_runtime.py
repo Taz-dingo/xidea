@@ -8,7 +8,6 @@ from xidea_agent.runtime import (
     _score_actions,
     build_signals,
     estimate_learner_state,
-    diagnose_state,
     iter_agent_v0_events,
     run_agent_v0,
 )
@@ -20,6 +19,8 @@ from xidea_agent.state import (
     LearnerUnitState,
     Message,
     Observation,
+    ProjectLearningProfile,
+    ProjectMemory,
     Signal,
 )
 
@@ -77,6 +78,56 @@ def test_iter_agent_v0_events_yields_incrementally() -> None:
     assert "activity" in event_types[1:-2]
     assert event_types[-2:] == ["state-patch", "done"]
     assert event_types.count("text-delta") >= 1
+
+
+def test_iter_agent_v0_events_uses_bundled_reply_and_plan() -> None:
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from xidea_agent.llm import LLMClient
+
+    main_decision_response = json.dumps({
+        "signals": [
+            {"kind": "concept-confusion", "score": 0.85, "confidence": 0.88, "summary": "用户混淆"},
+        ],
+        "diagnosis": {
+            "recommended_action": "clarify",
+            "reason": "用户明确表达分不清两个概念的职责边界",
+            "confidence": 0.88,
+            "primary_issue": "concept-confusion",
+            "needs_tool": False,
+        },
+        "reply": "先把 retrieval 和 reranking 的边界拉清楚，再继续往项目判断里迁移。",
+        "plan": {
+            "headline": "围绕 retrieval vs reranking 的辨析路径",
+            "summary": "先辨析边界再追问验证",
+            "selected_mode": "contrast-drill",
+            "expected_outcome": "能清晰说出两者的职责差异",
+            "steps": [
+                {"id": "contrast-boundary", "title": "对比辨析", "mode": "contrast-drill",
+                 "reason": "LLM-reason", "outcome": "LLM-outcome"},
+            ],
+        },
+    })
+
+    def _response(content: str):
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message)
+        return SimpleNamespace(choices=[choice])
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = [
+        _response(main_decision_response),
+    ]
+    llm = LLMClient(client=mock_client, model="GLM-4.1V-Thinking-Flash", provider="zhipu")
+
+    events = list(iter_agent_v0_events(build_request(), llm=llm))
+
+    assert [event.event for event in events][-2:] == ["state-patch", "done"]
+    assert any(event.event == "plan" for event in events)
+    assert "".join(event.delta for event in events if event.event == "text-delta").startswith("先把 retrieval")
+    assert mock_client.chat.completions.create.call_count == 1
 
 
 def test_run_agent_v0_emits_knowledge_point_suggestion_for_project_chat() -> None:
@@ -217,7 +268,7 @@ def test_iter_agent_v0_events_streams_reply_in_multiple_chunks() -> None:
 
     from xidea_agent.llm import LLMClient
 
-    bundled_response = json.dumps({
+    main_decision_response = json.dumps({
         "signals": [
             {"kind": "concept-confusion", "score": 0.85, "confidence": 0.88, "summary": "用户混淆"},
         ],
@@ -228,16 +279,17 @@ def test_iter_agent_v0_events_streams_reply_in_multiple_chunks() -> None:
             "primary_issue": "concept-confusion",
             "needs_tool": False,
         },
-    })
-    plan_response = json.dumps({
-        "headline": "围绕 retrieval vs reranking 的辨析路径",
-        "summary": "先辨析边界再追问验证",
-        "selected_mode": "contrast-drill",
-        "expected_outcome": "能清晰说出两者的职责差异",
-        "steps": [
-            {"id": "contrast-boundary", "title": "对比辨析", "mode": "contrast-drill",
-             "reason": "LLM-reason", "outcome": "LLM-outcome"},
-        ],
+        "reply": "这不是简单拼接，因为检索、筛选、重排和上下文压缩各自承担不同职责，需要一起控制噪声、相关性和可解释性。",
+        "plan": {
+            "headline": "围绕 retrieval vs reranking 的辨析路径",
+            "summary": "先辨析边界再追问验证",
+            "selected_mode": "contrast-drill",
+            "expected_outcome": "能清晰说出两者的职责差异",
+            "steps": [
+                {"id": "contrast-boundary", "title": "对比辨析", "mode": "contrast-drill",
+                 "reason": "LLM-reason", "outcome": "LLM-outcome"},
+            ],
+        },
     })
     long_reply = "这不是简单拼接，因为检索、筛选、重排和上下文压缩各自承担不同职责，需要一起控制噪声、相关性和可解释性。"
 
@@ -250,9 +302,7 @@ def test_iter_agent_v0_events_streams_reply_in_multiple_chunks() -> None:
 
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
-        _response(bundled_response),
-        _response(long_reply),
-        _response(plan_response),
+        _response(main_decision_response),
     ]
     llm = LLMClient(client=mock_client, model="GLM-4.1V-Thinking-Flash", provider="zhipu")
 
@@ -274,13 +324,15 @@ def test_run_agent_v0_uses_asset_summary_for_material_import() -> None:
         target_unit_id=None,
     )
 
-    result = run_agent_v0(request, llm=build_mock_llm_for_material_import())
+    llm = build_mock_llm_for_material_import()
+    result = run_agent_v0(request, llm=llm)
 
     assert result.graph_state.diagnosis is not None
-    assert result.graph_state.diagnosis.needs_tool is True
-    assert result.graph_state.tool_intent == "asset-summary"
+    assert result.graph_state.diagnosis.needs_tool is False
+    assert result.graph_state.tool_intent == "none"
     assert result.graph_state.tool_result is not None
     assert result.graph_state.tool_result.kind == "asset-summary"
+    assert llm.client.chat.completions.create.call_count == 1
 
 
 def test_run_agent_v0_schedules_review_for_recall_requests() -> None:
@@ -295,6 +347,77 @@ def test_run_agent_v0_schedules_review_for_recall_requests() -> None:
     assert result.graph_state.diagnosis.recommended_action == "review"
     assert result.graph_state.state_patch.review_patch is not None
     assert result.graph_state.state_patch.review_patch.due_unit_ids == ["unit-rag-retrieval"]
+
+
+def test_run_agent_v0_preloads_review_context_for_review_requests() -> None:
+    request = build_request(
+        messages=[{"role": "user", "content": "我最近总忘这些概念，想做一次复习巩固"}],
+    )
+    llm = build_mock_llm_for_review()
+
+    result = run_agent_v0(request, llm=llm)
+
+    assert result.graph_state.tool_result is not None
+    assert result.graph_state.tool_result.kind == "review-context"
+    assert result.graph_state.tool_intent == "none"
+    assert llm.client.chat.completions.create.call_count == 1
+
+
+def test_run_agent_v0_reuses_preloaded_unit_detail_when_main_decision_requests_tool() -> None:
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from xidea_agent.llm import LLMClient
+
+    main_decision_response = json.dumps({
+        "signals": [
+            {"kind": "concept-gap", "score": 0.82, "confidence": 0.85, "summary": "用户需要补单元细节"},
+        ],
+        "diagnosis": {
+            "recommended_action": "teach",
+            "reason": "需要补充当前学习单元的结构化细节后再继续",
+            "confidence": 0.81,
+            "primary_issue": "missing-context",
+            "needs_tool": True,
+        },
+    })
+    bundled_response = json.dumps({
+        "reply": "我先把这个知识点的结构和常见误区拉出来，再带你过一遍核心判断。",
+        "plan": {
+            "headline": "围绕当前知识点结构化补全的教学路径",
+            "summary": "先补骨架再追问验证",
+            "selected_mode": "guided-qa",
+            "expected_outcome": "能复述当前单元的关键框架",
+            "steps": [
+                {"id": "guided-model", "title": "导师问答", "mode": "guided-qa",
+                 "reason": "先补结构化框架", "outcome": "能说清当前单元的关键判断"},
+            ],
+        },
+    })
+
+    def _response(content: str):
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message)
+        return SimpleNamespace(choices=[choice])
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = [
+        _response(main_decision_response),
+        _response(bundled_response),
+    ]
+    llm = LLMClient(client=mock_client, model="gpt-4o-mini")
+
+    result = run_agent_v0(build_request(), llm=llm)
+
+    assert result.graph_state.tool_result is not None
+    assert result.graph_state.tool_result.kind == "unit-detail"
+    assert result.graph_state.tool_intent == "unit-detail"
+    assert any(
+        "maybe_tool reused preloaded unit-detail context." in item
+        for item in result.graph_state.rationale
+    )
+    assert mock_client.chat.completions.create.call_count == 2
 
 
 def test_run_agent_v0_loads_recent_context_from_repository(tmp_path: Path) -> None:
@@ -336,6 +459,82 @@ def test_project_context_is_loaded_from_repository_not_frontend_hint(tmp_path: P
     assert second_result.graph_state.project_context.source == "repository"
     assert second_result.graph_state.project_context.topic == "Persisted project topic"
     assert second_result.graph_state.project_context.summary.startswith("当前 project 主题：Persisted project topic")
+
+
+def test_run_agent_v0_applies_activity_result_writeback_and_preloads_project_state(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-rag-boundary",
+                project_id="rag-demo",
+                title="retrieval 与 reranking 的边界",
+                description="说明 retrieval 与 reranking 在 RAG 中的职责分工。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            )
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-rag-boundary",
+                mastery=42,
+                learning_status="learning",
+                review_status="idle",
+                updated_at=now,
+            )
+        ],
+    )
+    repository.create_or_update_project_memory(
+        ProjectMemory(
+            project_id="rag-demo",
+            summary="最近一次 project session 暴露 retrieval 与 reranking 的边界混淆。",
+            updated_at=now,
+        )
+    )
+    repository.create_or_update_project_learning_profile(
+        ProjectLearningProfile(
+            project_id="rag-demo",
+            current_stage="building-understanding",
+            primary_weaknesses=["concept-confusion"],
+            learning_preferences=["contrast-drill"],
+            freshness="fresh",
+            updated_at=now,
+        )
+    )
+
+    request = build_request(
+        messages=[{"role": "user", "content": "我已经做完这轮辨析，继续下一步。"}],
+        activity_result={
+            "run_id": "run-1",
+            "project_id": "rag-demo",
+            "session_id": "thread-1",
+            "activity_id": "activity-unit-rag-retrieval-contrast-drill",
+            "knowledge_point_id": "kp-rag-boundary",
+            "result_type": "exercise",
+            "action": "submit",
+            "answer": "应该先判断问题出在召回、重排还是上下文构造，而不是盲目加 chunk。",
+            "meta": {"correct": True},
+        },
+    )
+
+    result = run_agent_v0(request, repository=repository, llm=build_mock_llm())
+
+    assert result.graph_state.project_context is not None
+    assert result.graph_state.project_context.project_memory_summary is not None
+    assert result.graph_state.project_context.project_learning_profile_summary is not None
+    assert any(observation.kind == "exercise-result" for observation in result.graph_state.observations)
+    assert result.graph_state.state_patch is not None
+    assert result.graph_state.state_patch.review_patch is not None
+    assert result.graph_state.knowledge_point_state_writebacks[0].knowledge_point_id == "kp-rag-boundary"
+    assert result.graph_state.project_memory_writeback is not None
+    assert result.graph_state.project_learning_profile_writeback is not None
 
 
 # ---------------------------------------------------------------------------
