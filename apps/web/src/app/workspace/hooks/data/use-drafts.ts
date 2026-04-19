@@ -36,6 +36,7 @@ export function useWorkspaceDrafts({
     initialMaterialIds: [],
   });
   const [projectMetaDraft, setProjectMetaDraft] = useState<ProjectMetaDraft>({
+    name: initialProject.name,
     topic: initialProject.topic,
     description: initialProject.description,
     specialRulesText: initialProject.specialRules.join("\n"),
@@ -70,6 +71,7 @@ export function useWorkspaceDrafts({
 
   useEffect(() => {
     setProjectMetaDraft({
+      name: selectedProject.name,
       topic: selectedProject.topic,
       description: selectedProject.description,
       specialRulesText: selectedProject.specialRules.join("\n"),
@@ -80,6 +82,7 @@ export function useWorkspaceDrafts({
     projectMaterialIdsByProject,
     selectedProject.description,
     selectedProject.id,
+    selectedProject.name,
     selectedProject.specialRules,
     selectedProject.topic,
     setIsEditingProjectMeta,

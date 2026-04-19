@@ -84,16 +84,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-function ProjectMasteryPortrait({
-  projectStats,
-}: {
-  projectStats: ProjectStats;
-}): ReactElement {
-  const portraitRef = useRef<HTMLDivElement | null>(null);
-  const totalPoints = Math.max(projectStats.total, 1);
-  const masteredRatio = (projectStats.total - projectStats.unlearned - projectStats.dueReview) / totalPoints;
-  const stablePercent = Math.max(12, Math.round(masteredRatio * 100));
-
+function usePortraitMotion(portraitRef: React.RefObject<HTMLDivElement | null>): void {
   useEffect(() => {
     const portraitElement = portraitRef.current;
 
@@ -170,29 +161,63 @@ function ProjectMasteryPortrait({
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
     };
-  }, []);
+  }, [portraitRef]);
+}
+
+function MasteryPortraitGlyph({
+  iconClassName,
+  stablePercent,
+  wrapperClassName,
+  coreClassName,
+}: {
+  iconClassName: string;
+  stablePercent: number;
+  wrapperClassName: string;
+  coreClassName: string;
+}): ReactElement {
+  const portraitRef = useRef<HTMLDivElement | null>(null);
+  usePortraitMotion(portraitRef);
+
+  return (
+    <div
+      className={`xidea-portrait-field relative flex items-center justify-center rounded-[1.6rem] border border-[var(--xidea-border)] bg-[linear-gradient(180deg,#fffaf5_0%,#f6efe9_100%)] ${wrapperClassName}`}
+      ref={portraitRef}
+    >
+      <div
+        className="absolute inset-[18%] rounded-[1.2rem] bg-[radial-gradient(circle_at_50%_35%,rgba(201,100,66,0.22),transparent_55%),radial-gradient(circle_at_50%_78%,rgba(127,158,183,0.2),transparent_52%)]"
+        style={{ opacity: stablePercent / 100 }}
+      />
+      <div className={`relative flex items-center justify-center rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)] ${coreClassName}`}>
+        <Brain className={iconClassName} />
+      </div>
+      {portraitDots.map((dot) => (
+        <span
+          className={`xidea-orb-drift absolute ${dot.className} ${dot.sizeClassName} rounded-full`}
+          key={`${wrapperClassName}-${dot.className}-${dot.color}`}
+          style={{ ...dot.style, backgroundColor: dot.color }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ProjectMasteryPortrait({
+  projectStats,
+}: {
+  projectStats: ProjectStats;
+}): ReactElement {
+  const totalPoints = Math.max(projectStats.total, 1);
+  const masteredRatio = (projectStats.total - projectStats.unlearned - projectStats.dueReview) / totalPoints;
+  const stablePercent = Math.max(12, Math.round(masteredRatio * 100));
 
   return (
     <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-      <div
-        className="xidea-portrait-field relative flex h-24 w-24 items-center justify-center rounded-[1.6rem] border border-[var(--xidea-border)] bg-[linear-gradient(180deg,#fffaf5_0%,#f6efe9_100%)]"
-        ref={portraitRef}
-      >
-        <div
-          className="absolute inset-[18%] rounded-[1.2rem] bg-[radial-gradient(circle_at_50%_35%,rgba(201,100,66,0.22),transparent_55%),radial-gradient(circle_at_50%_78%,rgba(127,158,183,0.2),transparent_52%)]"
-          style={{ opacity: stablePercent / 100 }}
-        />
-        <div className="relative flex h-12 w-12 items-center justify-center rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
-          <Brain className="h-6 w-6" />
-        </div>
-        {portraitDots.map((dot) => (
-          <span
-            className={`xidea-orb-drift absolute ${dot.className} ${dot.sizeClassName} rounded-full`}
-            key={`${dot.className}-${dot.color}`}
-            style={{ ...dot.style, backgroundColor: dot.color }}
-          />
-        ))}
-      </div>
+      <MasteryPortraitGlyph
+        coreClassName="h-12 w-12"
+        iconClassName="h-6 w-6"
+        stablePercent={stablePercent}
+        wrapperClassName="h-24 w-24"
+      />
       <div className="min-w-0 space-y-2">
         <p className="text-sm font-medium text-[var(--xidea-near-black)]">学习画像</p>
         <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
@@ -334,6 +359,9 @@ export function ProjectInsightsStrip({
 }): ReactElement {
   const [activeModal, setActiveModal] = useState<ProjectInsightModalKey>(null);
   const visibleProjectMaterials = isEditingProjectMeta ? projectAssets : projectMaterials;
+  const totalPoints = Math.max(projectStats.total, 1);
+  const masteredRatio = (projectStats.total - projectStats.unlearned - projectStats.dueReview) / totalPoints;
+  const stablePercent = Math.max(12, Math.round(masteredRatio * 100));
 
   return (
     <>
@@ -395,11 +423,12 @@ export function ProjectInsightsStrip({
         >
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.2rem] border border-[var(--xidea-border)] bg-[linear-gradient(180deg,#fffaf5_0%,#f6efe9_100%)]">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
-                  <Brain className="h-4 w-4" />
-                </div>
-              </div>
+              <MasteryPortraitGlyph
+                coreClassName="h-8 w-8"
+                iconClassName="h-4 w-4"
+                stablePercent={stablePercent}
+                wrapperClassName="h-16 w-16 shrink-0 rounded-[1.2rem]"
+              />
               <div className="min-w-0 space-y-1">
                 <p className="line-clamp-1 text-sm font-medium text-[var(--xidea-near-black)]">
                   {profileSummary.title}

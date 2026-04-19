@@ -7,7 +7,7 @@ import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 export function useSessionActions(data: WorkspaceData) {
   function handlePrepareSessionStart(
     projectId: string,
-    type: Extract<SessionType, "review" | "study">,
+    type: SessionType,
     knowledgePointId: string | null = null,
   ): void {
     const targetProject =

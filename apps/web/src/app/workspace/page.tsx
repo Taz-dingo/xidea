@@ -1,7 +1,6 @@
 import type { ReactElement } from "react";
 import { tutorFixtureScenarios } from "@/data/tutor-fixtures";
 import { sourceAssets } from "@/data/demo";
-import { X } from "lucide-react";
 import { WorkspaceHeader } from "@/app/workspace/ui/header";
 import { ProjectInsightsStrip } from "@/app/workspace/ui/project-insights";
 import { ProjectOverviewPanel } from "@/app/workspace/ui/project-overview";
@@ -41,16 +40,6 @@ export function WorkspacePage(): ReactElement {
             searchQuery={data.searchQuery}
             selectedProjectName={data.selectedProject.name}
           />
-
-          {data.isCreatingProject ? (
-            <CreateProjectPanel
-              assets={sourceAssets}
-              draft={data.projectDraft}
-              onCancel={actions.handleCancelCreatingProject}
-              onChange={data.setProjectDraft}
-              onSave={actions.handleSaveProject}
-            />
-          ) : null}
 
           {data.screen === "home" ? (
             <HomeScreen
@@ -132,7 +121,7 @@ export function WorkspacePage(): ReactElement {
                       data.setSelectedSessionId(sessionId);
                     }}
                     onStartProjectSession={() =>
-                      actions.handleCreateSession(data.selectedProject.id, "project")
+                      actions.handlePrepareSessionStart(data.selectedProject.id, "project")
                     }
                     onStartReview={() =>
                       actions.handlePrepareSessionStart(
@@ -188,6 +177,7 @@ export function WorkspacePage(): ReactElement {
                   nextReviewLabel={session.nextReviewLabel}
                   onChangeDraftPrompt={session.handleChangeDraftPrompt}
                   onCloseSession={() => data.setSelectedSessionId("")}
+                  onDeleteSession={actions.handleDeleteSession}
                   onDisableTutorFixture={session.handleDisableTutorFixture}
                   onEditKnowledgePoint={actions.handleOpenKnowledgePointEditor}
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
@@ -197,7 +187,7 @@ export function WorkspacePage(): ReactElement {
                     data.setSelectedSessionId(sessionId);
                   }}
                   onStartProjectSession={() =>
-                    actions.handleCreateSession(data.selectedProject.id, "project")
+                    actions.handlePrepareSessionStart(data.selectedProject.id, "project")
                   }
                   onStartReview={() =>
                     actions.handlePrepareSessionStart(
@@ -251,16 +241,6 @@ export function WorkspacePage(): ReactElement {
                 className="xidea-modal-pop max-h-[88vh] w-full max-w-[1360px] overflow-y-auto"
                 onClick={(event) => event.stopPropagation()}
               >
-                <div className="mb-3 flex justify-end">
-                  <Button
-                    className="h-10 w-10 rounded-full bg-[var(--xidea-white)] p-0"
-                    onClick={actions.handleCloseKnowledgePointDialog}
-                    type="button"
-                    variant="outline"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
                 <KnowledgePointDetailScreen
                   draft={data.knowledgePointDraft}
                   isArchiveConfirmationOpen={
@@ -306,6 +286,26 @@ export function WorkspacePage(): ReactElement {
                   reviewHistorySummary={model.knowledgePointReviewHistorySummary}
                   selectedSessionId={data.selectedSessionId}
                   showBackButton={false}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {data.isCreatingProject ? (
+            <div
+              className="fixed inset-0 z-50 flex items-start justify-center bg-black/20 px-4 py-8 backdrop-blur-[2px]"
+              onClick={actions.handleCancelCreatingProject}
+            >
+              <div
+                className="xidea-modal-pop max-h-[88vh] w-full max-w-[1120px] overflow-y-auto"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <CreateProjectPanel
+                  assets={sourceAssets}
+                  draft={data.projectDraft}
+                  onCancel={actions.handleCancelCreatingProject}
+                  onChange={data.setProjectDraft}
+                  onSave={actions.handleSaveProject}
                 />
               </div>
             </div>

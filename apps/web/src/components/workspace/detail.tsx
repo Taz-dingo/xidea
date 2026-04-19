@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { Archive, ArrowLeft, FilePenLine } from "lucide-react";
+import { Archive, ArrowLeft, FilePenLine, X } from "lucide-react";
 import type { KnowledgePointItem, SessionItem } from "@/domain/project-workspace";
 import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import type { SourceAsset } from "@/domain/types";
@@ -80,16 +80,31 @@ export function KnowledgePointDetailScreen({
       <div className="space-y-4">
         <Card className="xidea-card-motion rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
           <CardContent className="space-y-5 p-6">
-            {showBackButton ? (
-              <button
-                className="inline-flex items-center gap-2 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-1.5 text-sm text-[var(--xidea-charcoal)] transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[var(--xidea-white)]"
-                onClick={onBack}
-                type="button"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                返回项目工作台
-              </button>
-            ) : null}
+            <div className="flex items-start justify-between gap-3">
+              {showBackButton ? (
+                <button
+                  className="inline-flex items-center gap-2 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-1.5 text-sm text-[var(--xidea-charcoal)] transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[var(--xidea-white)]"
+                  onClick={onBack}
+                  type="button"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  返回项目工作台
+                </button>
+              ) : (
+                <span />
+              )}
+              {!showBackButton ? (
+                <Button
+                  aria-label="关闭知识卡弹窗"
+                  className="h-10 w-10 rounded-full p-0"
+                  onClick={onBack}
+                  type="button"
+                  variant="outline"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
 
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0 flex-1 space-y-3">

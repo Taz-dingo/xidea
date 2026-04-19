@@ -52,7 +52,7 @@ export function WorkspaceBrowseScreen({
   onSubmitPendingPrompt: () => void;
   pendingPrompt: string;
   pendingSessionIntent: {
-    readonly type: Extract<SessionType, "review" | "study">;
+    readonly type: SessionType;
     readonly knowledgePointTitle: string | null;
   } | null;
   projectStats: ProjectStats;
@@ -153,13 +153,17 @@ export function WorkspaceBrowseScreen({
                   <div className="flex flex-wrap items-center gap-2">
                     <SessionTypeBadge type={pendingSessionIntent.type} />
                     <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                      {pendingSessionIntent.knowledgePointTitle
-                        ? `围绕「${pendingSessionIntent.knowledgePointTitle}」开始一轮${pendingSessionIntent.type === "study" ? "学习" : "复习"}`
-                        : `开始一轮${pendingSessionIntent.type === "study" ? "学习" : "复习"}`}
+                      {pendingSessionIntent.type === "project"
+                        ? "开始一轮研讨"
+                        : pendingSessionIntent.knowledgePointTitle
+                          ? `围绕「${pendingSessionIntent.knowledgePointTitle}」开始一轮${pendingSessionIntent.type === "study" ? "学习" : "复习"}`
+                          : `开始一轮${pendingSessionIntent.type === "study" ? "学习" : "复习"}`}
                     </p>
                   </div>
                   <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                    先说清这轮真正想验证什么，再进入会话。
+                    {pendingSessionIntent.type === "project"
+                      ? "先说清这轮想推进的方向、材料或问题，再进入会话。"
+                      : "先说清这轮真正想验证什么，再进入会话。"}
                   </p>
                 </div>
                 <Button className="rounded-full" onClick={onCancelPendingSession} type="button" variant="outline">
@@ -171,9 +175,11 @@ export function WorkspaceBrowseScreen({
                   className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] pr-28 pb-12 text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
                   onChange={(event) => onChangePendingPrompt(event.target.value)}
                   placeholder={
-                    pendingSessionIntent.type === "study"
-                      ? "例如：先帮我找出这个知识点最容易混淆的边界。"
-                      : "例如：先检查我对这个知识点的判断是不是稳定。"
+                    pendingSessionIntent.type === "project"
+                      ? "例如：先围绕这个主题梳理材料线索，并指出还缺哪几个关键知识点。"
+                      : pendingSessionIntent.type === "study"
+                        ? "例如：先帮我找出这个知识点最容易混淆的边界。"
+                        : "例如：先检查我对这个知识点的判断是不是稳定。"
                   }
                   value={pendingPrompt}
                 />

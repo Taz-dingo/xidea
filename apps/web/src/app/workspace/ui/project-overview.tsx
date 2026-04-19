@@ -43,6 +43,7 @@ export function ProjectOverviewPanel({
   isEditing: boolean;
   onCancelEditing: () => void;
   onChangeDraft: (draft: {
+    readonly name: string;
     readonly topic: string;
     readonly description: string;
     readonly specialRulesText: string;
@@ -51,6 +52,7 @@ export function ProjectOverviewPanel({
   onEditProject: () => void;
   onSaveProjectMeta: () => void;
   projectMetaDraft: {
+    readonly name: string;
     readonly topic: string;
     readonly description: string;
     readonly specialRulesText: string;
@@ -76,10 +78,17 @@ export function ProjectOverviewPanel({
                   项目研讨与学习编排
                 </span>
               </div>
-              <p className="text-[1.45rem] font-semibold tracking-[0.01em] text-[var(--xidea-near-black)]">
-                {selectedProjectName}
-              </p>
               <div className="space-y-3">
+                <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
+                  <span className="font-medium text-[var(--xidea-near-black)]">项目标题</span>
+                  <input
+                    className="w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-3 py-2 outline-none focus:border-[var(--xidea-selection-border)]"
+                    onChange={(event) =>
+                      onChangeDraft({ ...projectMetaDraft, name: event.target.value })
+                    }
+                    value={projectMetaDraft.name}
+                  />
+                </label>
                 <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
                   <span className="font-medium text-[var(--xidea-near-black)]">当前主题</span>
                   <input
@@ -115,16 +124,16 @@ export function ProjectOverviewPanel({
                 </label>
               </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 xl:w-full">
+            <div className="flex flex-wrap gap-2 pt-1">
               <Button
-                className="h-11 w-full rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                className="h-11 min-w-[8.5rem] rounded-full bg-[var(--xidea-terracotta)] px-6 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
                 onClick={onSaveProjectMeta}
                 type="button"
               >
                 保存
               </Button>
               <Button
-                className="h-11 w-full rounded-full"
+                className="h-11 min-w-[8.5rem] rounded-full px-6"
                 onClick={onCancelEditing}
                 type="button"
                 variant="outline"

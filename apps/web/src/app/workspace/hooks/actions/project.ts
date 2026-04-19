@@ -1,4 +1,3 @@
-import type { SessionItem } from "@/domain/project-workspace";
 import { sourceAssets } from "@/data/demo";
 import { uploadProjectMaterial } from "@/lib/agent-client";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
@@ -41,16 +40,6 @@ export function useProjectActions(data: WorkspaceData) {
           : ["先收敛主题和材料，再开始学习编排。"],
       updatedAt: "刚刚",
     };
-    const createdSession: SessionItem = {
-      id: `session-${Date.now()}-project`,
-      projectId: createdProject.id,
-      type: "project",
-      knowledgePointId: null,
-      title: "初始研讨",
-      summary: "围绕项目目标、材料边界和知识点池初始化这轮工作区。",
-      updatedAt: "刚刚",
-      status: "空白",
-    };
     const initialProjectAssets = sourceAssets.filter((asset) =>
       data.projectDraft.initialMaterialIds.includes(asset.id),
     );
@@ -64,15 +53,6 @@ export function useProjectActions(data: WorkspaceData) {
       ...current,
       [createdProject.id]: data.projectDraft.initialMaterialIds,
     }));
-    data.setSessions((current) => [createdSession, ...current]);
-    data.setSessionMessagesById((current) => ({
-      ...current,
-      [createdSession.id]: [],
-    }));
-    data.setSessionSourceAssetIds((current) => ({
-      ...current,
-      [createdSession.id]: data.projectDraft.initialMaterialIds,
-    }));
     data.setSelectedKnowledgePointId("");
     data.setSelectedProjectId(createdProject.id);
     data.setSelectedSessionId("");
@@ -85,6 +65,7 @@ export function useProjectActions(data: WorkspaceData) {
 
   function handleStartEditingProjectMeta(): void {
     data.setProjectMetaDraft({
+      name: data.selectedProject.name,
       topic: data.selectedProject.topic,
       description: data.selectedProject.description,
       specialRulesText: data.selectedProject.specialRules.join("\n"),
@@ -100,6 +81,7 @@ export function useProjectActions(data: WorkspaceData) {
   }
 
   function handleSaveProjectMeta(): void {
+    const nextName = data.projectMetaDraft.name.trim();
     const nextTopic = data.projectMetaDraft.topic.trim();
     const nextDescription = data.projectMetaDraft.description.trim();
     const nextSpecialRules = data.projectMetaDraft.specialRulesText
@@ -107,7 +89,7 @@ export function useProjectActions(data: WorkspaceData) {
       .map((rule) => rule.trim())
       .filter((rule) => rule !== "");
 
-    if (nextTopic === "" || nextDescription === "") {
+    if (nextName === "" || nextTopic === "" || nextDescription === "") {
       return;
     }
 
@@ -116,6 +98,7 @@ export function useProjectActions(data: WorkspaceData) {
         project.id === data.selectedProject.id
           ? {
               ...project,
+              name: nextName,
               topic: nextTopic,
               description: nextDescription,
               specialRules:
@@ -203,6 +186,7 @@ export function useProjectActions(data: WorkspaceData) {
 
   function handleCancelEditingProjectMeta(): void {
     data.setProjectMetaDraft({
+      name: data.selectedProject.name,
       topic: data.selectedProject.topic,
       description: data.selectedProject.description,
       specialRulesText: data.selectedProject.specialRules.join("\n"),
