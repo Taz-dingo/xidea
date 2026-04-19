@@ -5,9 +5,9 @@ import { SessionThreadPane } from "@/components/session/thread-pane";
 import { SessionInspector } from "@/components/session/inspector";
 import {
   getSessionDisplayTitle,
-  SessionCard,
   SessionTypeBadge,
 } from "@/components/workspace/core";
+import { SessionListSection } from "@/components/workspace/session-list";
 import { WorkspaceNavButton } from "@/components/workspace/monitor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -176,43 +176,23 @@ export function SessionWorkspace({
             />
           </div>
 
-          <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3">
-            <div className="space-y-1">
-              <p className="xidea-kicker text-[var(--xidea-stone)]">研讨会话</p>
-              <p className="text-sm leading-6 text-[var(--xidea-stone)]">
-                {getSessionTypeDescription("project")}
-              </p>
-            </div>
-            {projectSessions.map((session) => (
-              <SessionCard
-                active={session.id === selectedSession.id}
-                key={session.id}
-                onClick={() => onOpenSession(session.id)}
-                title={getSessionDisplayTitle(session.title, session.type)}
-                type={session.type}
-                updatedAt={session.updatedAt}
-              />
-            ))}
-          </div>
+          <SessionListSection
+            description={getSessionTypeDescription("project")}
+            emptyText="当前还没有研讨会话。"
+            onOpenSession={onOpenSession}
+            selectedSessionId={selectedSession.id}
+            sessions={projectSessions}
+            title="研讨会话"
+          />
 
-          <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3">
-            <div className="space-y-1">
-              <p className="xidea-kicker text-[var(--xidea-stone)]">学习与复习</p>
-              <p className="text-sm leading-6 text-[var(--xidea-stone)]">
-                学习负责推进，复习负责校准。
-              </p>
-            </div>
-            {learningSessions.map((session) => (
-              <SessionCard
-                active={session.id === selectedSession.id}
-                key={session.id}
-                onClick={() => onOpenSession(session.id)}
-                title={getSessionDisplayTitle(session.title, session.type)}
-                type={session.type}
-                updatedAt={session.updatedAt}
-              />
-            ))}
-          </div>
+          <SessionListSection
+            description="学习负责推进，复习负责校准。"
+            emptyText="当前还没有学习或复习会话。"
+            onOpenSession={onOpenSession}
+            selectedSessionId={selectedSession.id}
+            sessions={learningSessions}
+            title="学习与复习"
+          />
         </CardContent>
       </Card>
 

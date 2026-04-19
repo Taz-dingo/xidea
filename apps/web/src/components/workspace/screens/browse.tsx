@@ -12,13 +12,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AssetCompactList,
   KnowledgePointCard,
   MetricTile,
-  SessionCard,
   SessionTypeBadge,
 } from "@/components/workspace/core";
+import { SessionListSection } from "@/components/workspace/session-list";
+import { MaterialUploadButton } from "@/components/material-upload-button";
 import { ReviewHeatmap, WorkspaceNavButton } from "@/components/workspace/monitor";
 import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
+import type { SourceAsset } from "@/domain/types";
 
 function MasteryPortrait({
   projectStats,
@@ -30,7 +33,7 @@ function MasteryPortrait({
   const stablePercent = Math.max(12, Math.round(masteredRatio * 100));
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
       <div className="relative flex h-24 w-24 items-center justify-center rounded-[1.6rem] border border-[var(--xidea-border)] bg-[linear-gradient(180deg,#fffaf5_0%,#f6efe9_100%)]">
         <div
           className="absolute inset-[18%] rounded-[1.2rem] bg-[radial-gradient(circle_at_50%_35%,rgba(201,100,66,0.22),transparent_55%),radial-gradient(circle_at_50%_78%,rgba(127,158,183,0.2),transparent_52%)]"
@@ -43,7 +46,7 @@ function MasteryPortrait({
         <span className="absolute bottom-3 left-3 h-2.5 w-2.5 rounded-full bg-[#7f9eb7]" />
         <span className="absolute bottom-4 right-4 h-2 w-2 rounded-full bg-[#b98a4a]" />
       </div>
-      <div className="space-y-2">
+      <div className="min-w-0 space-y-2">
         <p className="text-sm font-medium text-[var(--xidea-near-black)]">学习画像</p>
         <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
           当前稳定掌握约 {stablePercent}% ，其余内容仍在学习或等待复习。
@@ -64,15 +67,21 @@ function MasteryPortrait({
 
 export function WorkspaceBrowseScreen({
   filteredKnowledgePoints,
+  isEditingProjectMeta,
   normalizedSearchQuery,
   onCancelPendingSession,
   onChangePendingPrompt,
   onOpenKnowledgePoint,
   onOpenSession,
+  onToggleProjectMaterial,
   onSubmitPendingPrompt,
+  onUploadProjectMaterial,
   pendingPrompt,
   pendingSessionIntent,
   profileSummary,
+  projectAssets,
+  projectMaterialIds,
+  projectMaterials,
   projectReviewHeatmap,
   projectStats,
   selectedProjectSessions,
@@ -80,12 +89,15 @@ export function WorkspaceBrowseScreen({
   onWorkspaceSectionChange,
 }: {
   filteredKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
+  isEditingProjectMeta: boolean;
   normalizedSearchQuery: string;
   onCancelPendingSession: () => void;
   onChangePendingPrompt: (value: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
   onOpenSession: (sessionId: string) => void;
+  onToggleProjectMaterial: (assetId: string) => void;
   onSubmitPendingPrompt: () => void;
+  onUploadProjectMaterial: (file: File) => Promise<void>;
   pendingPrompt: string;
   pendingSessionIntent: {
     readonly type: Extract<SessionType, "review" | "study">;
@@ -95,6 +107,9 @@ export function WorkspaceBrowseScreen({
     readonly title: string;
     readonly evidence: string;
   };
+  projectAssets: ReadonlyArray<SourceAsset>;
+  projectMaterialIds: ReadonlyArray<string>;
+  projectMaterials: ReadonlyArray<SourceAsset>;
   projectReviewHeatmap: ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>>;
   projectStats: ProjectStats;
   selectedProjectSessions: ReadonlyArray<SessionItem>;
@@ -103,6 +118,7 @@ export function WorkspaceBrowseScreen({
 }): ReactElement {
   const projectSessions = selectedProjectSessions.filter((session) => session.type === "project");
   const learningSessions = selectedProjectSessions.filter((session) => session.type !== "project");
+  const visibleProjectMaterials = isEditingProjectMeta ? projectAssets : projectMaterials;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[312px_minmax(0,1fr)]">
@@ -129,91 +145,25 @@ export function WorkspaceBrowseScreen({
             />
           </div>
 
-          <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3">
-            <div className="space-y-1">
-              <p className="xidea-kicker text-[var(--xidea-stone)]">研讨会话</p>
-              <p className="text-sm leading-6 text-[var(--xidea-stone)]">
-                {getSessionTypeDescription("project")}
-              </p>
-            </div>
-            {projectSessions.length > 0 ? (
-              projectSessions.map((session) => (
-                <SessionCard
-                  active={false}
-                  key={session.id}
-                  onClick={() => onOpenSession(session.id)}
-                  title={session.title}
-                  type={session.type}
-                  updatedAt={session.updatedAt}
-                />
-              ))
-            ) : (
-              <p className="text-sm text-[var(--xidea-stone)]">当前还没有研讨会话。</p>
-            )}
-          </div>
+          <SessionListSection
+            description={getSessionTypeDescription("project")}
+            emptyText="当前还没有研讨会话。"
+            onOpenSession={onOpenSession}
+            sessions={projectSessions}
+            title="研讨会话"
+          />
 
-          <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3">
-            <div className="space-y-1">
-              <p className="xidea-kicker text-[var(--xidea-stone)]">学习与复习</p>
-              <p className="text-sm leading-6 text-[var(--xidea-stone)]">
-                学习负责推进新知识，复习负责回拉和校准。
-              </p>
-            </div>
-            {learningSessions.length > 0 ? (
-              learningSessions.map((session) => (
-                <SessionCard
-                  active={false}
-                  key={session.id}
-                  onClick={() => onOpenSession(session.id)}
-                  title={session.title}
-                  type={session.type}
-                  updatedAt={session.updatedAt}
-                />
-              ))
-            ) : (
-              <p className="text-sm text-[var(--xidea-stone)]">当前还没有学习或复习会话。</p>
-            )}
-          </div>
+          <SessionListSection
+            description="学习负责推进新知识，复习负责回拉和校准。"
+            emptyText="当前还没有学习或复习会话。"
+            onOpenSession={onOpenSession}
+            sessions={learningSessions}
+            title="学习与复习"
+          />
         </CardContent>
       </Card>
 
       <div className="space-y-4">
-        <Card className="xidea-card-motion rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-          <CardContent className="space-y-5 p-5">
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.56fr)]">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">学习画像</p>
-                  <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                    {profileSummary.title}
-                  </p>
-                  <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                    {profileSummary.evidence}
-                  </p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
-                  <MasteryPortrait projectStats={projectStats} />
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <MetricTile label="未学" tone="amber" value={`${projectStats.unlearned}`} />
-                    <MetricTile label="待复习" tone="sky" value={`${projectStats.dueReview}`} />
-                    <MetricTile label="已归档" tone="rose" value={`${projectStats.archived}`} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] p-4">
-                <div className="mb-3 space-y-1">
-                  <p className="xidea-kicker text-[var(--xidea-stone)]">复习热力图</p>
-                  <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                    悬停查看每天做了哪些学习或复习动作。
-                  </p>
-                </div>
-                <ReviewHeatmap compact weeks={projectReviewHeatmap} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
         {pendingSessionIntent ? (
           <Card className="rounded-[1.35rem] border-[var(--xidea-selection-border)] bg-[#fcf8f4] shadow-none">
             <CardContent className="space-y-4 p-5">
@@ -298,6 +248,69 @@ export function WorkspaceBrowseScreen({
             </CardContent>
           </Card>
         )}
+
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.02fr)_minmax(280px,0.42fr)_minmax(320px,0.62fr)]">
+          <Card className="xidea-card-motion rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+            <CardContent className="space-y-5 p-5">
+              <div className="space-y-2">
+                <p className="xidea-kicker text-[var(--xidea-selection-text)]">学习画像</p>
+                <p className="text-sm font-medium text-[var(--xidea-near-black)]">
+                  {profileSummary.title}
+                </p>
+                <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                  {profileSummary.evidence}
+                </p>
+              </div>
+              <div className="space-y-4">
+                <MasteryPortrait projectStats={projectStats} />
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <MetricTile label="未学" tone="amber" value={`${projectStats.unlearned}`} />
+                  <MetricTile label="待复习" tone="sky" value={`${projectStats.dueReview}`} />
+                  <MetricTile label="已归档" tone="rose" value={`${projectStats.archived}`} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+            <CardContent className="space-y-3 p-5">
+              <div className="space-y-1">
+                <p className="xidea-kicker text-[var(--xidea-stone)]">复习热力图</p>
+                <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                  悬停查看每天做了哪些学习或复习动作。
+                </p>
+              </div>
+              <ReviewHeatmap compact weeks={projectReviewHeatmap} />
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+            <CardContent className="space-y-3 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="xidea-kicker text-[var(--xidea-stone)]">项目材料</p>
+                  <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                    {isEditingProjectMeta
+                      ? "在这里调整材料池，并决定哪些材料参与研讨。"
+                      : "当前项目挂接的材料来源。"}
+                  </p>
+                </div>
+                {isEditingProjectMeta ? (
+                  <MaterialUploadButton label="上传材料" onUpload={onUploadProjectMaterial} />
+                ) : null}
+              </div>
+              <AssetCompactList
+                assets={visibleProjectMaterials}
+                emptyText={
+                  isEditingProjectMeta ? "当前材料池还是空的，先上传材料。" : "当前还没有项目材料。"
+                }
+                maxHeightClassName="max-h-[28rem]"
+                onAssetClick={isEditingProjectMeta ? onToggleProjectMaterial : undefined}
+                selectedAssetIds={isEditingProjectMeta ? projectMaterialIds : []}
+              />
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

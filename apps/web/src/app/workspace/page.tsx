@@ -103,10 +103,6 @@ export function WorkspacePage(): ReactElement {
                         model.studyTargetPoint?.id ?? null,
                       )
                     }
-                    onUploadProjectMaterial={actions.handleUploadProjectMaterial}
-                    projectAssets={data.selectedProjectAssets}
-                    projectMaterialCount={model.projectMaterialCount}
-                    projectMaterials={data.selectedProjectMaterials}
                     projectMetaDraft={data.projectMetaDraft}
                     projectSessionCount={data.selectedProjectSessions.length}
                     projectStats={model.projectStats}
@@ -120,6 +116,7 @@ export function WorkspacePage(): ReactElement {
                   />
                   <WorkspaceBrowseScreen
                     filteredKnowledgePoints={model.filteredKnowledgePoints}
+                    isEditingProjectMeta={data.isEditingProjectMeta}
                     normalizedSearchQuery={model.normalizedSearchQuery}
                     onCancelPendingSession={() => {
                       data.setPendingSessionIntent(null);
@@ -131,11 +128,23 @@ export function WorkspacePage(): ReactElement {
                       data.setPendingSessionIntent(null);
                       data.setSelectedSessionId(sessionId);
                     }}
+                    onToggleProjectMaterial={(assetId) =>
+                      data.setProjectMetaDraft((current) => ({
+                        ...current,
+                        materialIds: current.materialIds.includes(assetId)
+                          ? current.materialIds.filter((id) => id !== assetId)
+                          : [...current.materialIds, assetId],
+                      }))
+                    }
                     onSubmitPendingPrompt={session.handleSubmitPrompt}
+                    onUploadProjectMaterial={actions.handleUploadProjectMaterial}
                     onWorkspaceSectionChange={data.setWorkspaceSection}
                     pendingPrompt={data.draftPrompt}
                     pendingSessionIntent={data.pendingSessionIntent}
                     profileSummary={model.browseProfileSummary}
+                    projectAssets={data.selectedProjectAssets}
+                    projectMaterialIds={data.projectMetaDraft.materialIds}
+                    projectMaterials={data.selectedProjectMaterials}
                     projectReviewHeatmap={model.projectReviewHeatmap}
                     projectStats={model.projectStats}
                     selectedProjectSessions={data.selectedProjectSessions}

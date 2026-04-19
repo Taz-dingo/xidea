@@ -20,6 +20,7 @@ import { getSessionTypeLabel } from "@/domain/project-workspace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type MetricTone = "emerald" | "amber" | "rose" | "sky";
 
@@ -244,8 +245,8 @@ export function AssetListItem({
   );
 
   const className = selected
-    ? "flex h-full min-h-[148px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] p-3 text-left transition-colors"
-    : "flex h-full min-h-[148px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef]";
+    ? "flex h-full min-h-[132px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] p-3 text-left transition-colors"
+    : "flex h-full min-h-[132px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef]";
 
   if (onClick) {
     return (
@@ -257,6 +258,101 @@ export function AssetListItem({
 
   return (
     <div className={className}>{content}</div>
+  );
+}
+
+export function AssetListGrid({
+  assets,
+  className = "grid gap-2 sm:grid-cols-2",
+  emptyText,
+  onAssetClick,
+  selectedAssetIds = [],
+}: {
+  assets: ReadonlyArray<SourceAsset>;
+  className?: string;
+  emptyText: string;
+  onAssetClick?: (assetId: string) => void;
+  selectedAssetIds?: ReadonlyArray<string>;
+}): ReactElement {
+  if (assets.length === 0) {
+    return <p className="text-sm text-[var(--xidea-stone)]">{emptyText}</p>;
+  }
+
+  return (
+    <div className={className}>
+      {assets.map((asset) => (
+        <AssetListItem
+          asset={asset}
+          key={asset.id}
+          onClick={onAssetClick ? () => onAssetClick(asset.id) : undefined}
+          selected={selectedAssetIds.includes(asset.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+export function AssetCompactList({
+  assets,
+  emptyText,
+  maxHeightClassName = "max-h-[24rem]",
+  onAssetClick,
+  selectedAssetIds = [],
+}: {
+  assets: ReadonlyArray<SourceAsset>;
+  emptyText: string;
+  maxHeightClassName?: string;
+  onAssetClick?: (assetId: string) => void;
+  selectedAssetIds?: ReadonlyArray<string>;
+}): ReactElement {
+  if (assets.length === 0) {
+    return <p className="text-sm text-[var(--xidea-stone)]">{emptyText}</p>;
+  }
+
+  return (
+    <ScrollArea className={maxHeightClassName}>
+      <div className="space-y-2 pr-3">
+        {assets.map((asset) => {
+          const selected = selectedAssetIds.includes(asset.id);
+          const className = selected
+            ? "grid grid-cols-[44px_minmax(0,1fr)] gap-3 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] p-3 text-left transition-colors"
+            : "grid grid-cols-[44px_minmax(0,1fr)] gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef]";
+
+          const content = (
+            <>
+              <div className="flex h-11 w-11 items-center justify-center rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
+                {getAssetKindIcon(asset.kind)}
+              </div>
+              <div className="min-w-0 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="line-clamp-2 text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
+                    {asset.title}
+                  </p>
+                  <span className="shrink-0 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-2 py-0.5 text-[10px] tracking-[0.08em] text-[var(--xidea-stone)]">
+                    {getAssetKindLabel(asset.kind)}
+                  </span>
+                </div>
+                <p className="line-clamp-2 text-sm leading-6 text-[var(--xidea-charcoal)]">{asset.topic}</p>
+              </div>
+            </>
+          );
+
+          if (onAssetClick) {
+            return (
+              <button className={className} key={asset.id} onClick={() => onAssetClick(asset.id)} type="button">
+                {content}
+              </button>
+            );
+          }
+
+          return (
+            <div className={className} key={asset.id}>
+              {content}
+            </div>
+          );
+        })}
+      </div>
+    </ScrollArea>
   );
 }
 
