@@ -4,7 +4,7 @@ import { FileInput, Settings2 } from "lucide-react";
 import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MaterialUploadButton } from "@/components/material-upload-button";
 import { MarkdownContent } from "@/components/markdown-content";
-import { AssetListItem } from "@/components/workspace/core";
+import { AssetListGrid, KnowledgePointInlineCard } from "@/components/workspace/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import {
   ACTIVITY_BATCH_SUMMARY_PREFIX,
   type ActivityResolution,
 } from "@/domain/project-session-runtime";
+import type { KnowledgePointItem } from "@/domain/project-workspace";
 import type {
   LearningActivityAttempt,
   LearningActivitySubmission,
@@ -71,6 +72,7 @@ export function SessionThreadPane({
   isMaterialsTrayOpen,
   latestAssistantMessageId,
   onChangeDraftPrompt,
+  onOpenKnowledgePoint,
   onOpenProjectMetaEditor,
   onSkipActivity,
   onSubmitActivity,
@@ -83,6 +85,7 @@ export function SessionThreadPane({
   selectedSessionId,
   selectedSessionType,
   selectedSourceAssetIds,
+  sessionCreatedKnowledgePoints,
 }: {
   activeRuntime: RuntimeSnapshot;
   activeSourceAssets: ReadonlyArray<SourceAsset>;
@@ -101,6 +104,7 @@ export function SessionThreadPane({
   isMaterialsTrayOpen: boolean;
   latestAssistantMessageId: string | null;
   onChangeDraftPrompt: (value: string) => void;
+  onOpenKnowledgePoint: (pointId: string) => void;
   onOpenProjectMetaEditor: () => void;
   onSkipActivity: (attempts?: ReadonlyArray<LearningActivityAttempt>) => void;
   onSubmitActivity: (submission: LearningActivitySubmission) => void;
@@ -113,6 +117,7 @@ export function SessionThreadPane({
   selectedSessionId: string;
   selectedSessionType: "project" | "study" | "review";
   selectedSourceAssetIds: ReadonlyArray<string>;
+  sessionCreatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
 }): ReactElement {
   const latestMessage = displayMessages.at(-1);
   const latestMessageText = latestMessage ? getMessageText(latestMessage) : "";
@@ -208,6 +213,22 @@ export function SessionThreadPane({
             </div>
           ) : null}
         </div>
+        {selectedSessionType === "project" && sessionCreatedKnowledgePoints.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            <p className="xidea-kicker text-[var(--xidea-selection-text)]">
+              本会话知识卡
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {sessionCreatedKnowledgePoints.map((point) => (
+                <KnowledgePointInlineCard
+                  key={`session-created-top-${point.id}`}
+                  onClick={() => onOpenKnowledgePoint(point.id)}
+                  point={point}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <Separator className="bg-[var(--xidea-border)]" />
@@ -231,27 +252,13 @@ export function SessionThreadPane({
                 <div className="flex justify-end">
                   <MaterialUploadButton label="上传新材料" onUpload={onUploadMaterial} />
                 </div>
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {selectedProjectMaterials.map((asset) => {
-                    const selected = selectedSourceAssetIds.includes(asset.id);
-
-                    return (
-                      <AssetListItem
-                        asset={asset}
-                        key={asset.id}
-                        onClick={() => onToggleProjectMaterial(asset.id)}
-                        selected={selected}
-                      />
-                    );
-                  })}
-                </div>
-                {selectedProjectMaterials.length === 0 ? (
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                    <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
-                      当前项目还没有材料。先到“编辑”里加入项目材料，再挂进这轮会话。
-                    </CardContent>
-                  </Card>
-                ) : null}
+                <AssetListGrid
+                  assets={selectedProjectMaterials}
+                  className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4"
+                  emptyText="当前项目还没有材料。先到“编辑”里加入项目材料，再挂进这轮会话。"
+                  onAssetClick={onToggleProjectMaterial}
+                  selectedAssetIds={selectedSourceAssetIds}
+                />
               </section>
             ) : null}
 
@@ -271,6 +278,13 @@ export function SessionThreadPane({
                 const rawText = getMessageText(message);
                 const isSyntheticBatchMessage =
                   !isAssistant && isSyntheticActivityBatchMessage(rawText);
+                const messageCreatedKnowledgePoints =
+                  isAssistant && selectedSessionType === "project"
+                    ? sessionCreatedKnowledgePoints.filter(
+                        (point) =>
+                          point.linkedMessageIdsBySession[selectedSessionId] === message.id,
+                      )
+                    : [];
                 if (isAssistant && rawText === "") {
                   return null;
                 }
@@ -322,6 +336,32 @@ export function SessionThreadPane({
                           onSubmit={onSubmitActivity}
                           resolution={currentActivityResolution}
                         />
+                      </div>
+                    ) : null}
+
+                    {isAssistant && messageCreatedKnowledgePoints.length > 0 ? (
+                      <div className="w-full max-w-[82%] pl-1">
+                        <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                          <CardContent className="space-y-3 px-4 py-4">
+                            <div className="space-y-1">
+                              <p className="xidea-kicker text-[var(--xidea-selection-text)]">
+                                这轮生成的知识卡
+                              </p>
+                              <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                                点开可以继续查看详情，或从这里进入后续学习和复习。
+                              </p>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {messageCreatedKnowledgePoints.map((point) => (
+                                <KnowledgePointInlineCard
+                                  key={`session-created-inline-${point.id}`}
+                                  onClick={() => onOpenKnowledgePoint(point.id)}
+                                  point={point}
+                                />
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
                       </div>
                     ) : null}
 

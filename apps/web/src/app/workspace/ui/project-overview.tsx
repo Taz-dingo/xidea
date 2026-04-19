@@ -70,82 +70,84 @@ export function ProjectOverviewPanel({
     <Card className="xidea-card-motion rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
       <CardContent className="space-y-4 p-5">
         {isEditing ? (
-          <div className="space-y-4">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="xidea-kicker text-[var(--xidea-selection-text)]">当前项目</span>
-                <span className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-2.5 py-1 text-[12px] text-[var(--xidea-selection-text)]">
-                  项目研讨与学习编排
-                </span>
-              </div>
+          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
+            <div className="space-y-4">
               <div className="space-y-3">
-                <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-                  <span className="font-medium text-[var(--xidea-near-black)]">项目标题</span>
-                  <input
-                    className="w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-3 py-2 outline-none focus:border-[var(--xidea-selection-border)]"
-                    onChange={(event) =>
-                      onChangeDraft({ ...projectMetaDraft, name: event.target.value })
-                    }
-                    value={projectMetaDraft.name}
-                  />
-                </label>
-                <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-                  <span className="font-medium text-[var(--xidea-near-black)]">当前主题</span>
-                  <input
-                    className="w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-3 py-2 outline-none focus:border-[var(--xidea-selection-border)]"
-                    onChange={(event) =>
-                      onChangeDraft({ ...projectMetaDraft, topic: event.target.value })
-                    }
-                    value={projectMetaDraft.topic}
-                  />
-                </label>
-                <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-                  <span className="font-medium text-[var(--xidea-near-black)]">项目说明</span>
-                  <Textarea
-                    className="min-h-28 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
-                    onChange={(event) =>
-                      onChangeDraft({ ...projectMetaDraft, description: event.target.value })
-                    }
-                    value={projectMetaDraft.description}
-                  />
-                </label>
-                <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-                  <span className="font-medium text-[var(--xidea-near-black)]">特殊约束</span>
-                  <Textarea
-                    className="min-h-24 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
-                    onChange={(event) =>
-                      onChangeDraft({
-                        ...projectMetaDraft,
-                        specialRulesText: event.target.value,
-                      })
-                    }
-                    value={projectMetaDraft.specialRulesText}
-                  />
-                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="xidea-kicker text-[var(--xidea-selection-text)]">当前项目</span>
+                  <span className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-2.5 py-1 text-[12px] text-[var(--xidea-selection-text)]">
+                    项目研讨与学习编排
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
+                    <span className="font-medium text-[var(--xidea-near-black)]">项目标题</span>
+                    <input
+                      className="w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-3 py-2 outline-none focus:border-[var(--xidea-selection-border)]"
+                      onChange={(event) =>
+                        onChangeDraft({ ...projectMetaDraft, name: event.target.value })
+                      }
+                      value={projectMetaDraft.name}
+                    />
+                  </label>
+                  <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
+                    <span className="font-medium text-[var(--xidea-near-black)]">当前主题</span>
+                    <input
+                      className="w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-3 py-2 outline-none focus:border-[var(--xidea-selection-border)]"
+                      onChange={(event) =>
+                        onChangeDraft({ ...projectMetaDraft, topic: event.target.value })
+                      }
+                      value={projectMetaDraft.topic}
+                    />
+                  </label>
+                  <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
+                    <span className="font-medium text-[var(--xidea-near-black)]">项目说明</span>
+                    <Textarea
+                      className="min-h-28 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
+                      onChange={(event) =>
+                        onChangeDraft({ ...projectMetaDraft, description: event.target.value })
+                      }
+                      value={projectMetaDraft.description}
+                    />
+                  </label>
+                  <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
+                    <span className="font-medium text-[var(--xidea-near-black)]">特殊约束</span>
+                    <Textarea
+                      className="min-h-24 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
+                      onChange={(event) =>
+                        onChangeDraft({
+                          ...projectMetaDraft,
+                          specialRulesText: event.target.value,
+                        })
+                      }
+                      value={projectMetaDraft.specialRulesText}
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  className="h-11 min-w-[8.5rem] rounded-full bg-[var(--xidea-terracotta)] px-6 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                  onClick={onSaveProjectMeta}
+                  type="button"
+                >
+                  保存
+                </Button>
+                <Button
+                  className="h-11 min-w-[8.5rem] rounded-full px-6"
+                  onClick={onCancelEditing}
+                  type="button"
+                  variant="outline"
+                >
+                  取消
+                </Button>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Button
-                className="h-11 min-w-[8.5rem] rounded-full bg-[var(--xidea-terracotta)] px-6 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                onClick={onSaveProjectMeta}
-                type="button"
-              >
-                保存
-              </Button>
-              <Button
-                className="h-11 min-w-[8.5rem] rounded-full px-6"
-                onClick={onCancelEditing}
-                type="button"
-                variant="outline"
-              >
-                取消
-              </Button>
-            </div>
-            {insights ? <div className="pt-1">{insights}</div> : null}
+            {insights ? <div className="min-w-0 self-start">{insights}</div> : null}
           </div>
         ) : (
           <>
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(520px,0.92fr)]">
+            <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(520px,0.92fr)]">
               <div className="space-y-5">
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -203,7 +205,7 @@ export function ProjectOverviewPanel({
                 </div>
               </div>
 
-              {insights ? <div className="min-w-0">{insights}</div> : null}
+              {insights ? <div className="min-w-0 self-start">{insights}</div> : null}
             </div>
           </>
         )}

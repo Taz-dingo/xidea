@@ -5,46 +5,6 @@ import type {
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useSessionActions(data: WorkspaceData) {
-  function handlePrepareSessionStart(
-    projectId: string,
-    type: SessionType,
-    knowledgePointId: string | null = null,
-  ): void {
-    const targetProject =
-      data.projects.find((project) => project.id === projectId) ??
-      data.selectedProject ??
-      data.projects[0];
-
-    if (targetProject === undefined) {
-      return;
-    }
-
-    const targetPoint =
-      knowledgePointId === null
-        ? null
-        : (data.knowledgePoints.find(
-            (point) => point.id === knowledgePointId,
-          ) ?? null);
-    data.setSelectedProjectId(targetProject.id);
-    data.setSelectedSessionId("");
-    data.setSelectedKnowledgePointId(
-      targetPoint?.id ?? data.selectedKnowledgePointId,
-    );
-    data.setWorkspaceSection(type === "review" ? "due-review" : "overview");
-    data.setIsEditingProjectMeta(false);
-    data.setIsProjectMetaOpen(false);
-    data.setPendingInitialPrompt(null);
-    data.setDraftPrompt("");
-    data.setSearchQuery("");
-    data.setPendingSessionIntent({
-      projectId: targetProject.id,
-      type,
-      knowledgePointId: targetPoint?.id ?? knowledgePointId,
-      knowledgePointTitle: targetPoint?.title ?? null,
-    });
-    data.setScreen("workspace");
-  }
-
   function handleCreateSession(
     projectId: string,
     type: SessionType = "project",
@@ -75,8 +35,10 @@ export function useSessionActions(data: WorkspaceData) {
       knowledgePointId,
       title:
         type === "project"
-          ? `研讨 ${nextIndex}`
-          : targetPoint?.title ?? `第 ${nextIndex} 轮`,
+          ? "新研讨"
+          : type === "review"
+            ? "新复习"
+            : "新学习",
       summary:
         type === "study"
           ? "围绕未学知识点启动一轮学习。"
@@ -108,6 +70,39 @@ export function useSessionActions(data: WorkspaceData) {
     data.setPendingSessionIntent(null);
     data.setScreen("workspace");
     return createdSession;
+  }
+
+  function handlePrepareSessionStart(
+    projectId: string,
+    type: SessionType,
+    knowledgePointId: string | null = null,
+  ): void {
+    const targetProject =
+      data.projects.find((project) => project.id === projectId) ??
+      data.selectedProject ??
+      data.projects[0];
+
+    if (targetProject === undefined) {
+      return;
+    }
+
+    const targetPoint =
+      knowledgePointId === null
+        ? null
+        : (data.knowledgePoints.find((point) => point.id === knowledgePointId) ?? null);
+
+    data.setSelectedProjectId(targetProject.id);
+    data.setSelectedKnowledgePointId(targetPoint?.id ?? data.selectedKnowledgePointId);
+    data.setWorkspaceSection(type === "review" ? "due-review" : "overview");
+    data.setIsEditingProjectMeta(false);
+    data.setIsProjectMetaOpen(false);
+    data.setIsKnowledgePointDialogOpen(false);
+    data.setPendingInitialPrompt(null);
+    data.setPendingSessionIntent(null);
+    data.setDraftPrompt("");
+    data.setSearchQuery("");
+    data.setScreen("workspace");
+    handleCreateSession(targetProject.id, type, targetPoint?.id ?? knowledgePointId);
   }
 
   return {

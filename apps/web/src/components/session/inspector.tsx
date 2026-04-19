@@ -374,7 +374,16 @@ export function SessionInspector({
         <MonitorSection title="本轮上下文">
           <CompactNote label="项目" value={selectedProject.name} />
           <CompactNote label="会话" value={selectedSessionStatus} />
-          <CompactNote label="模式" value={hasStructuredRuntime ? activeRuntime.decision.title : "待生成"} />
+          <CompactNote
+            label="模式"
+            value={
+              hasStructuredRuntime
+                ? activeRuntime.decision.title
+                : selectedSessionType === "project"
+                  ? "研讨对话"
+                  : `${getSessionTypeLabel(selectedSessionType)}编排`
+            }
+          />
           {selectedSessionType !== "project" ? (
             <CompactNote label="知识卡" value={selectedUnitTitle ?? "未指定"} />
           ) : null}

@@ -35,6 +35,7 @@ export function createSessionActions({
   isUsingDevTutorFixture,
   latestAssistantMessageId,
   onQueueActivityResult,
+  prepareSourceAssetsForSend,
   selectedSessionKey,
   selectedSessionKnowledgePointId,
   sendMessage,
@@ -70,6 +71,7 @@ export function createSessionActions({
   isUsingDevTutorFixture: boolean;
   latestAssistantMessageId: string | null;
   onQueueActivityResult: (result: AgentActivityResult | null) => void;
+  prepareSourceAssetsForSend: () => void;
   selectedSessionKey: string | null;
   selectedSessionKnowledgePointId: string | null;
   sendMessage: (message: { text: string }) => PromiseLike<void> | void;
@@ -106,16 +108,27 @@ export function createSessionActions({
     if (data.selectedSession === undefined) {
       return;
     }
+    const shouldClearAttachedMaterials = data.selectedSession.type === "project";
+    const sessionId = data.selectedSession.id;
+
+    prepareSourceAssetsForSend();
 
     data.setSessions((current) =>
       current.map((session) =>
-        session.id === data.selectedSession!.id
+        session.id === sessionId
           ? { ...session, summary: sessionSummary, updatedAt: "刚刚", status: "运行中" }
           : session,
       ),
     );
-    data.setRunningSessionIds((current) => ({ ...current, [data.selectedSession!.id]: true }));
+    data.setRunningSessionIds((current) => ({ ...current, [sessionId]: true }));
     void sendMessage({ text });
+    if (shouldClearAttachedMaterials) {
+      data.setSessionSourceAssetIds((current) =>
+        current[sessionId] === undefined || current[sessionId]?.length === 0
+          ? current
+          : { ...current, [sessionId]: [] },
+      );
+    }
   }
 
   function handleSubmitPrompt(): void {

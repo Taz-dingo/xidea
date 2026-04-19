@@ -56,7 +56,10 @@ function toSessionItem(thread: AgentProjectThreadRecord): SessionItem {
 
 function toUiMessages(messages: ReadonlyArray<AgentMessage>, threadId: string): UIMessage[] {
   return messages.map((message, index) => ({
-    id: `${threadId}-${message.role}-${index}`,
+    id:
+      message.message_id !== undefined
+        ? `${threadId}-message-${message.message_id}`
+        : `${threadId}-${message.role}-${message.created_at ?? index}-${index}`,
     role: message.role,
     parts: [{ type: "text", text: message.content }],
   }));
@@ -81,10 +84,6 @@ function hasSameSessions(left: ReadonlyArray<SessionItem>, right: ReadonlyArray<
   );
 }
 
-function hasSameIds(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
 export function useProjectSessionsSync({
   data,
   projectId,
@@ -100,7 +99,6 @@ export function useProjectSessionsSync({
     setSessionEntryModes,
     setSessionMessagesById,
     setSessions,
-    setSessionSourceAssetIds,
   } = data;
 
   useEffect(() => {
@@ -135,19 +133,6 @@ export function useProjectSessionsSync({
           }
           return changed ? next : current;
         });
-
-        setSessionSourceAssetIds((current) => {
-          let changed = false;
-          const next = { ...current };
-          for (const thread of threads) {
-            const nextIds = thread.source_asset_ids ?? [];
-            if (!hasSameIds(next[thread.thread_id] ?? [], nextIds)) {
-              next[thread.thread_id] = nextIds;
-              changed = true;
-            }
-          }
-          return changed ? next : current;
-        });
       })
       .catch(() => undefined);
 
@@ -156,7 +141,6 @@ export function useProjectSessionsSync({
     agentConnectionState,
     projectId,
     setSessionEntryModes,
-    setSessionSourceAssetIds,
     setSessions,
   ]);
 

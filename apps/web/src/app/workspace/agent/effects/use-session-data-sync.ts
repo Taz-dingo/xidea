@@ -12,13 +12,6 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-function hasSameIds(
-  left: ReadonlyArray<string>,
-  right: ReadonlyArray<string>,
-): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
 export function useSessionDataSync({
   assetSummaryKey,
   data,
@@ -50,11 +43,9 @@ export function useSessionDataSync({
     markBootstrapLoaded,
     sessionEntryModes,
     sessionEntryModesSetter,
-    sessionSourceAssetIds,
     setAssetSummaryByKey,
     setSessionReviewInspectors,
     setSessionSnapshots,
-    setSessionSourceAssetIds,
   } = data;
 
   useEffect(() => {
@@ -92,15 +83,6 @@ export function useSessionDataSync({
               [selectedSessionKey]: thread_context.entry_mode,
             }));
           }
-          if (
-            selectedSessionType === "project" &&
-            !hasSameIds(sessionSourceAssetIds[selectedSessionKey] ?? [], thread_context.source_asset_ids)
-          ) {
-            setSessionSourceAssetIds((current) => ({
-              ...current,
-              [selectedSessionKey]: thread_context.source_asset_ids,
-            }));
-          }
         }
       })
       .catch((error) => {
@@ -119,11 +101,9 @@ export function useSessionDataSync({
     selectedSessionKnowledgePointId,
     selectedSessionType,
     sessionEntryModes,
-    sessionSourceAssetIds,
     sessionEntryModesSetter,
     setSessionReviewInspectors,
     setSessionSnapshots,
-    setSessionSourceAssetIds,
   ]);
 
   useEffect(() => {
@@ -190,15 +170,6 @@ export function useSessionDataSync({
               [selectedSessionKey]: threadContext.entry_mode,
             }));
           }
-          if (
-            selectedSessionType === "project" &&
-            !hasSameIds(sessionSourceAssetIds[selectedSessionKey] ?? [], threadContext.source_asset_ids)
-          ) {
-            setSessionSourceAssetIds((current) => ({
-              ...current,
-              [selectedSessionKey]: threadContext.source_asset_ids,
-            }));
-          }
         }
       })
       .catch(() => undefined);
@@ -209,11 +180,8 @@ export function useSessionDataSync({
     messagesLength,
     selectedSessionKey,
     selectedSessionKnowledgePointId,
-    selectedSessionType,
     sessionEntryModes,
-    sessionSourceAssetIds,
     sessionEntryModesSetter,
     setSessionReviewInspectors,
-    setSessionSourceAssetIds,
   ]);
 }

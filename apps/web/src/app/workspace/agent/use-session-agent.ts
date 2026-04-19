@@ -4,10 +4,14 @@ import { learningUnits } from "@/data/demo";
 import { getTutorFixtureScenario } from "@/data/tutor-fixtures";
 import {
   type AgentActivityResult,
+  type AgentEntryMode,
+  type AgentKnowledgePointSuggestion,
+  type AgentRequest,
   buildMockRuntimeSnapshot,
   getRequestSourceAssetIds,
 } from "@/domain/agent-runtime";
 import { mergeMessageHistory } from "@/domain/chat-message";
+import { toKnowledgePointItem } from "@/domain/knowledge-point-sync";
 import {
   buildEmptyReviewHeatmap,
   buildReviewHeatmap,
@@ -23,12 +27,14 @@ import {
 } from "@/domain/project-session-runtime";
 import type { SourceAsset } from "@/domain/types";
 import {
+  confirmKnowledgePointSuggestion,
   getAgentBaseUrl,
 } from "@/lib/agent-client";
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
 import { createSessionActions } from "@/app/workspace/agent/session-actions";
 import { useAgentHealth } from "@/app/workspace/agent/effects/use-agent-health";
 import { useFixtureSync } from "@/app/workspace/agent/effects/use-fixture-sync";
+import { useProjectKnowledgeSync } from "@/app/workspace/agent/effects/use-project-knowledge-sync";
 import { useProjectMaterialsSync } from "@/app/workspace/agent/effects/use-project-materials-sync";
 import { useProjectSessionsSync } from "@/app/workspace/agent/effects/use-project-sessions-sync";
 import { useSessionDataSync } from "@/app/workspace/agent/effects/use-session-data-sync";
@@ -131,7 +137,7 @@ export function useSessionAgent({
     () => data.selectedProjectAssets.filter((asset) => selectedSourceAssetIds.includes(asset.id)),
     [data.selectedProjectAssets, selectedSourceAssetIds],
   );
-  const effectiveEntryMode =
+  const effectiveEntryMode: AgentEntryMode =
     fallbackSessionType === "project" && selectedSourceAssetIds.length > 0
       ? "material-import"
       : "chat-question";
@@ -141,6 +147,7 @@ export function useSessionAgent({
       : selectedSourceAssetIds.length > 0 || data.sessionMaterialTrayOpen[selectedSessionKey] === true;
   const activeSourceAssetsRef = useRef<ReadonlyArray<SourceAsset>>(activeSourceAssets);
   activeSourceAssetsRef.current = activeSourceAssets;
+  const pendingSourceAssetsRef = useRef<ReadonlyArray<SourceAsset> | null>(null);
   const requestProjectContext = useMemo(
     () => ({
       name: data.selectedProject.name,
@@ -154,6 +161,29 @@ export function useSessionAgent({
     }),
     [data.selectedProject.description, data.selectedProject.name, data.selectedProject.topic, data.selectedSession?.summary],
   );
+  const transportSessionId = data.selectedSession?.id ?? data.selectedProject.id;
+  const transportSessionType = fallbackSessionType;
+  const requestConfigRef = useRef({
+    sessionType: transportSessionType,
+    sessionTitle: data.selectedSession?.title ?? null,
+    sessionSummary: data.selectedSession?.summary ?? null,
+    knowledgePointId: data.selectedSession?.knowledgePointId ?? null,
+    entryMode: effectiveEntryMode,
+    project: requestProjectContext,
+    unit: runtimeUnit,
+    targetUnitId: selectedSessionKnowledgePointId,
+  });
+  requestConfigRef.current = {
+    sessionType: transportSessionType,
+    sessionTitle: data.selectedSession?.title ?? null,
+    sessionSummary: data.selectedSession?.summary ?? null,
+    knowledgePointId: data.selectedSession?.knowledgePointId ?? null,
+    entryMode: effectiveEntryMode,
+    project: requestProjectContext,
+    unit: runtimeUnit,
+    targetUnitId: selectedSessionKnowledgePointId,
+  };
+  const handledSuggestionIdsRef = useRef<Set<string>>(new Set());
   const requestSourceAssetIds = useMemo(
     () => getRequestSourceAssetIds(effectiveEntryMode, activeSourceAssets),
     [activeSourceAssets, effectiveEntryMode],
@@ -179,8 +209,6 @@ export function useSessionAgent({
             ? formatDateLabel(activeReviewInspector.scheduledAt)
             : activeRuntime.state.nextReviewAt,
         );
-  const transportSessionId = data.selectedSession?.id ?? data.selectedProject.id;
-  const transportSessionType = fallbackSessionType;
   const pendingActivityResultRef = useRef<AgentActivityResult | null>(null);
   const agentBaseUrl = getAgentBaseUrl();
   const isAgentRunning =
@@ -226,15 +254,12 @@ export function useSessionAgent({
       createAgentChatTransport({
         projectId: data.selectedProject.id,
         sessionId: transportSessionId,
-        sessionType: transportSessionType,
-        sessionTitle: data.selectedSession?.title ?? null,
-        sessionSummary: data.selectedSession?.summary ?? null,
-        knowledgePointId: data.selectedSession?.knowledgePointId ?? null,
-        entryMode: effectiveEntryMode,
-        project: requestProjectContext,
-        getSourceAssets: () => activeSourceAssetsRef.current,
-        unit: runtimeUnit,
-        targetUnitId: selectedSessionKnowledgePointId,
+        getRequestConfig: () => requestConfigRef.current,
+        consumeSourceAssets: () => {
+          const queuedSourceAssets = pendingSourceAssetsRef.current;
+          pendingSourceAssetsRef.current = null;
+          return queuedSourceAssets ?? activeSourceAssetsRef.current;
+        },
         consumeActivityResult: () => {
           const nextResult = pendingActivityResultRef.current;
           pendingActivityResultRef.current = null;
@@ -243,6 +268,92 @@ export function useSessionAgent({
         getFallbackSnapshot: () =>
           sessionSnapshotsRef.current[transportSessionId] ?? activeRuntimeRef.current,
         onSnapshot: (snapshot) => handleTransportSnapshot(transportSessionId, snapshot),
+        onKnowledgePointSuggestions: (
+          suggestions: ReadonlyArray<AgentKnowledgePointSuggestion>,
+          request: AgentRequest,
+          assistantMessageId: string,
+        ) => {
+          if (request.session_type !== "project" || request.entry_mode !== "material-import") {
+            return;
+          }
+
+          for (const suggestion of suggestions) {
+            if (suggestion.kind !== "create") {
+              continue;
+            }
+            if (suggestion.status === "accepted" && suggestion.knowledge_point_id !== null) {
+              data.setKnowledgePoints((current) =>
+                current.map((point) =>
+                  point.id !== suggestion.knowledge_point_id
+                    ? point
+                    : {
+                        ...point,
+                        linkedSessionIds: point.linkedSessionIds.includes(suggestion.session_id)
+                          ? point.linkedSessionIds
+                          : [...point.linkedSessionIds, suggestion.session_id],
+                        linkedMessageIdsBySession:
+                          point.linkedMessageIdsBySession[suggestion.session_id] ===
+                          assistantMessageId
+                            ? point.linkedMessageIdsBySession
+                            : {
+                                ...point.linkedMessageIdsBySession,
+                                [suggestion.session_id]: assistantMessageId,
+                              },
+                      },
+                ),
+              );
+              data.setSelectedKnowledgePointId(suggestion.knowledge_point_id);
+              continue;
+            }
+            if (
+              suggestion.status !== "pending" ||
+              handledSuggestionIdsRef.current.has(suggestion.id)
+            ) {
+              continue;
+            }
+            handledSuggestionIdsRef.current.add(suggestion.id);
+            void confirmKnowledgePointSuggestion(request.project_id, suggestion.id)
+              .then((resolution) => {
+                const nextPoint = toKnowledgePointItem(resolution);
+                if (nextPoint === null) {
+                  return;
+                }
+                data.setKnowledgePoints((current) => {
+                  const previousPoint = current.find((point) => point.id === nextPoint.id);
+                  const remainingPoints = current.filter((point) => point.id !== nextPoint.id);
+                  const previousLinkedSessionIds = previousPoint?.linkedSessionIds ?? [];
+                  const nextLinkedSessionIds = previousLinkedSessionIds.includes(
+                    resolution.suggestion.session_id,
+                  )
+                    ? previousLinkedSessionIds
+                    : [
+                        ...previousLinkedSessionIds,
+                        resolution.suggestion.session_id,
+                        ...nextPoint.linkedSessionIds,
+                      ].filter(
+                        (sessionId, index, array) => array.indexOf(sessionId) === index,
+                      );
+                  const nextLinkedMessageIdsBySession = {
+                    ...(previousPoint?.linkedMessageIdsBySession ?? {}),
+                    ...nextPoint.linkedMessageIdsBySession,
+                    [resolution.suggestion.session_id]: assistantMessageId,
+                  };
+                  return [
+                    ...remainingPoints,
+                    {
+                      ...nextPoint,
+                      linkedSessionIds: nextLinkedSessionIds,
+                      linkedMessageIdsBySession: nextLinkedMessageIdsBySession,
+                    },
+                  ];
+                });
+                data.setSelectedKnowledgePointId(nextPoint.id);
+              })
+              .catch(() => {
+                handledSuggestionIdsRef.current.delete(suggestion.id);
+              });
+          }
+        },
         onRunStateChange: (nextIsRunning) =>
           handleTransportRunStateChange(transportSessionId, nextIsRunning),
       }),
@@ -251,14 +362,11 @@ export function useSessionAgent({
       data.selectedSession?.knowledgePointId,
       data.selectedSession?.summary,
       data.selectedSession?.title,
-      effectiveEntryMode,
       handleTransportRunStateChange,
       handleTransportSnapshot,
-      requestProjectContext,
-      runtimeUnit,
-      selectedSessionKnowledgePointId,
+      data.setKnowledgePoints,
+      data.setSelectedKnowledgePointId,
       transportSessionId,
-      transportSessionType,
     ],
   );
   const { clearError, error, messages, sendMessage } = useChat({
@@ -271,11 +379,22 @@ export function useSessionAgent({
       ? []
       : data.sessionMessagesById[data.selectedSession.id] ?? [];
   const displayMessages = useMemo(
-    () =>
-      isUsingDevTutorFixture
-        ? data.devTutorFixtureState?.messages ?? []
-        : mergeMessageHistory(persistedMessages, messages),
-    [data.devTutorFixtureState?.messages, isUsingDevTutorFixture, messages, persistedMessages],
+    () => {
+      if (isUsingDevTutorFixture) {
+        return data.devTutorFixtureState?.messages ?? [];
+      }
+      if (!isAgentRunning) {
+        return persistedMessages.length > 0 ? persistedMessages : messages;
+      }
+      return mergeMessageHistory(persistedMessages, messages);
+    },
+    [
+      data.devTutorFixtureState?.messages,
+      isAgentRunning,
+      isUsingDevTutorFixture,
+      messages,
+      persistedMessages,
+    ],
   );
   const latestAssistantMessageId =
     [...displayMessages].reverse().find((message) => message.role === "assistant")?.id ?? null;
@@ -287,6 +406,10 @@ export function useSessionAgent({
     isAgentRunning || agentBaseUrl === null || isAwaitingActivityFollowup;
 
   useProjectMaterialsSync({
+    data,
+    projectId: data.selectedProject.id,
+  });
+  useProjectKnowledgeSync({
     data,
     projectId: data.selectedProject.id,
   });
@@ -422,6 +545,9 @@ export function useSessionAgent({
     latestAssistantMessageId,
     onQueueActivityResult: (result) => {
       pendingActivityResultRef.current = result;
+    },
+    prepareSourceAssetsForSend: () => {
+      pendingSourceAssetsRef.current = [...activeSourceAssetsRef.current];
     },
     selectedSessionKey,
     selectedSessionKnowledgePointId,

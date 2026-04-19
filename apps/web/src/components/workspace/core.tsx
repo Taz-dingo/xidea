@@ -443,6 +443,40 @@ export function KnowledgePointCard({
   );
 }
 
+export function KnowledgePointInlineCard({
+  point,
+  onClick,
+}: {
+  point: KnowledgePointItem;
+  onClick: () => void;
+}): ReactElement {
+  return (
+    <button
+      className="flex w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-white)]"
+      onClick={onClick}
+      type="button"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <Badge
+          className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
+          variant="outline"
+        >
+          {point.stageLabel}
+        </Badge>
+        <span className="text-[12px] text-[var(--xidea-stone)]">{point.updatedAt}</span>
+      </div>
+      <div className="space-y-1">
+        <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+          {point.title}
+        </p>
+        <p className="line-clamp-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
+          {point.description}
+        </p>
+      </div>
+    </button>
+  );
+}
+
 export function MetaPanel({
   project,
   materialCount,

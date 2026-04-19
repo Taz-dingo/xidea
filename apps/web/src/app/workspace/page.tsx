@@ -216,6 +216,7 @@ export function WorkspacePage(): ReactElement {
                   relatedKnowledgePoints={model.relatedKnowledgePoints}
                   reviewDisabled={model.reviewTargetPoint === null}
                   requestSourceAssetIds={session.requestSourceAssetIds}
+                  sessionCreatedKnowledgePoints={model.sessionCreatedKnowledgePoints}
                   selectedProject={data.selectedProject}
                   selectedProjectMaterials={data.selectedProjectMaterials}
                   selectedProjectSessions={data.selectedProjectSessions}

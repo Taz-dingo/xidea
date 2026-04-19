@@ -1,5 +1,5 @@
-import type { ReactElement } from "react";
-import { FileInput, GraduationCap, MessageSquareText, RefreshCcw } from "lucide-react";
+import { useEffect, useState, type ReactElement } from "react";
+import { FileInput, GraduationCap, MessageSquareText, RefreshCcw, X } from "lucide-react";
 import { CompletedDeckRail } from "@/components/session/deck-rail";
 import { SessionThreadPane } from "@/components/session/thread-pane";
 import { SessionInspector } from "@/components/session/inspector";
@@ -67,6 +67,7 @@ export function SessionWorkspace({
   nextReviewLabel,
   onChangeDraftPrompt,
   onCloseSession,
+  onDeleteSession,
   onDisableTutorFixture,
   onEditKnowledgePoint,
   onOpenKnowledgePoint,
@@ -86,6 +87,7 @@ export function SessionWorkspace({
   onWorkspaceSectionChange,
   projectStats,
   relatedKnowledgePoints,
+  sessionCreatedKnowledgePoints,
   reviewDisabled,
   requestSourceAssetIds,
   selectedProject,
@@ -127,6 +129,7 @@ export function SessionWorkspace({
   nextReviewLabel: string;
   onChangeDraftPrompt: (value: string) => void;
   onCloseSession: () => void;
+  onDeleteSession: () => void;
   onDisableTutorFixture: () => void;
   onEditKnowledgePoint: (pointId: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
@@ -146,6 +149,7 @@ export function SessionWorkspace({
   onWorkspaceSectionChange: (section: WorkspaceSection) => void;
   projectStats: ProjectStats;
   relatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
+  sessionCreatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
   reviewDisabled: boolean;
   requestSourceAssetIds: ReadonlyArray<string>;
   selectedProject: ProjectItem;
@@ -160,6 +164,20 @@ export function SessionWorkspace({
 }): ReactElement {
   const projectSessions = selectedProjectSessions.filter((session) => session.type === "project");
   const learningSessions = selectedProjectSessions.filter((session) => session.type !== "project");
+  const [deleteArmed, setDeleteArmed] = useState(false);
+
+  useEffect(() => {
+    if (!deleteArmed) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setDeleteArmed(false), 2200);
+    return () => window.clearTimeout(timeoutId);
+  }, [deleteArmed]);
+
+  useEffect(() => {
+    setDeleteArmed(false);
+  }, [selectedSession.id]);
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[292px_minmax(0,1fr)_320px]">
@@ -270,6 +288,22 @@ export function SessionWorkspace({
                           ? "可用"
                           : "检查中"}
               </Badge>
+              <Button
+                aria-label={deleteArmed ? "确认删除会话" : "删除会话"}
+                className="h-10 w-10 rounded-full p-0"
+                onClick={() => {
+                  if (deleteArmed) {
+                    onDeleteSession();
+                    return;
+                  }
+                  setDeleteArmed(true);
+                }}
+                title={deleteArmed ? "再点一次删除" : "删除会话"}
+                type="button"
+                variant="outline"
+              >
+                <X className={deleteArmed ? "h-4 w-4 text-red-600" : "h-4 w-4"} />
+              </Button>
               <Button className="rounded-full" onClick={onCloseSession} type="button" variant="outline">
                 关闭 session
               </Button>
@@ -300,9 +334,11 @@ export function SessionWorkspace({
           latestAssistantMessageId={latestAssistantMessageId}
           onChangeDraftPrompt={onChangeDraftPrompt}
           onOpenProjectMetaEditor={onOpenProjectMetaEditor}
+          onOpenKnowledgePoint={onOpenKnowledgePoint}
           onSkipActivity={onSkipActivity}
           onSubmitActivity={onSubmitActivity}
           onSubmitPrompt={onSubmitPrompt}
+          sessionCreatedKnowledgePoints={sessionCreatedKnowledgePoints}
           onToggleMaterialsTray={onToggleMaterialsTray}
           onToggleProjectMaterial={onToggleProjectMaterial}
           onUploadMaterial={onUploadMaterial}

@@ -375,7 +375,7 @@ export function ProjectInsightsStrip({
             }
             title="项目材料"
           >
-            <div className="space-y-2">
+            <div className="max-h-[31rem] space-y-2 overflow-y-auto pr-1">
               {visibleProjectMaterials.length > 0 ? (
                 visibleProjectMaterials.map((asset) => (
                   <div
