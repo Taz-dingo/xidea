@@ -42,6 +42,24 @@
 - 后续前端 review 需要显式检查：某段文案到底是在传业务信息，还是只是在替 hover / 点击 affordance 兜底
 - 新增卡片、子卡、缩略预览和列表项时，优先先调结构、图标、动画和反馈，再决定是否真的需要提示文案；不能把“先补一句提示”当默认解法
 
+## 2026-04-19 — `研讨 / 学习 / 复习` 默认都先进入 pending intent，只有在用户真正提交第一条消息后才创建 session
+
+### 决策
+
+- `project / study / review` 三类 session 的入口行为统一为：先进入 pending intent / 准备开始态，只有在用户真正提交第一条消息后才创建 session
+- 点击 `研讨 / 学习 / 复习` 按钮本身不再立即生成空白 session
+- 创建 Project 时也不再自动附送“初始研讨”空 session
+
+### 原因
+
+- 之前 `研讨` 与 `学习 / 复习` 的创建时机不一致，会让左侧会话列表出现还没开始问答的空 session，破坏页面信噪比
+- 既然主链路已经跑通，session 更应该代表一次真实发生的互动，而不是用户刚点过一个按钮
+
+### 影响
+
+- 后续所有 session 入口都应复用同一套 pending intent -> first prompt -> create session 规则，不能再单独为某一类会话保留“点一下就先建空会话”的旧路径
+- 相关 UI 文案和 reference docs 也要统一描述为“发送并开始”，而不是“点击按钮即创建”
+
 ## 2026-04-18 — `/runs/v0/stream` 要显式区分“回复生成中”和“回复后的 follow-up / writeback”，并优先复用 `main_decision` 已带回的 reply
 
 ### 决策

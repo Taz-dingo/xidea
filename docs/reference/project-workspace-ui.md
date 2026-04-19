@@ -36,7 +36,7 @@ Workspace UI 默认遵守下面这条文案规则：
 
 1. `App Home`
 2. `Project Workspace`
-3. `Knowledge Point Detail`
+3. `Knowledge Point Detail Modal`
 
 不在第一版内的页面：
 
@@ -176,6 +176,24 @@ Workspace UI 默认遵守下面这条文案规则：
 
 这是当前产品最核心的页面。
 
+## Current Implemented Layout
+
+截至 `2026-04-19`，当前已经落地的 Project Workspace 浏览态结构是：
+
+- 顶部：品牌 / breadcrumb / 搜索 / 新建项目
+- 第一层主卡：Project 概览
+- 第二层双栏：左侧 session rail，右侧知识卡主区
+- Project 概览卡内部再拆成左右两半：
+  - 左侧：项目标题、topic、description、rules、横向状态指标
+  - 右侧：`项目材料 / 复习热力图 / 学习画像` 三张洞察子卡
+
+洞察子卡的布局固定为：
+
+- 左列单独放 `项目材料`
+- 右列上下放 `复习热力图` 和 `学习画像`
+
+这三张子卡都只承载摘要预览，完整内容统一通过弹层承接。
+
 ### Top Header
 
 固定展示：
@@ -183,21 +201,16 @@ Workspace UI 默认遵守下面这条文案规则：
 - `Project title`
 - `Topic`
 - `Description`
-- 主动作：`学习`、`复习`、`新建 project session`
-- `More` 二级菜单
-
-`More` 菜单中承载：
-
-- 编辑 topic / description
-- 查看 / 编辑 special rules
-- 材料管理
-- archive management
-- project settings
+- `项目约束`
+- 横向 `Project 状态`
+- 右侧 `Project 洞察子卡`
+- 标题旁轻量 `编辑` 入口
 
 注意：
 
-- special rules 不默认展开在页面主区
-- 学习 / 复习按钮必须是 project 级高可见主动作
+- `学习 / 复习 / 研讨` 入口不再放在 Project 主卡顶部，而是放到左侧 session rail 内，与对应会话类型直接绑定
+- Project 编辑态允许直接编辑 `title / topic / description / special rules`
+- 编辑态底部按钮使用固定宽度，不拉满一整行
 
 ### Two Page States
 
@@ -434,9 +447,9 @@ Project Workspace 有两个核心状态：
 
 ### Routing
 
-点击 knowledge point 卡片后跳转到独立详情页。
+点击 knowledge point 卡片后，在当前 workspace 上方打开独立 modal。
 
-不在 Project Workspace 内长期维持完整 detail 面板。
+不在 Project Workspace 主布局内长期维持完整 detail 面板，也不切路由离开当前工作区上下文。
 
 ### Goal
 
@@ -444,7 +457,7 @@ Project Workspace 有两个核心状态：
 
 ### Layout
 
-1. 顶部返回入口
+1. 顶部返回或关闭入口
 2. Summary + actions
 3. supporting sections
 
@@ -483,28 +496,46 @@ Project Workspace 有两个核心状态：
 
 点击 `学习` 后：
 
-- 创建新的 `study session`
-- 进入 session 展开态
+- 先进入 pending intent / 准备开始态
+- 用户补一条本轮学习意图后，才真正创建新的 `study session`
+- 创建成功后进入 session 展开态
 - 中间主区切到当前 study session
-- 右侧显示本轮相关 knowledge points
 
 ### Start Review
 
 点击 `复习` 后：
 
-- 创建新的 `review session`
-- 进入 session 展开态
+- 先进入 pending intent / 准备开始态
+- 用户补一条本轮复习意图后，才真正创建新的 `review session`
+- 创建成功后进入 session 展开态
 
 ### New Project Session
 
-点击 `新建 project session` 后：
+点击 `研讨` 后：
 
-- 创建新的 `project session`
-- 进入 session 展开态
+- 先进入 pending intent / 准备开始态
+- 用户补一条本轮研讨意图后，才真正创建新的 `project session`
+- 创建成功后进入 session 展开态
 
 ### Continue Project Session
 
 默认继续当前 `project session`，不自动切分。
+
+### New Project
+
+点击 `新建 Project` 后：
+
+- 在当前页面上方打开 modal
+- 不在主内容区插入创建卡片
+- 关闭按钮放在卡片内部右上角，而不是悬空在 modal 外
+
+### Modal Close Placement
+
+当前 workspace UI 里的 modal 统一遵守：
+
+- 关闭按钮放在卡片内容边界内
+- 不使用悬空在弹层外部的关闭按钮
+- 用户也可以通过点击遮罩关闭，但主视觉关闭入口仍放在卡片内部
 
 ### Add New Knowledge Point
 
