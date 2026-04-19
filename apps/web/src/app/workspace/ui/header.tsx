@@ -64,9 +64,7 @@ export function WorkspaceHeader({
               {screen === "workspace" ? (
                 <>
                   <ChevronRight className="h-3.5 w-3.5" />
-                  <BreadcrumbButton label={selectedProjectName} onClick={onGoWorkspace} />
-                  <ChevronRight className="h-3.5 w-3.5" />
-                  <BreadcrumbButton active label="工作台" />
+                  <BreadcrumbButton active label={selectedProjectName} onClick={onGoWorkspace} />
                 </>
               ) : null}
             </div>

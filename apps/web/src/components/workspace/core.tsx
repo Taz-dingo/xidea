@@ -20,7 +20,6 @@ import { getSessionTypeLabel } from "@/domain/project-workspace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 type MetricTone = "emerald" | "amber" | "rose" | "sky";
 
@@ -150,12 +149,14 @@ export function SessionTypeBadge({
 
 export function SessionCard({
   active,
+  showTypeBadge = true,
   title,
   type,
   updatedAt,
   onClick,
 }: {
   active: boolean;
+  showTypeBadge?: boolean;
   title: string;
   type: SessionType;
   updatedAt: string;
@@ -174,19 +175,36 @@ export function SessionCard({
       type="button"
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{visibleTitle}</p>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <SessionTypeBadge compact type={type} />
-          <span
-            className={
-              active
-                ? "shrink-0 text-[11px] text-[var(--xidea-selection-text)]"
-                : "shrink-0 text-[11px] text-[var(--xidea-stone)]"
-            }
-          >
-            {updatedAt}
-          </span>
-        </div>
+        {showTypeBadge ? (
+          <>
+            <p className="truncate text-sm font-medium">{visibleTitle}</p>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <SessionTypeBadge compact type={type} />
+              <span
+                className={
+                  active
+                    ? "shrink-0 text-[11px] text-[var(--xidea-selection-text)]"
+                    : "shrink-0 text-[11px] text-[var(--xidea-stone)]"
+                }
+              >
+                {updatedAt}
+              </span>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 flex-1 truncate text-sm font-medium">{visibleTitle}</p>
+            <span
+              className={
+                active
+                  ? "shrink-0 pt-0.5 text-[11px] text-[var(--xidea-selection-text)]"
+                  : "shrink-0 pt-0.5 text-[11px] text-[var(--xidea-stone)]"
+              }
+            >
+              {updatedAt}
+            </span>
+          </div>
+        )}
       </div>
     </button>
   );
@@ -310,8 +328,8 @@ export function AssetCompactList({
   }
 
   return (
-    <ScrollArea className={maxHeightClassName}>
-      <div className="space-y-2 pr-3">
+    <div className={`${maxHeightClassName} overflow-y-auto overscroll-contain pr-1`}>
+      <div className="space-y-2 pr-2">
         {assets.map((asset) => {
           const selected = selectedAssetIds.includes(asset.id);
           const className = selected
@@ -352,7 +370,7 @@ export function AssetCompactList({
           );
         })}
       </div>
-    </ScrollArea>
+    </div>
   );
 }
 
@@ -404,7 +422,7 @@ export function KnowledgePointCard({
         ) : null}
       </div>
 
-      <div className="mt-auto flex items-center justify-between gap-3 pt-5">
+      <div className="mt-auto flex items-center gap-3 pt-5">
         <div className="flex items-center gap-3">
           <span className="text-[12px] text-[var(--xidea-stone)]">掌握程度</span>
           <div className="flex items-center gap-1.5">
@@ -420,9 +438,6 @@ export function KnowledgePointCard({
           ))}
           </div>
         </div>
-        <span className="text-[12px] text-[var(--xidea-selection-text)] transition-transform duration-200 group-hover:translate-x-0.5">
-          查看详情
-        </span>
       </div>
     </button>
   );

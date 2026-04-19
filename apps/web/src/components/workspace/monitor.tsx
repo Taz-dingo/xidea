@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -83,40 +82,53 @@ function getHeatmapCellClass(intensity: ReviewHeatmapCell["intensity"]): string 
 
 export function ReviewHeatmap({
   compact = false,
+  rangeLabel,
+  showTooltip = true,
   weeks,
 }: {
   compact?: boolean;
+  rangeLabel?: string;
+  showTooltip?: boolean;
   weeks: ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>>;
 }): ReactElement {
-  const [activeCell, setActiveCell] = useState<ReviewHeatmapCell | null>(null);
-  const visibleCell = activeCell ?? weeks.flat().find((cell) => cell.intensity > 0) ?? weeks.flat().at(-1) ?? null;
+  const isDense = compact || weeks.length > 16;
+  const resolvedRangeLabel =
+    rangeLabel ?? (weeks.length >= 48 ? "近 1 年轨迹" : `近 ${weeks.length} 周轨迹`);
 
   return (
     <div className="space-y-3">
-      <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
-        {visibleCell?.tooltip ?? "最近还没有学习或复习记录。"}
-      </div>
-      <div className="flex gap-1.5">
+      <div className="overflow-x-auto pb-1">
+        <div className="flex w-max gap-1.5">
         {weeks.map((week, weekIndex) => (
           <div className="grid gap-1.5" key={`review-week-${weekIndex}`}>
             {week.map((cell) => (
               <div
-                className={`${compact ? "h-3 w-3 rounded-[3px]" : "h-4 w-4 rounded-[4px]"} border border-[var(--xidea-border)] ${getHeatmapCellClass(cell.intensity)}`}
+                className="group relative"
                 key={cell.dateKey}
-                onMouseEnter={() => setActiveCell(cell)}
-                onMouseLeave={() => setActiveCell(null)}
-              />
+              >
+                <div
+                  aria-label={showTooltip ? cell.tooltip : undefined}
+                  className={`${isDense ? "h-3 w-3 rounded-[3px]" : "h-4 w-4 rounded-[4px]"} border border-[var(--xidea-border)] ${getHeatmapCellClass(cell.intensity)}`}
+                  title={showTooltip ? cell.tooltip : undefined}
+                />
+                {showTooltip ? (
+                  <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-max max-w-[220px] -translate-x-1/2 rounded-[0.75rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-2.5 py-2 text-[11px] leading-5 text-[var(--xidea-charcoal)] shadow-[0_10px_24px_rgba(0,0,0,0.08)] group-hover:block">
+                    {cell.tooltip}
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
         ))}
+        </div>
       </div>
       <div className="flex items-center justify-between gap-3 text-[11px] text-[var(--xidea-stone)]">
-        <span>近 5 周轨迹</span>
+        <span>{resolvedRangeLabel}</span>
         <div className="flex items-center gap-1.5">
           <span>低</span>
           {[0, 1, 2, 3, 4].map((intensity) => (
             <span
-              className={`${compact ? "h-2.5 w-2.5 rounded-[2px]" : "h-3 w-3 rounded-[3px]"} border border-[var(--xidea-border)] ${getHeatmapCellClass(intensity as ReviewHeatmapCell["intensity"])}`}
+              className={`${isDense ? "h-2.5 w-2.5 rounded-[2px]" : "h-3 w-3 rounded-[3px]"} border border-[var(--xidea-border)] ${getHeatmapCellClass(intensity as ReviewHeatmapCell["intensity"])}`}
               key={`review-legend-${intensity}`}
             />
           ))}

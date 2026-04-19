@@ -50,8 +50,9 @@ export function buildReviewHeatmap(
   reviewEvents: ReadonlyArray<AgentReviewEvent>,
   lastReviewedAt: string | null,
   nextReviewAt: string | null,
+  weekCount = 5,
 ): ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>> {
-  const totalDays = 35;
+  const totalDays = weekCount * 7;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -113,15 +114,15 @@ export function buildReviewHeatmap(
     });
   }
 
-  return Array.from({ length: 5 }, (_, weekIndex) =>
+  return Array.from({ length: weekCount }, (_, weekIndex) =>
     cells.slice(weekIndex * 7, weekIndex * 7 + 7),
   );
 }
 
-export function buildEmptyReviewHeatmap(): ReadonlyArray<
-  ReadonlyArray<ReviewHeatmapCell>
-> {
-  const totalDays = 35;
+export function buildEmptyReviewHeatmap(
+  weekCount = 5,
+): ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>> {
+  const totalDays = weekCount * 7;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -136,7 +137,7 @@ export function buildEmptyReviewHeatmap(): ReadonlyArray<
     };
   });
 
-  return Array.from({ length: 5 }, (_, weekIndex) =>
+  return Array.from({ length: weekCount }, (_, weekIndex) =>
     cells.slice(weekIndex * 7, weekIndex * 7 + 7),
   );
 }

@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { FileInput } from "lucide-react";
+import { FileInput, GraduationCap, MessageSquareText, RefreshCcw } from "lucide-react";
 import { CompletedDeckRail } from "@/components/session/deck-rail";
 import { SessionThreadPane } from "@/components/session/thread-pane";
 import { SessionInspector } from "@/components/session/inspector";
@@ -72,6 +72,9 @@ export function SessionWorkspace({
   onOpenKnowledgePoint,
   onOpenProjectMetaEditor,
   onOpenSession,
+  onStartProjectSession,
+  onStartReview,
+  onStartStudy,
   onSelectTutorFixture,
   onSkipActivity,
   onSubmitActivity,
@@ -83,6 +86,7 @@ export function SessionWorkspace({
   onWorkspaceSectionChange,
   projectStats,
   relatedKnowledgePoints,
+  reviewDisabled,
   requestSourceAssetIds,
   selectedProject,
   selectedProjectMaterials,
@@ -91,6 +95,7 @@ export function SessionWorkspace({
   selectedUnitTitle,
   selectedProjectSessions,
   tutorFixtureScenarios,
+  studyDisabled,
   workspaceSection,
 }: {
   activeAssetSummary: AgentAssetSummary | null;
@@ -127,6 +132,9 @@ export function SessionWorkspace({
   onOpenKnowledgePoint: (pointId: string) => void;
   onOpenProjectMetaEditor: () => void;
   onOpenSession: (sessionId: string) => void;
+  onStartProjectSession: () => void;
+  onStartReview: () => void;
+  onStartStudy: () => void;
   onSelectTutorFixture: (fixture: TutorFixtureScenario) => void;
   onSkipActivity: (attempts?: ReadonlyArray<LearningActivityAttempt>) => void;
   onSubmitActivity: (submission: LearningActivitySubmission) => void;
@@ -138,6 +146,7 @@ export function SessionWorkspace({
   onWorkspaceSectionChange: (section: WorkspaceSection) => void;
   projectStats: ProjectStats;
   relatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
+  reviewDisabled: boolean;
   requestSourceAssetIds: ReadonlyArray<string>;
   selectedProject: ProjectItem;
   selectedProjectMaterials: ReadonlyArray<SourceAsset>;
@@ -146,6 +155,7 @@ export function SessionWorkspace({
   selectedUnitTitle: string | null;
   selectedProjectSessions: ReadonlyArray<SessionItem>;
   tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario>;
+  studyDisabled: boolean;
   workspaceSection: WorkspaceSection;
 }): ReactElement {
   const projectSessions = selectedProjectSessions.filter((session) => session.type === "project");
@@ -177,15 +187,50 @@ export function SessionWorkspace({
           </div>
 
           <SessionListSection
+            actions={
+              <Button
+                className="h-10 w-full rounded-[0.9rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] text-[var(--xidea-near-black)] hover:bg-[var(--xidea-selection)]"
+                onClick={onStartProjectSession}
+                type="button"
+                variant="outline"
+              >
+                <MessageSquareText className="h-4 w-4" />
+                研讨
+              </Button>
+            }
             description={getSessionTypeDescription("project")}
             emptyText="当前还没有研讨会话。"
             onOpenSession={onOpenSession}
             selectedSessionId={selectedSession.id}
             sessions={projectSessions}
+            showTypeBadge={false}
             title="研讨会话"
           />
 
           <SessionListSection
+            actions={
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  className="h-10 min-w-0 rounded-[0.9rem] bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                  disabled={studyDisabled}
+                  onClick={onStartStudy}
+                  type="button"
+                >
+                  <GraduationCap className="h-4 w-4" />
+                  学习
+                </Button>
+                <Button
+                  className="h-10 min-w-0 rounded-[0.9rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] hover:bg-[var(--xidea-selection)]"
+                  disabled={reviewDisabled}
+                  onClick={onStartReview}
+                  type="button"
+                  variant="outline"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  复习
+                </Button>
+              </div>
+            }
             description="学习负责推进，复习负责校准。"
             emptyText="当前还没有学习或复习会话。"
             onOpenSession={onOpenSession}

@@ -3,6 +3,7 @@ import { tutorFixtureScenarios } from "@/data/tutor-fixtures";
 import { sourceAssets } from "@/data/demo";
 import { X } from "lucide-react";
 import { WorkspaceHeader } from "@/app/workspace/ui/header";
+import { ProjectInsightsStrip } from "@/app/workspace/ui/project-insights";
 import { ProjectOverviewPanel } from "@/app/workspace/ui/project-overview";
 import { useSessionAgent } from "@/app/workspace/agent/use-session-agent";
 import { useWorkspaceActions } from "@/app/workspace/hooks/use-actions";
@@ -81,11 +82,55 @@ export function WorkspacePage(): ReactElement {
               {data.selectedSession === undefined ? (
                 <>
                   <ProjectOverviewPanel
+                    insights={
+                      <ProjectInsightsStrip
+                        isEditingProjectMeta={data.isEditingProjectMeta}
+                        onToggleProjectMaterial={(assetId) =>
+                          data.setProjectMetaDraft((current) => ({
+                            ...current,
+                            materialIds: current.materialIds.includes(assetId)
+                              ? current.materialIds.filter((id) => id !== assetId)
+                              : [...current.materialIds, assetId],
+                          }))
+                        }
+                        onUploadProjectMaterial={actions.handleUploadProjectMaterial}
+                        profileSummary={model.browseProfileSummary}
+                        projectAssets={data.selectedProjectAssets}
+                        projectMaterialIds={data.projectMetaDraft.materialIds}
+                        projectMaterials={data.selectedProjectMaterials}
+                        projectReviewHeatmap={model.projectReviewHeatmap}
+                        projectReviewHeatmapExpanded={model.projectReviewHeatmapExpanded}
+                        projectStats={model.projectStats}
+                      />
+                    }
                     isEditing={data.isEditingProjectMeta}
                     onCancelEditing={actions.handleCancelEditingProjectMeta}
                     onChangeDraft={data.setProjectMetaDraft}
                     onEditProject={actions.handleOpenProjectMetaEditor}
                     onSaveProjectMeta={actions.handleSaveProjectMeta}
+                    projectMetaDraft={data.projectMetaDraft}
+                    projectSessionCount={data.selectedProjectSessions.length}
+                    projectStats={model.projectStats}
+                    selectedProjectDescription={data.selectedProject.description}
+                    selectedProjectName={data.selectedProject.name}
+                    selectedProjectRules={data.selectedProject.specialRules}
+                    selectedProjectTopic={data.selectedProject.topic}
+                    selectedProjectUpdatedAt={data.selectedProject.updatedAt}
+                  />
+                  <WorkspaceBrowseScreen
+                    filteredKnowledgePoints={model.filteredKnowledgePoints}
+                    isEditingProjectMeta={data.isEditingProjectMeta}
+                    normalizedSearchQuery={model.normalizedSearchQuery}
+                    onCancelPendingSession={() => {
+                      data.setPendingSessionIntent(null);
+                      data.setDraftPrompt("");
+                    }}
+                    onChangePendingPrompt={session.handleChangeDraftPrompt}
+                    onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
+                    onOpenSession={(sessionId) => {
+                      data.setPendingSessionIntent(null);
+                      data.setSelectedSessionId(sessionId);
+                    }}
                     onStartProjectSession={() =>
                       actions.handleCreateSession(data.selectedProject.id, "project")
                     }
@@ -103,51 +148,14 @@ export function WorkspacePage(): ReactElement {
                         model.studyTargetPoint?.id ?? null,
                       )
                     }
-                    projectMetaDraft={data.projectMetaDraft}
-                    projectSessionCount={data.selectedProjectSessions.length}
-                    projectStats={model.projectStats}
-                    reviewDisabled={model.reviewTargetPoint === null}
-                    selectedProjectDescription={data.selectedProject.description}
-                    selectedProjectName={data.selectedProject.name}
-                    selectedProjectRules={data.selectedProject.specialRules}
-                    selectedProjectTopic={data.selectedProject.topic}
-                    selectedProjectUpdatedAt={data.selectedProject.updatedAt}
-                    studyDisabled={model.studyTargetPoint === null}
-                  />
-                  <WorkspaceBrowseScreen
-                    filteredKnowledgePoints={model.filteredKnowledgePoints}
-                    isEditingProjectMeta={data.isEditingProjectMeta}
-                    normalizedSearchQuery={model.normalizedSearchQuery}
-                    onCancelPendingSession={() => {
-                      data.setPendingSessionIntent(null);
-                      data.setDraftPrompt("");
-                    }}
-                    onChangePendingPrompt={session.handleChangeDraftPrompt}
-                    onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
-                    onOpenSession={(sessionId) => {
-                      data.setPendingSessionIntent(null);
-                      data.setSelectedSessionId(sessionId);
-                    }}
-                    onToggleProjectMaterial={(assetId) =>
-                      data.setProjectMetaDraft((current) => ({
-                        ...current,
-                        materialIds: current.materialIds.includes(assetId)
-                          ? current.materialIds.filter((id) => id !== assetId)
-                          : [...current.materialIds, assetId],
-                      }))
-                    }
                     onSubmitPendingPrompt={session.handleSubmitPrompt}
-                    onUploadProjectMaterial={actions.handleUploadProjectMaterial}
                     onWorkspaceSectionChange={data.setWorkspaceSection}
                     pendingPrompt={data.draftPrompt}
                     pendingSessionIntent={data.pendingSessionIntent}
-                    profileSummary={model.browseProfileSummary}
-                    projectAssets={data.selectedProjectAssets}
-                    projectMaterialIds={data.projectMetaDraft.materialIds}
-                    projectMaterials={data.selectedProjectMaterials}
-                    projectReviewHeatmap={model.projectReviewHeatmap}
                     projectStats={model.projectStats}
+                    reviewDisabled={model.reviewTargetPoint === null}
                     selectedProjectSessions={data.selectedProjectSessions}
+                    studyDisabled={model.studyTargetPoint === null}
                     workspaceSection={data.workspaceSection}
                   />
                 </>
@@ -188,6 +196,23 @@ export function WorkspacePage(): ReactElement {
                     data.setPendingSessionIntent(null);
                     data.setSelectedSessionId(sessionId);
                   }}
+                  onStartProjectSession={() =>
+                    actions.handleCreateSession(data.selectedProject.id, "project")
+                  }
+                  onStartReview={() =>
+                    actions.handlePrepareSessionStart(
+                      data.selectedProject.id,
+                      "review",
+                      model.reviewTargetPoint?.id ?? null,
+                    )
+                  }
+                  onStartStudy={() =>
+                    actions.handlePrepareSessionStart(
+                      data.selectedProject.id,
+                      "study",
+                      model.studyTargetPoint?.id ?? null,
+                    )
+                  }
                   onSelectTutorFixture={session.handleSelectTutorFixture}
                   onSkipActivity={session.handleSkipActivity}
                   onSubmitActivity={session.handleSubmitActivity}
@@ -199,6 +224,7 @@ export function WorkspacePage(): ReactElement {
                   onWorkspaceSectionChange={actions.handleSessionWorkspaceSectionChange}
                   projectStats={model.projectStats}
                   relatedKnowledgePoints={model.relatedKnowledgePoints}
+                  reviewDisabled={model.reviewTargetPoint === null}
                   requestSourceAssetIds={session.requestSourceAssetIds}
                   selectedProject={data.selectedProject}
                   selectedProjectMaterials={data.selectedProjectMaterials}
@@ -208,6 +234,7 @@ export function WorkspacePage(): ReactElement {
                   selectedUnitTitle={session.selectedUnitTitle}
                   activityInputDisabled={session.activityInputDisabled}
                   composerDisabled={session.composerDisabled}
+                  studyDisabled={model.studyTargetPoint === null}
                   tutorFixtureScenarios={tutorFixtureScenarios}
                   workspaceSection={data.workspaceSection}
                 />

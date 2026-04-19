@@ -1,10 +1,10 @@
 import type { ReactElement } from "react";
-import { ArrowLeft } from "lucide-react";
+import { Archive, ArrowLeft, FilePenLine } from "lucide-react";
 import type { KnowledgePointItem, SessionItem } from "@/domain/project-workspace";
 import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import type { SourceAsset } from "@/domain/types";
 import {
-  AssetListItem,
+  AssetListGrid,
   getSessionDisplayTitle,
   getKnowledgePointAccent,
   MetricTile,
@@ -112,9 +112,20 @@ export function KnowledgePointDetailScreen({
                   </>
                 ) : (
                   <>
-                    <p className="text-xl font-medium text-[var(--xidea-near-black)]">
-                      {knowledgePoint.title}
-                    </p>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <p className="min-w-0 flex-1 text-xl font-medium text-[var(--xidea-near-black)]">
+                        {knowledgePoint.title}
+                      </p>
+                      <Button
+                        aria-label="编辑知识点"
+                        className="h-9 w-9 shrink-0 rounded-full border-[var(--xidea-border)] p-0 text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-parchment)]"
+                        onClick={onStartEditing}
+                        type="button"
+                        variant="ghost"
+                      >
+                        <FilePenLine className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <p className="max-w-3xl text-sm leading-7 text-[var(--xidea-charcoal)]">
                       {knowledgePoint.description}
                     </p>
@@ -166,9 +177,6 @@ export function KnowledgePointDetailScreen({
                   <Button className="h-11 min-w-[110px] rounded-full" onClick={onStartReview} type="button" variant="outline">
                     加入复习
                   </Button>
-                  <Button className="h-11 min-w-[110px] rounded-full" onClick={onStartEditing} type="button" variant="outline">
-                    编辑
-                  </Button>
                   {knowledgePoint.status === "archived" ? (
                     <Button
                       className="h-11 min-w-[110px] rounded-full"
@@ -180,11 +188,12 @@ export function KnowledgePointDetailScreen({
                     </Button>
                   ) : knowledgePoint.archiveSuggestion !== null ? (
                     <Button
-                      className="h-11 min-w-[140px] rounded-full"
+                      className="h-11 min-w-[148px] rounded-full border-[#d7c0ad] bg-[#fbf3eb] text-[var(--xidea-selection-text)] hover:bg-[#f5e9df]"
                       onClick={onStartArchiveConfirmation}
                       type="button"
                       variant="outline"
                     >
+                      <Archive className="h-4 w-4" />
                       接受归档建议
                     </Button>
                   ) : null}
@@ -196,9 +205,12 @@ export function KnowledgePointDetailScreen({
               knowledgePoint.archiveSuggestion !== null ? (
                 <Card className="rounded-[1rem] border-[#e3d3c6] bg-[#faf3ee] shadow-none">
                   <CardContent className="space-y-2 px-4 py-4">
-                    <p className="xidea-kicker text-[var(--xidea-selection-text)]">
-                      归档建议
-                    </p>
+                    <div className="flex items-center gap-2 text-[var(--xidea-selection-text)]">
+                      <Archive className="h-4 w-4" />
+                      <p className="xidea-kicker text-[var(--xidea-selection-text)]">
+                        归档建议
+                      </p>
+                    </div>
                     <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
                       {knowledgePoint.archiveSuggestion.reason}
                     </p>
@@ -251,15 +263,11 @@ export function KnowledgePointDetailScreen({
             <CardDescription>当前知识卡关联的项目材料。</CardDescription>
           </CardHeader>
           <CardContent>
-            {knowledgePointAssets.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {knowledgePointAssets.map((asset) => (
-                  <AssetListItem asset={asset} key={asset.id} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-[var(--xidea-stone)]">当前还没有挂接材料。</p>
-            )}
+            <AssetListGrid
+              assets={knowledgePointAssets}
+              className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+              emptyText="当前还没有挂接材料。"
+            />
           </CardContent>
         </Card>
       </div>

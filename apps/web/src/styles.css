@@ -29,6 +29,7 @@ html {
   --xidea-coral: #d97757;
   --xidea-focus: #3898ec;
   --xidea-serif: "Instrument Serif", "Georgia", serif;
+  --xidea-kaiti: "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif;
 }
 
 body {
@@ -101,6 +102,12 @@ button:not(:disabled):active {
   font-family: var(--xidea-serif);
   font-weight: 400;
   letter-spacing: normal;
+}
+
+.xidea-kaiti {
+  font-family: var(--xidea-kaiti);
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .xidea-kicker {
@@ -183,6 +190,34 @@ button:not(:disabled):active {
   }
 }
 
+@keyframes xidea-orb-drift {
+  0%,
+  100% {
+    transform: translate3d(
+        calc(var(--xidea-orb-scroll-x, 0px) * var(--xidea-orb-parallax-x, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-x, 0.3)),
+        calc(var(--xidea-orb-scroll-y, 0px) * var(--xidea-orb-parallax-y, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-y, 0.4)),
+        0
+      )
+      scale(1);
+  }
+  35% {
+    transform: translate3d(
+        calc(var(--xidea-orb-scroll-x, 0px) * var(--xidea-orb-parallax-x, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-x, 0.3) + var(--xidea-orb-x-1, 6px)),
+        calc(var(--xidea-orb-scroll-y, 0px) * var(--xidea-orb-parallax-y, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-y, 0.4) + var(--xidea-orb-y-1, -6px)),
+        0
+      )
+      scale(1.08);
+  }
+  68% {
+    transform: translate3d(
+        calc(var(--xidea-orb-scroll-x, 0px) * var(--xidea-orb-parallax-x, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-x, 0.3) + var(--xidea-orb-x-2, -4px)),
+        calc(var(--xidea-orb-scroll-y, 0px) * var(--xidea-orb-parallax-y, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-y, 0.4) + var(--xidea-orb-y-2, 4px)),
+        0
+      )
+      scale(0.94);
+  }
+}
+
 @keyframes xidea-modal-pop {
   0% {
     opacity: 0;
@@ -214,6 +249,30 @@ button:not(:disabled):active {
 .xidea-dot-wave {
   animation: xidea-dot-wave 1s ease-in-out infinite;
   animation-delay: var(--xidea-dot-delay, 0s);
+}
+
+.xidea-orb-drift {
+  animation: xidea-orb-drift var(--xidea-orb-duration, 6s) ease-in-out infinite;
+  animation-delay: var(--xidea-orb-delay, 0s);
+  will-change: transform;
+}
+
+.xidea-portrait-field {
+  transform: translate3d(0, var(--xidea-portrait-lift, 0px), 0)
+    rotate(var(--xidea-portrait-tilt, 0deg));
+  transform-origin: center;
+  transition: box-shadow 220ms ease;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xidea-orb-drift {
+    animation: none;
+  }
+
+  .xidea-portrait-field {
+    transform: none;
+  }
 }
 
 .xidea-modal-pop {
@@ -273,6 +332,7 @@ button:not(:disabled):active {
   .xidea-feedback-shake,
   .xidea-feedback-success,
   .xidea-dot-wave,
+  .xidea-orb-drift,
   .xidea-modal-pop {
     animation: none;
   }

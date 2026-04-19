@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { Brain } from "lucide-react";
+import { GraduationCap, MessageSquareText, RefreshCcw } from "lucide-react";
 import type {
   KnowledgePointItem,
   ProjectStats,
@@ -12,58 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  AssetCompactList,
   KnowledgePointCard,
-  MetricTile,
   SessionTypeBadge,
 } from "@/components/workspace/core";
 import { SessionListSection } from "@/components/workspace/session-list";
-import { MaterialUploadButton } from "@/components/material-upload-button";
-import { ReviewHeatmap, WorkspaceNavButton } from "@/components/workspace/monitor";
-import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
-import type { SourceAsset } from "@/domain/types";
-
-function MasteryPortrait({
-  projectStats,
-}: {
-  projectStats: ProjectStats;
-}): ReactElement {
-  const totalPoints = Math.max(projectStats.total, 1);
-  const masteredRatio = (projectStats.total - projectStats.unlearned - projectStats.dueReview) / totalPoints;
-  const stablePercent = Math.max(12, Math.round(masteredRatio * 100));
-
-  return (
-    <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-      <div className="relative flex h-24 w-24 items-center justify-center rounded-[1.6rem] border border-[var(--xidea-border)] bg-[linear-gradient(180deg,#fffaf5_0%,#f6efe9_100%)]">
-        <div
-          className="absolute inset-[18%] rounded-[1.2rem] bg-[radial-gradient(circle_at_50%_35%,rgba(201,100,66,0.22),transparent_55%),radial-gradient(circle_at_50%_78%,rgba(127,158,183,0.2),transparent_52%)]"
-          style={{ opacity: stablePercent / 100 }}
-        />
-        <div className="relative flex h-12 w-12 items-center justify-center rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
-          <Brain className="h-6 w-6" />
-        </div>
-        <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-[#c96442]" />
-        <span className="absolute bottom-3 left-3 h-2.5 w-2.5 rounded-full bg-[#7f9eb7]" />
-        <span className="absolute bottom-4 right-4 h-2 w-2 rounded-full bg-[#b98a4a]" />
-      </div>
-      <div className="min-w-0 space-y-2">
-        <p className="text-sm font-medium text-[var(--xidea-near-black)]">学习画像</p>
-        <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-          当前稳定掌握约 {stablePercent}% ，其余内容仍在学习或等待复习。
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <SessionTypeBadge type="project" />
-          <span className="rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-1 text-[12px] text-[var(--xidea-stone)]">
-            未学 {projectStats.unlearned}
-          </span>
-          <span className="rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-1 text-[12px] text-[var(--xidea-stone)]">
-            待复习 {projectStats.dueReview}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { WorkspaceNavButton } from "@/components/workspace/monitor";
 
 export function WorkspaceBrowseScreen({
   filteredKnowledgePoints,
@@ -73,18 +26,16 @@ export function WorkspaceBrowseScreen({
   onChangePendingPrompt,
   onOpenKnowledgePoint,
   onOpenSession,
-  onToggleProjectMaterial,
+  onStartProjectSession,
+  onStartReview,
+  onStartStudy,
   onSubmitPendingPrompt,
-  onUploadProjectMaterial,
   pendingPrompt,
   pendingSessionIntent,
-  profileSummary,
-  projectAssets,
-  projectMaterialIds,
-  projectMaterials,
-  projectReviewHeatmap,
   projectStats,
+  reviewDisabled,
   selectedProjectSessions,
+  studyDisabled,
   workspaceSection,
   onWorkspaceSectionChange,
 }: {
@@ -95,30 +46,24 @@ export function WorkspaceBrowseScreen({
   onChangePendingPrompt: (value: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
   onOpenSession: (sessionId: string) => void;
-  onToggleProjectMaterial: (assetId: string) => void;
+  onStartProjectSession: () => void;
+  onStartReview: () => void;
+  onStartStudy: () => void;
   onSubmitPendingPrompt: () => void;
-  onUploadProjectMaterial: (file: File) => Promise<void>;
   pendingPrompt: string;
   pendingSessionIntent: {
     readonly type: Extract<SessionType, "review" | "study">;
     readonly knowledgePointTitle: string | null;
   } | null;
-  profileSummary: {
-    readonly title: string;
-    readonly evidence: string;
-  };
-  projectAssets: ReadonlyArray<SourceAsset>;
-  projectMaterialIds: ReadonlyArray<string>;
-  projectMaterials: ReadonlyArray<SourceAsset>;
-  projectReviewHeatmap: ReadonlyArray<ReadonlyArray<ReviewHeatmapCell>>;
   projectStats: ProjectStats;
+  reviewDisabled: boolean;
   selectedProjectSessions: ReadonlyArray<SessionItem>;
+  studyDisabled: boolean;
   workspaceSection: WorkspaceSection;
   onWorkspaceSectionChange: (section: WorkspaceSection) => void;
 }): ReactElement {
   const projectSessions = selectedProjectSessions.filter((session) => session.type === "project");
   const learningSessions = selectedProjectSessions.filter((session) => session.type !== "project");
-  const visibleProjectMaterials = isEditingProjectMeta ? projectAssets : projectMaterials;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[312px_minmax(0,1fr)]">
@@ -146,14 +91,49 @@ export function WorkspaceBrowseScreen({
           </div>
 
           <SessionListSection
+            actions={
+              <Button
+                className="h-10 w-full rounded-[0.9rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] text-[var(--xidea-near-black)] hover:bg-[var(--xidea-selection)]"
+                onClick={onStartProjectSession}
+                type="button"
+                variant="outline"
+              >
+                <MessageSquareText className="h-4 w-4" />
+                研讨
+              </Button>
+            }
             description={getSessionTypeDescription("project")}
             emptyText="当前还没有研讨会话。"
             onOpenSession={onOpenSession}
             sessions={projectSessions}
+            showTypeBadge={false}
             title="研讨会话"
           />
 
           <SessionListSection
+            actions={
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  className="h-10 min-w-0 rounded-[0.9rem] bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                  disabled={studyDisabled}
+                  onClick={onStartStudy}
+                  type="button"
+                >
+                  <GraduationCap className="h-4 w-4" />
+                  学习
+                </Button>
+                <Button
+                  className="h-10 min-w-0 rounded-[0.9rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] hover:bg-[var(--xidea-selection)]"
+                  disabled={reviewDisabled}
+                  onClick={onStartReview}
+                  type="button"
+                  variant="outline"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  复习
+                </Button>
+              </div>
+            }
             description="学习负责推进新知识，复习负责回拉和校准。"
             emptyText="当前还没有学习或复习会话。"
             onOpenSession={onOpenSession}
@@ -217,7 +197,7 @@ export function WorkspaceBrowseScreen({
                 <div className="space-y-1">
                   <p className="xidea-kicker text-[var(--xidea-selection-text)]">知识卡</p>
                   <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                    当前共 {filteredKnowledgePoints.length} 张，点击可直接查看详情、关联会话和材料。
+                    当前共 {filteredKnowledgePoints.length} 张，展示当前工作区里的活跃知识卡。
                   </p>
                 </div>
                 <p className="text-[12px] text-[var(--xidea-stone)]">
@@ -248,69 +228,6 @@ export function WorkspaceBrowseScreen({
             </CardContent>
           </Card>
         )}
-
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.02fr)_minmax(280px,0.42fr)_minmax(320px,0.62fr)]">
-          <Card className="xidea-card-motion rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-            <CardContent className="space-y-5 p-5">
-              <div className="space-y-2">
-                <p className="xidea-kicker text-[var(--xidea-selection-text)]">学习画像</p>
-                <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                  {profileSummary.title}
-                </p>
-                <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                  {profileSummary.evidence}
-                </p>
-              </div>
-              <div className="space-y-4">
-                <MasteryPortrait projectStats={projectStats} />
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <MetricTile label="未学" tone="amber" value={`${projectStats.unlearned}`} />
-                  <MetricTile label="待复习" tone="sky" value={`${projectStats.dueReview}`} />
-                  <MetricTile label="已归档" tone="rose" value={`${projectStats.archived}`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-            <CardContent className="space-y-3 p-5">
-              <div className="space-y-1">
-                <p className="xidea-kicker text-[var(--xidea-stone)]">复习热力图</p>
-                <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                  悬停查看每天做了哪些学习或复习动作。
-                </p>
-              </div>
-              <ReviewHeatmap compact weeks={projectReviewHeatmap} />
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-            <CardContent className="space-y-3 p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <p className="xidea-kicker text-[var(--xidea-stone)]">项目材料</p>
-                  <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                    {isEditingProjectMeta
-                      ? "在这里调整材料池，并决定哪些材料参与研讨。"
-                      : "当前项目挂接的材料来源。"}
-                  </p>
-                </div>
-                {isEditingProjectMeta ? (
-                  <MaterialUploadButton label="上传材料" onUpload={onUploadProjectMaterial} />
-                ) : null}
-              </div>
-              <AssetCompactList
-                assets={visibleProjectMaterials}
-                emptyText={
-                  isEditingProjectMeta ? "当前材料池还是空的，先上传材料。" : "当前还没有项目材料。"
-                }
-                maxHeightClassName="max-h-[28rem]"
-                onAssetClick={isEditingProjectMeta ? onToggleProjectMaterial : undefined}
-                selectedAssetIds={isEditingProjectMeta ? projectMaterialIds : []}
-              />
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );

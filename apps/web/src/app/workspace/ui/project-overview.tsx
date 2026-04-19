@@ -1,9 +1,6 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import {
   FilePenLine,
-  GraduationCap,
-  MessageSquareText,
-  RefreshCcw,
   Sparkles,
 } from "lucide-react";
 import type { ProjectStats } from "@/domain/project-workspace";
@@ -21,33 +18,28 @@ function ProjectInfoPill({
   return (
     <div className="min-w-0 rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-2.5">
       <p className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">{label}</p>
-      <p className="mt-1 truncate text-sm font-medium text-[var(--xidea-near-black)]">
-        {value}
-      </p>
+      <p className="mt-1 truncate text-sm font-medium text-[var(--xidea-near-black)]">{value}</p>
     </div>
   );
 }
 
 export function ProjectOverviewPanel({
+  insights,
   isEditing,
   onCancelEditing,
   onChangeDraft,
   onEditProject,
   onSaveProjectMeta,
-  onStartProjectSession,
-  onStartReview,
-  onStartStudy,
   projectMetaDraft,
   projectSessionCount,
   projectStats,
-  reviewDisabled,
   selectedProjectDescription,
   selectedProjectName,
   selectedProjectRules,
   selectedProjectTopic,
   selectedProjectUpdatedAt,
-  studyDisabled,
 }: {
+  insights?: ReactNode;
   isEditing: boolean;
   onCancelEditing: () => void;
   onChangeDraft: (draft: {
@@ -58,9 +50,6 @@ export function ProjectOverviewPanel({
   }) => void;
   onEditProject: () => void;
   onSaveProjectMeta: () => void;
-  onStartProjectSession: () => void;
-  onStartReview: () => void;
-  onStartStudy: () => void;
   projectMetaDraft: {
     readonly topic: string;
     readonly description: string;
@@ -69,29 +58,27 @@ export function ProjectOverviewPanel({
   };
   projectSessionCount: number;
   projectStats: ProjectStats;
-  reviewDisabled: boolean;
   selectedProjectDescription: string;
   selectedProjectName: string;
   selectedProjectRules: ReadonlyArray<string>;
   selectedProjectTopic: string;
   selectedProjectUpdatedAt: string;
-  studyDisabled: boolean;
 }): ReactElement {
   return (
     <Card className="xidea-card-motion rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
       <CardContent className="space-y-4 p-5">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="xidea-kicker text-[var(--xidea-selection-text)]">当前项目</span>
-              <span className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-2.5 py-1 text-[12px] text-[var(--xidea-selection-text)]">
-                项目研讨与学习编排
-              </span>
-            </div>
-            <p className="text-[1.45rem] font-semibold tracking-[0.01em] text-[var(--xidea-near-black)]">
-              {selectedProjectName}
-            </p>
-            {isEditing ? (
+        {isEditing ? (
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="xidea-kicker text-[var(--xidea-selection-text)]">当前项目</span>
+                <span className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-2.5 py-1 text-[12px] text-[var(--xidea-selection-text)]">
+                  项目研讨与学习编排
+                </span>
+              </div>
+              <p className="text-[1.45rem] font-semibold tracking-[0.01em] text-[var(--xidea-near-black)]">
+                {selectedProjectName}
+              </p>
               <div className="space-y-3">
                 <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
                   <span className="font-medium text-[var(--xidea-near-black)]">当前主题</span>
@@ -127,102 +114,90 @@ export function ProjectOverviewPanel({
                   />
                 </label>
               </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 text-sm text-[var(--xidea-charcoal)]">
-                  <Sparkles className="h-4 w-4 text-[var(--xidea-selection-text)]" />
-                  <span className="font-medium text-[var(--xidea-near-black)]">当前主题</span>
-                  <span>{selectedProjectTopic}</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 xl:w-full">
+              <Button
+                className="h-11 w-full rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                onClick={onSaveProjectMeta}
+                type="button"
+              >
+                保存
+              </Button>
+              <Button
+                className="h-11 w-full rounded-full"
+                onClick={onCancelEditing}
+                type="button"
+                variant="outline"
+              >
+                取消
+              </Button>
+            </div>
+            {insights ? <div className="pt-1">{insights}</div> : null}
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(520px,0.92fr)]">
+              <div className="space-y-5">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="xidea-kicker text-[var(--xidea-selection-text)]">当前项目</span>
+                    <span className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-2.5 py-1 text-[12px] text-[var(--xidea-selection-text)]">
+                      项目研讨与学习编排
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-[1.45rem] font-semibold tracking-[0.01em] text-[var(--xidea-near-black)]">
+                      {selectedProjectName}
+                    </p>
+                    <Button
+                      className="h-9 rounded-full border-[var(--xidea-border)] px-3 text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-parchment)]"
+                      onClick={onEditProject}
+                      type="button"
+                      variant="ghost"
+                    >
+                      <FilePenLine className="h-4 w-4" />
+                      编辑
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-[var(--xidea-charcoal)]">
+                    <Sparkles className="h-4 w-4 text-[var(--xidea-selection-text)]" />
+                    <span className="font-medium text-[var(--xidea-near-black)]">当前主题</span>
+                    <span>{selectedProjectTopic}</span>
+                  </div>
+                  <p className="max-w-3xl text-sm leading-6 text-[var(--xidea-charcoal)]">
+                    {selectedProjectDescription}
+                  </p>
                 </div>
-                <p className="max-w-4xl text-sm leading-6 text-[var(--xidea-charcoal)]">
-                  {selectedProjectDescription}
-                </p>
+
                 {selectedProjectRules.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="space-y-2">
+                    <p className="xidea-kicker text-[var(--xidea-stone)]">项目约束</p>
                     {selectedProjectRules.slice(0, 4).map((rule) => (
-                      <span
-                        className="rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-1 text-[12px] text-[var(--xidea-charcoal)]"
+                      <div
+                        className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]"
                         key={rule}
                       >
                         {rule}
-                      </span>
+                      </div>
                     ))}
                   </div>
                 ) : null}
-              </>
-            )}
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              <ProjectInfoPill label="知识卡" value={`${projectStats.total} 张`} />
-              <ProjectInfoPill label="待复习" value={`${projectStats.dueReview} 张`} />
-              <ProjectInfoPill label="会话" value={`${projectSessionCount} 个`} />
-              <ProjectInfoPill label="最近更新" value={selectedProjectUpdatedAt} />
-            </div>
-          </div>
 
-          <div className="flex flex-col gap-3 xl:items-stretch xl:justify-start">
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] xl:w-full">
-              <Button
-                className="h-11 w-full rounded-full"
-                onClick={onStartProjectSession}
-                type="button"
-                variant="outline"
-              >
-                <MessageSquareText className="h-4 w-4" />
-                研讨
-              </Button>
-              <div className="xidea-card-motion flex items-center gap-1 rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-1">
-                <Button
-                  className="h-10 min-w-0 flex-1 rounded-[0.75rem] bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                  disabled={studyDisabled}
-                  onClick={onStartStudy}
-                  type="button"
-                >
-                  <GraduationCap className="h-4 w-4" />
-                  学习
-                </Button>
-                <Button
-                  className="h-10 min-w-0 flex-1 rounded-[0.75rem]"
-                  disabled={reviewDisabled}
-                  onClick={onStartReview}
-                  type="button"
-                  variant="outline"
-                >
-                  <RefreshCcw className="h-4 w-4" />
-                  复习
-                </Button>
+                <div className="space-y-2">
+                  <p className="xidea-kicker text-[var(--xidea-stone)]">项目状态</p>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    <ProjectInfoPill label="知识卡" value={`${projectStats.total} 张`} />
+                    <ProjectInfoPill label="待复习" value={`${projectStats.dueReview} 张`} />
+                    <ProjectInfoPill label="会话" value={`${projectSessionCount} 个`} />
+                    <ProjectInfoPill label="最近更新" value={selectedProjectUpdatedAt} />
+                  </div>
+                </div>
               </div>
+
+              {insights ? <div className="min-w-0">{insights}</div> : null}
             </div>
-            {isEditing ? (
-              <div className="grid gap-2 sm:grid-cols-2 xl:w-full">
-                <Button
-                  className="h-11 w-full rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                  onClick={onSaveProjectMeta}
-                  type="button"
-                >
-                  保存
-                </Button>
-                <Button
-                  className="h-11 w-full rounded-full"
-                  onClick={onCancelEditing}
-                  type="button"
-                  variant="outline"
-                >
-                  取消
-                </Button>
-              </div>
-            ) : (
-              <Button
-                className="h-11 w-full rounded-full xl:self-end"
-                onClick={onEditProject}
-                type="button"
-                variant="outline"
-              >
-                <FilePenLine className="h-4 w-4" />
-                编辑
-              </Button>
-            )}
-          </div>
-        </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
