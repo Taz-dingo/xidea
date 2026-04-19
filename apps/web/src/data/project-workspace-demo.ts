@@ -10,6 +10,9 @@ type KnowledgePointSeed = Omit<
 
 const knowledgePointMetaByUnitId: Record<string, KnowledgePointSeed> = {
   "unit-1": {
+    originSessionId: null,
+    linkedSessionIds: [],
+    linkedMessageIdsBySession: {},
     status: "active_review",
     mastery: 68,
     stageLabel: "待复习",
@@ -19,6 +22,9 @@ const knowledgePointMetaByUnitId: Record<string, KnowledgePointSeed> = {
     archiveSuggestion: null,
   },
   "unit-2": {
+    originSessionId: null,
+    linkedSessionIds: [],
+    linkedMessageIdsBySession: {},
     status: "active_unlearned",
     mastery: 24,
     stageLabel: "未学",
@@ -28,6 +34,9 @@ const knowledgePointMetaByUnitId: Record<string, KnowledgePointSeed> = {
     archiveSuggestion: null,
   },
   "unit-3": {
+    originSessionId: null,
+    linkedSessionIds: [],
+    linkedMessageIdsBySession: {},
     status: "active_review",
     mastery: 84,
     stageLabel: "待复习",
@@ -61,6 +70,9 @@ export const initialKnowledgePoints: ReadonlyArray<KnowledgePointItem> =
     return {
       id: unit.id,
       projectId,
+      originSessionId: meta?.originSessionId ?? null,
+      linkedSessionIds: meta?.linkedSessionIds ?? [],
+      linkedMessageIdsBySession: meta?.linkedMessageIdsBySession ?? {},
       title: unit.title,
       description: unit.summary,
       status: meta?.status ?? "active_unlearned",

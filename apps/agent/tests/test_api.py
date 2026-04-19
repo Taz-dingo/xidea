@@ -151,6 +151,8 @@ def test_persisted_run_is_queryable_from_storage_endpoints(
     assert len(full_messages) == 2
     assert full_messages[0]["role"] == "user"
     assert full_messages[1]["role"] == "assistant"
+    assert isinstance(full_messages[0]["message_id"], int)
+    assert isinstance(full_messages[0]["created_at"], str)
 
     assert messages_response.status_code == 200
     messages = messages_response.json()
@@ -418,6 +420,7 @@ def test_confirm_knowledge_point_suggestion_endpoint_is_idempotent(
     assert payload["suggestion"]["status"] == "accepted"
     assert payload["knowledge_point"]["title"] == "embedding 与 reranking 的边界"
     assert payload["knowledge_point_state"]["learning_status"] == "new"
+    assert payload["linked_session_message_ids"]["thread-project-1"] > 0
 
     second_confirm = persisted_client_with_suggestion.post(
         f"/projects/rag-demo/knowledge-point-suggestions/{suggestion_id}/confirm"
@@ -425,6 +428,31 @@ def test_confirm_knowledge_point_suggestion_endpoint_is_idempotent(
     assert second_confirm.status_code == 200
     assert second_confirm.json()["suggestion"]["status"] == "accepted"
     assert second_confirm.json()["knowledge_point"]["id"] == payload["knowledge_point"]["id"]
+
+
+def test_project_knowledge_points_endpoint_returns_session_message_links(
+    persisted_client_with_suggestion: TestClient,
+) -> None:
+    run_response = persisted_client_with_suggestion.post("/runs/v0", json=_SUGGESTION_REQUEST)
+    assert run_response.status_code == 200
+    suggestion_id = run_response.json()["graph_state"]["knowledge_point_suggestions"][0]["id"]
+
+    confirm_response = persisted_client_with_suggestion.post(
+        f"/projects/rag-demo/knowledge-point-suggestions/{suggestion_id}/confirm"
+    )
+    assert confirm_response.status_code == 200
+    knowledge_point_id = confirm_response.json()["knowledge_point"]["id"]
+
+    list_response = persisted_client_with_suggestion.get("/projects/rag-demo/knowledge-points")
+    assert list_response.status_code == 200
+    record = next(
+        item
+        for item in list_response.json()
+        if item["knowledge_point"]["id"] == knowledge_point_id
+    )
+
+    assert record["linked_session_ids"] == ["thread-project-1"]
+    assert record["linked_session_message_ids"]["thread-project-1"] > 0
 
 
 def test_dismiss_knowledge_point_suggestion_endpoint_is_idempotent(

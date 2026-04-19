@@ -55,7 +55,9 @@ export function getKnowledgePointRelatedSessions(
   return selectedKnowledgePoint === null
     ? []
     : selectedProjectSessions.filter(
-        (session) => session.knowledgePointId === selectedKnowledgePoint.id,
+        (session) =>
+          session.knowledgePointId === selectedKnowledgePoint.id ||
+          selectedKnowledgePoint.linkedSessionIds.includes(session.id),
       );
 }
 
@@ -227,6 +229,21 @@ export function getRelatedKnowledgePoints({
   }
 
   return selectedProjectKnowledgePoints.slice(0, 3);
+}
+
+export function getSessionCreatedKnowledgePoints(
+  selectedProjectKnowledgePoints: ReadonlyArray<KnowledgePointItem>,
+  selectedSession: SessionItem | null,
+): ReadonlyArray<KnowledgePointItem> {
+  if (selectedSession === null) {
+    return [];
+  }
+
+  return selectedProjectKnowledgePoints.filter(
+    (point) =>
+      point.originSessionId === selectedSession.id ||
+      point.linkedSessionIds.includes(selectedSession.id),
+  );
 }
 
 export function getKnowledgePointReviewHistorySummary({

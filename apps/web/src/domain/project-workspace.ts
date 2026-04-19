@@ -43,6 +43,9 @@ export interface SessionItem {
 export interface KnowledgePointItem {
   readonly id: string;
   readonly projectId: string;
+  readonly originSessionId: string | null;
+  readonly linkedSessionIds: ReadonlyArray<string>;
+  readonly linkedMessageIdsBySession: Readonly<Record<string, string>>;
   readonly title: string;
   readonly description: string;
   readonly status: KnowledgePointStatus;

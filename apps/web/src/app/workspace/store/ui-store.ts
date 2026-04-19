@@ -5,6 +5,7 @@ import {
   initialKnowledgePoints,
   initialProjects,
 } from "@/data/project-workspace-demo";
+import { resetLegacyWorkspaceStorage } from "@/app/workspace/store/persistence";
 import type {
   AppScreen,
   HomeSection,
@@ -71,6 +72,8 @@ const initialKnowledgePoint = initialKnowledgePoints[0];
 if (initialProject === undefined || initialKnowledgePoint === undefined) {
   throw new Error("Workspace UI store requires seeded project and knowledge point data.");
 }
+
+resetLegacyWorkspaceStorage();
 
 export const useWorkspaceUiStore = create<WorkspaceUiState>()(
   persist(
@@ -155,7 +158,7 @@ export const useWorkspaceUiStore = create<WorkspaceUiState>()(
         set((state) => ({ draftPrompt: resolveState(nextState, state.draftPrompt) })),
     }),
     {
-      name: "xidea-workspace-ui",
+      name: "xidea-workspace-ui-v2",
       partialize: (state) => ({
         homeSection: state.homeSection,
         screen: state.screen,
@@ -166,7 +169,7 @@ export const useWorkspaceUiStore = create<WorkspaceUiState>()(
         workspaceSection: state.workspaceSection,
       }),
       storage: createJSONStorage(() => localStorage),
-      version: 1,
+      version: 2,
     },
   ),
 );

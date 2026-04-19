@@ -18,6 +18,7 @@ import {
   getProjectSummaries,
   getRecentProjectSummaries,
   getRelatedKnowledgePoints,
+  getSessionCreatedKnowledgePoints,
   getReviewTargetPoint,
   getStudyTargetPoint,
   getVisibleKnowledgePoints,
@@ -133,6 +134,14 @@ export function useWorkspacePageModel({
       }),
     [data.selectedKnowledgePoint, data.selectedProjectKnowledgePoints, data.selectedSession],
   );
+  const sessionCreatedKnowledgePoints = useMemo(
+    () =>
+      getSessionCreatedKnowledgePoints(
+        data.selectedProjectKnowledgePoints,
+        data.selectedSession ?? null,
+      ),
+    [data.selectedProjectKnowledgePoints, data.selectedSession],
+  );
   const reviewEvents = useMemo(
     () =>
       data.knowledgePointReviewInspectors.flatMap((inspector) => inspector.events),
@@ -189,6 +198,30 @@ export function useWorkspacePageModel({
       reviewEvents,
     ],
   );
+  const projectReviewHeatmapExpanded = useMemo(
+    () =>
+      reviewEvents.length === 0
+        ? buildEmptyReviewHeatmap(52)
+        : buildReviewHeatmap(
+            reviewEvents,
+            latestKnowledgePointReviewedEvent?.event_at
+              ? formatDateLabel(latestKnowledgePointReviewedEvent.event_at)
+              : null,
+            formatDateLabel(
+              getLatestIsoDate(
+                data.knowledgePointReviewInspectors.map(
+                  (inspector) => inspector.scheduledAt,
+                ),
+              ),
+            ),
+            52,
+          ),
+    [
+      data.knowledgePointReviewInspectors,
+      latestKnowledgePointReviewedEvent?.event_at,
+      reviewEvents,
+    ],
+  );
   const knowledgePointReviewHistorySummary = useMemo(
     () =>
       getKnowledgePointReviewHistorySummary({
@@ -209,9 +242,11 @@ export function useWorkspacePageModel({
     knowledgePointReviewHistorySummary,
     normalizedSearchQuery,
     projectReviewHeatmap,
+    projectReviewHeatmapExpanded,
     projectMaterialCount,
     projectStats,
     relatedKnowledgePoints,
+    sessionCreatedKnowledgePoints,
     reviewTargetPoint,
     studyTargetPoint,
   };

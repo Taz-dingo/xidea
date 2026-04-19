@@ -5,6 +5,7 @@ import {
   initialKnowledgePoints,
   initialProjects,
 } from "@/data/project-workspace-demo";
+import { resetLegacyWorkspaceStorage } from "@/app/workspace/store/persistence";
 import { sourceAssets } from "@/data/demo";
 import type {
   KnowledgePointItem,
@@ -67,6 +68,8 @@ const initialProjectAssets = Object.fromEntries(
   ]),
 );
 
+resetLegacyWorkspaceStorage();
+
 export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
   persist(
     (set) => ({
@@ -96,7 +99,7 @@ export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
         })),
     }),
     {
-      name: "xidea-workspace-entities",
+      name: "xidea-workspace-entities-v4",
       partialize: (state) => ({
         knowledgePoints: state.knowledgePoints,
         projectAssetsByProject: state.projectAssetsByProject,
@@ -104,7 +107,7 @@ export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
         projects: state.projects,
       }),
       storage: createJSONStorage(() => localStorage),
-      version: 2,
+      version: 4,
     },
   ),
 );

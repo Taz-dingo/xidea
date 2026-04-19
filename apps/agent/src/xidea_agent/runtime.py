@@ -1955,11 +1955,13 @@ def _build_material_import_knowledge_point_suggestion(
 
     existing_keys: set[str] = set()
     existing_pending_by_key: dict[str, KnowledgePointSuggestion] = {}
+    existing_accepted_by_key: dict[str, KnowledgePointSuggestion] = {}
+    existing_point_id_by_key: dict[str, str] = {}
     if repository is not None:
-        existing_keys.update(
-            knowledge_point_identity_key(point.title)
-            for point in repository.list_project_knowledge_points(state.request.project_id)
-        )
+        for point in repository.list_project_knowledge_points(state.request.project_id):
+            point_key = knowledge_point_identity_key(point.title)
+            existing_keys.add(point_key)
+            existing_point_id_by_key[point_key] = point.id
         for suggestion in repository.list_knowledge_point_suggestions(
             state.request.project_id,
             statuses=["pending", "accepted"],
@@ -1970,6 +1972,8 @@ def _build_material_import_knowledge_point_suggestion(
             existing_keys.add(suggestion_key)
             if suggestion.status == "pending":
                 existing_pending_by_key[suggestion_key] = suggestion
+            elif suggestion.status == "accepted":
+                existing_accepted_by_key[suggestion_key] = suggestion
 
     for asset in assets:
         if not isinstance(asset, dict):
@@ -1979,6 +1983,37 @@ def _build_material_import_knowledge_point_suggestion(
         if candidate_key in existing_pending_by_key:
             return existing_pending_by_key[candidate_key]
         if candidate_key in existing_keys:
+            existing_knowledge_point_id = existing_point_id_by_key.get(candidate_key)
+            accepted_suggestion = existing_accepted_by_key.get(candidate_key)
+            if existing_knowledge_point_id is not None:
+                return KnowledgePointSuggestion(
+                    id=build_suggestion_id(
+                        state.request.project_id,
+                        state.request.thread_id,
+                        title,
+                    ),
+                    kind="create",
+                    project_id=state.request.project_id,
+                    session_id=state.request.thread_id,
+                    knowledge_point_id=existing_knowledge_point_id,
+                    title=title,
+                    description=accepted_suggestion.description
+                    if accepted_suggestion is not None
+                    else f"沿用知识点「{title}」，继续围绕当前材料推进。",
+                    reason=(
+                        f"当前材料继续收敛到已存在的知识点「{title}」，"
+                        "这轮应把当前会话也挂到这张知识卡上，方便后续回看与继续编排。"
+                    ),
+                    source_material_refs=list(
+                        state.project_context.source_asset_ids
+                        if state.project_context is not None
+                        else []
+                    ),
+                    status="accepted",
+                    created_at=timestamp,
+                    resolved_at=timestamp,
+                    updated_at=timestamp,
+                )
             continue
 
         asset_title = str(asset.get("title") or "当前材料").strip()

@@ -76,6 +76,42 @@ def test_repository_initializes_and_persists_run(tmp_path: Path) -> None:
     assert [event["event_kind"] for event in review_events] == ["reviewed", "scheduled"]
 
 
+def test_repository_generates_project_session_title_from_material_suggestion(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.save_project_material(
+        SourceAsset(
+            id="asset-uploaded-1",
+            title="LLM、音视频、具身智能.md",
+            kind="note",
+            topic="多模态学习编排",
+            summary="围绕 LLM、音视频、具身智能梳理学习主题。",
+            status="ready",
+            created_at=now,
+            updated_at=now,
+        ),
+        project_id="rag-demo",
+    )
+    request = build_request(
+        session_type="project",
+        thread_id="thread-material-import",
+        entry_mode="material-import",
+        target_unit_id=None,
+        source_asset_ids=["asset-uploaded-1"],
+        messages=[
+            {"role": "user", "content": "你先根据这份材料梳理主题，并产出可以继续学习的知识卡"},
+        ],
+    )
+    run_result = run_agent_v0(request, repository=repository, llm=build_mock_llm())
+
+    repository.save_run(request, run_result)
+
+    project_threads = repository.list_project_threads("rag-demo")
+    assert project_threads[0]["thread_id"] == "thread-material-import"
+    assert project_threads[0]["title"] == "LLM、音视频、具身智能 的关系"
+
+
 def test_repository_persists_and_resolves_knowledge_point_suggestion(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "agent.db")
     request = build_request(

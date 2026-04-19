@@ -1,6 +1,9 @@
 import type {
   AgentAssetSummary,
   AgentInspectorBootstrap,
+  AgentKnowledgePointRecord,
+  AgentKnowledgePointSuggestion,
+  AgentKnowledgePointSuggestionResolution,
   AgentMessage,
   AgentProjectThreadRecord,
   AgentLearnerUnitState,
@@ -255,6 +258,28 @@ export async function listProjectThreads(
   return (await response.json()) as ReadonlyArray<AgentProjectThreadRecord>;
 }
 
+export async function listProjectKnowledgePoints(
+  projectId: string,
+  options?: { signal?: AbortSignal },
+): Promise<ReadonlyArray<AgentKnowledgePointRecord>> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    throw new Error("未配置 agent API 地址。开发环境可直接启动本地代理，或设置 VITE_AGENT_API_BASE_URL。");
+  }
+
+  const response = await fetch(`${baseUrl}/projects/${projectId}/knowledge-points`, {
+    method: "GET",
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Project knowledge points 请求失败（${response.status}）。`);
+  }
+
+  return (await response.json()) as ReadonlyArray<AgentKnowledgePointRecord>;
+}
+
 export async function getThreadMessages(
   threadId: string,
   options?: { signal?: AbortSignal; limit?: number },
@@ -280,6 +305,52 @@ export async function getThreadMessages(
   }
 
   return (await response.json()) as ReadonlyArray<AgentMessage>;
+}
+
+export async function confirmKnowledgePointSuggestion(
+  projectId: string,
+  suggestionId: string,
+  options?: { signal?: AbortSignal },
+): Promise<AgentKnowledgePointSuggestionResolution> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    throw new Error("未配置 agent API 地址。开发环境可直接启动本地代理，或设置 VITE_AGENT_API_BASE_URL。");
+  }
+
+  const response = await fetch(
+    `${baseUrl}/projects/${projectId}/knowledge-point-suggestions/${suggestionId}/confirm`,
+    {
+      method: "POST",
+      signal: options?.signal,
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `知识点确认失败（${response.status}）。`);
+  }
+
+  return (await response.json()) as AgentKnowledgePointSuggestionResolution;
+}
+
+export async function deleteThread(
+  threadId: string,
+  options?: { signal?: AbortSignal },
+): Promise<void> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    throw new Error("未配置 agent API 地址。开发环境可直接启动本地代理，或设置 VITE_AGENT_API_BASE_URL。");
+  }
+
+  const response = await fetch(`${baseUrl}/threads/${threadId}`, {
+    method: "DELETE",
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `删除会话失败（${response.status}）。`);
+  }
 }
 
 export async function getInspectorBootstrap(

@@ -29,8 +29,10 @@ export type AgentSignalKind =
   | "project-relevance";
 
 export interface AgentMessage {
+  readonly message_id?: number;
   readonly role: "system" | "user" | "assistant";
   readonly content: string;
+  readonly created_at?: string;
 }
 
 export interface AgentRequest {
@@ -151,6 +153,60 @@ export interface AgentLearnerUnitState {
   readonly based_on: ReadonlyArray<string>;
 }
 
+export interface AgentKnowledgePoint {
+  readonly id: string;
+  readonly project_id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly status: "active" | "archived";
+  readonly origin_type: string;
+  readonly origin_session_id: string | null;
+  readonly source_material_refs: ReadonlyArray<string>;
+  readonly created_at: string | null;
+  readonly updated_at: string | null;
+}
+
+export interface AgentKnowledgePointState {
+  readonly knowledge_point_id: string;
+  readonly mastery: number;
+  readonly learning_status: string;
+  readonly review_status: string;
+  readonly next_review_at: string | null;
+  readonly archive_suggested: boolean;
+  readonly updated_at: string | null;
+}
+
+export interface AgentKnowledgePointSuggestion {
+  readonly id: string;
+  readonly kind: "create" | "archive";
+  readonly project_id: string;
+  readonly session_id: string;
+  readonly origin_message_id?: number | null;
+  readonly knowledge_point_id: string | null;
+  readonly title: string;
+  readonly description: string;
+  readonly reason: string;
+  readonly source_material_refs: ReadonlyArray<string>;
+  readonly status: "pending" | "accepted" | "dismissed";
+  readonly created_at: string | null;
+  readonly resolved_at: string | null;
+  readonly updated_at: string | null;
+}
+
+export interface AgentKnowledgePointSuggestionResolution {
+  readonly suggestion: AgentKnowledgePointSuggestion;
+  readonly knowledge_point: AgentKnowledgePoint | null;
+  readonly knowledge_point_state: AgentKnowledgePointState | null;
+  readonly linked_session_message_ids: Readonly<Record<string, number>>;
+}
+
+export interface AgentKnowledgePointRecord {
+  readonly knowledge_point: AgentKnowledgePoint;
+  readonly knowledge_point_state: AgentKnowledgePointState | null;
+  readonly linked_session_ids: ReadonlyArray<string>;
+  readonly linked_session_message_ids: Readonly<Record<string, number>>;
+}
+
 interface AgentLearnerStatePatch {
   readonly mastery: number | null;
   readonly understanding_level: number | null;
@@ -197,6 +253,10 @@ export type AgentStreamEvent =
   | { readonly event: "diagnosis"; readonly diagnosis: AgentDiagnosis }
   | { readonly event: "activity"; readonly activity: AgentActivity }
   | { readonly event: "activities"; readonly activities: ReadonlyArray<AgentActivity> }
+  | {
+      readonly event: "knowledge-point-suggestion";
+      readonly suggestions: ReadonlyArray<AgentKnowledgePointSuggestion>;
+    }
   | { readonly event: "plan"; readonly plan: AgentPlan }
   | { readonly event: "state-patch"; readonly state_patch: AgentStatePatch }
   | { readonly event: "done"; readonly final_message: string | null };

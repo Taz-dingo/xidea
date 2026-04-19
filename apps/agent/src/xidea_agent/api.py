@@ -22,6 +22,8 @@ from xidea_agent.state import (
     AgentRunResult,
     Diagnosis,
     GraphState,
+    KnowledgePoint,
+    KnowledgePointState,
     KnowledgePointSuggestionResolution,
     StatePatch,
     StreamEvent,
@@ -51,6 +53,13 @@ class ThreadRecordResponse(BaseModel):
     source_asset_ids: list[str] = Field(default_factory=list)
     created_at: str
     updated_at: str
+
+
+class KnowledgePointRecordResponse(BaseModel):
+    knowledge_point: KnowledgePoint
+    knowledge_point_state: KnowledgePointState | None = None
+    linked_session_ids: list[str] = Field(default_factory=list)
+    linked_session_message_ids: dict[str, int] = Field(default_factory=dict)
 
 
 def create_app(
@@ -135,6 +144,39 @@ def create_app(
         repo = _require_repository(repository)
         return repo.list_project_threads(project_id)
 
+    @app.get(
+        "/projects/{project_id}/knowledge-points",
+        response_model=list[KnowledgePointRecordResponse],
+    )
+    def list_project_knowledge_points(project_id: str) -> list[KnowledgePointRecordResponse]:
+        repo = _require_repository(repository)
+        linked_session_ids_by_point: dict[str, set[str]] = {}
+        linked_session_message_ids_by_point: dict[str, dict[str, int]] = {}
+        for suggestion in repo.list_knowledge_point_suggestions(project_id, statuses=["accepted"]):
+            if suggestion.kind != "create" or suggestion.knowledge_point_id is None:
+                continue
+            linked_session_ids_by_point.setdefault(suggestion.knowledge_point_id, set()).add(
+                suggestion.session_id
+            )
+            if suggestion.origin_message_id is not None:
+                linked_session_message_ids_by_point.setdefault(suggestion.knowledge_point_id, {})[
+                    suggestion.session_id
+                ] = suggestion.origin_message_id
+        records: list[KnowledgePointRecordResponse] = []
+        for point in repo.list_project_knowledge_points(project_id):
+            linked_session_ids = linked_session_ids_by_point.get(point.id, set()).copy()
+            if point.origin_session_id is not None:
+                linked_session_ids.add(point.origin_session_id)
+            records.append(
+                KnowledgePointRecordResponse(
+                    knowledge_point=point,
+                    knowledge_point_state=repo.get_knowledge_point_state(point.id),
+                    linked_session_ids=sorted(linked_session_ids),
+                    linked_session_message_ids=linked_session_message_ids_by_point.get(point.id, {}),
+                )
+            )
+        return records
+
     @app.post("/projects/{project_id}/materials/upload", response_model=SourceAsset)
     def upload_project_material(
         project_id: str,
@@ -176,12 +218,15 @@ def create_app(
         return [message.model_dump() for message in repo.list_recent_messages(thread_id, limit)]
 
     @app.get("/threads/{thread_id}/messages")
-    def thread_messages(thread_id: str, limit: int | None = None) -> list[dict[str, str]]:
+    def thread_messages(thread_id: str, limit: int | None = None) -> list[dict[str, object]]:
         repo = _require_repository(repository)
-        return [
-            message.model_dump()
-            for message in repo.list_thread_messages(thread_id, limit=limit)
-        ]
+        return repo.list_thread_message_records(thread_id, limit=limit)
+
+    @app.delete("/threads/{thread_id}")
+    def delete_thread(thread_id: str) -> dict[str, bool]:
+        repo = _require_repository(repository)
+        repo.delete_thread(thread_id)
+        return {"ok": True}
 
     @app.get("/threads/{thread_id}/context", response_model=None)
     def thread_context(thread_id: str) -> dict[str, object] | Response:

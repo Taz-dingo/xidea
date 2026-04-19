@@ -238,6 +238,7 @@ class KnowledgePointSuggestion(StrictModel):
     kind: KnowledgePointSuggestionKind
     project_id: str = Field(min_length=1)
     session_id: str = Field(min_length=1)
+    origin_message_id: int | None = None
     knowledge_point_id: str | None = None
     title: str = Field(min_length=1)
     description: str = Field(min_length=1)
@@ -253,6 +254,7 @@ class KnowledgePointSuggestionResolution(StrictModel):
     suggestion: KnowledgePointSuggestion
     knowledge_point: KnowledgePoint | None = None
     knowledge_point_state: KnowledgePointState | None = None
+    linked_session_message_ids: dict[str, int] = Field(default_factory=dict)
 
 
 class ProjectMemory(StrictModel):
