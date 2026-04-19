@@ -71,7 +71,7 @@ function buildWriteback(unit: LearningUnit, learner: LearnerState): ReadonlyArra
     previews.push({
       id: "confusion-patch",
       target: "LearnerState.confusion",
-      change: "把容易混淆的 RAG 概念边界写回线程，作为下一轮辨析依据。",
+      change: "把容易混淆的关键概念边界写回线程，作为下一轮辨析依据。",
     });
   }
 
@@ -92,7 +92,7 @@ function buildWriteback(unit: LearningUnit, learner: LearnerState): ReadonlyArra
   previews.push({
     id: "review-patch",
     target: "Review Engine",
-    change: "根据本轮表现决定是否安排下一次 RAG 关键概念复盘。",
+    change: "根据本轮表现决定是否安排下一次关键概念复盘。",
   });
 
   return previews;
@@ -129,7 +129,7 @@ export function buildStudyPlan(unit: LearningUnit, learner: LearnerState): Study
       createStep(
         "scenario",
         "scenario-sim",
-        "当前更值得验证的是能否把 RAG 判断迁移到真实项目场景。",
+        "当前更值得验证的是能否把当前判断迁移到真实任务场景。",
         "从概念理解升级到能解释具体设计取舍。",
       ),
     );
