@@ -1,5 +1,8 @@
+import json
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import (
@@ -12,6 +15,7 @@ from xidea_agent.runtime import (
     run_agent_v0,
 )
 from xidea_agent.review_engine import ReviewDecision
+from xidea_agent.llm import LLMClient
 from xidea_agent.state import (
     AgentRequest,
     KnowledgePoint,
@@ -98,7 +102,7 @@ def test_run_agent_v0_falls_back_to_rule_diagnosis_when_llm_unavailable() -> Non
     assert result.graph_state.diagnosis.recommended_action == "clarify"
     assert result.graph_state.plan is not None
     assert result.graph_state.activity is None
-    assert len(result.graph_state.knowledge_point_suggestions) == 1
+    assert len(result.graph_state.knowledge_point_suggestions) == 3
     assert "asset-2" in (result.graph_state.assistant_message or "") or "检索召回与重排对比笔记" in (
         result.graph_state.assistant_message or ""
     )
@@ -263,7 +267,7 @@ def test_run_agent_v0_emits_knowledge_point_suggestion_for_project_chat() -> Non
     ]
 
 
-def test_material_import_project_session_emits_knowledge_point_suggestion(tmp_path: Path) -> None:
+def test_material_import_project_session_emits_multiple_knowledge_point_suggestions(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "agent.db")
     repository.initialize()
     material_path = tmp_path / "materials.md"
@@ -300,13 +304,207 @@ def test_material_import_project_session_emits_knowledge_point_suggestion(tmp_pa
         llm=build_mock_llm_for_material_import(),
     )
 
-    assert len(result.graph_state.knowledge_point_suggestions) == 1
-    suggestion = result.graph_state.knowledge_point_suggestions[0]
-    assert suggestion.kind == "create"
-    assert suggestion.status == "pending"
-    assert suggestion.source_material_refs == ["material-uploaded-1"]
-    assert suggestion.title == "llm-multimodal-notes"
-    assert "llm-multimodal-notes.md" in suggestion.reason
+    assert len(result.graph_state.knowledge_point_suggestions) == 3
+    titles = [suggestion.title for suggestion in result.graph_state.knowledge_point_suggestions]
+    assert titles == [
+        "万物皆可Token化",
+        "DiT架构",
+        "LLM作为具身智能的“常识大脑”",
+    ]
+    assert all(suggestion.kind == "create" for suggestion in result.graph_state.knowledge_point_suggestions)
+    assert all(suggestion.status == "pending" for suggestion in result.graph_state.knowledge_point_suggestions)
+    assert all(
+        suggestion.source_material_refs == ["material-uploaded-1"]
+        for suggestion in result.graph_state.knowledge_point_suggestions
+    )
+    assert all(
+        "llm-multimodal-notes.md" in suggestion.reason
+        for suggestion in result.graph_state.knowledge_point_suggestions
+    )
+
+
+def test_material_import_uses_asset_knowledge_point_candidates_when_reply_is_generic(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "materials.md"
+    material_path.write_text(
+        "# 多模态大模型学习梳理\n\n"
+        "- 一个可学习的知识点是：为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式。\n"
+        "- 第二个知识点是：DiT 和 Transformer 范式如何从文本迁移到图像视频。\n"
+        "- 第三个知识点是：LLM 作为具身智能常识大脑的边界。\n",
+        encoding="utf-8",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-2",
+            title="xidea-multimodal-demo.md",
+            kind="note",
+            topic="大模型、音视频、具身智能",
+            summary="用于验证材料正文里的知识点提炼，不依赖 reply 显式列出三条。",
+            source_uri="xidea-multimodal-demo.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = build_request(
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-2"],
+        messages=[{"role": "user", "content": "根据这份材料生成知识点"}],
+    )
+
+    def _response(content: str):
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message)
+        return SimpleNamespace(choices=[choice])
+
+    def _stream_chunk(content: str):
+        delta = SimpleNamespace(content=content)
+        choice = SimpleNamespace(delta=delta)
+        return SimpleNamespace(choices=[choice])
+
+    generic_main_decision = json.dumps({
+        "signals": [
+            {"kind": "project-relevance", "score": 0.92, "confidence": 0.86, "summary": "材料与当前项目高度相关"},
+        ],
+        "diagnosis": {
+            "recommended_action": "clarify",
+            "reason": "先围绕材料收敛知识点，再决定后续学习安排。",
+            "confidence": 0.86,
+            "primary_issue": "missing-context",
+            "needs_tool": False,
+        },
+        "reply": "我先按这份材料收敛学习主题，再继续往知识点沉淀和后续编排推进。",
+        "plan": {
+            "headline": "围绕材料收敛学习方向",
+            "summary": "先沉淀知识点，再决定学习与复习安排。",
+            "selected_mode": "guided-qa",
+            "expected_outcome": "明确下一轮最值得沉淀的学习对象。",
+            "steps": [
+                {
+                    "id": "clarify-material",
+                    "title": "围绕材料收敛主题",
+                    "mode": "guided-qa",
+                    "reason": "先把材料里的稳定判断拉出来。",
+                    "outcome": "明确后续要沉淀的知识点。",
+                }
+            ],
+        },
+        "activities": [],
+    })
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = [
+        _response(generic_main_decision),
+        iter([_stream_chunk("我先按这份材料收敛学习主题。")]),
+    ]
+    llm = LLMClient(client=mock_client, model="gpt-4o-mini")
+
+    result = run_agent_v0(request, repository=repository, llm=llm)
+
+    titles = [suggestion.title for suggestion in result.graph_state.knowledge_point_suggestions]
+    assert titles == [
+        "为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式",
+        "DiT 和 Transformer 范式如何从文本迁移到图像视频",
+        "LLM 作为具身智能常识大脑的边界",
+    ]
+
+
+def test_iter_agent_v0_events_material_import_reply_matches_generated_suggestions(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "materials.md"
+    material_path.write_text(
+        "# 多模态大模型学习梳理\n\n"
+        "- 一个可学习的知识点是：为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式。\n"
+        "- 第二个知识点是：DiT 和 Transformer 范式如何从文本迁移到图像视频。\n"
+        "- 第三个知识点是：LLM 作为具身智能常识大脑的边界。\n",
+        encoding="utf-8",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-3",
+            title="xidea-multimodal-demo.md",
+            kind="note",
+            topic="大模型、音视频、具身智能",
+            summary="用于验证 stream 回复会和生成出的知识点建议保持一致。",
+            source_uri="xidea-multimodal-demo.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = build_request(
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-3"],
+        messages=[{"role": "user", "content": "根据这份材料生成知识点"}],
+    )
+
+    def _response(content: str):
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message)
+        return SimpleNamespace(choices=[choice])
+
+    generic_main_decision = json.dumps(
+        {
+            "signals": [
+                {
+                    "kind": "project-relevance",
+                    "score": 0.92,
+                    "confidence": 0.86,
+                    "summary": "材料与当前项目高度相关",
+                },
+            ],
+            "diagnosis": {
+                "recommended_action": "clarify",
+                "reason": "先围绕材料收敛知识点，再决定后续学习安排。",
+                "confidence": 0.86,
+                "primary_issue": "missing-context",
+                "needs_tool": False,
+            },
+            "reply": "我先按这份材料收敛学习主题，再继续往知识点沉淀和后续编排推进。",
+            "plan": {
+                "headline": "围绕材料收敛学习方向",
+                "summary": "先沉淀知识点，再决定学习与复习安排。",
+                "selected_mode": "guided-qa",
+                "expected_outcome": "明确下一轮最值得沉淀的学习对象。",
+                "steps": [
+                    {
+                        "id": "clarify-material",
+                        "title": "围绕材料收敛主题",
+                        "mode": "guided-qa",
+                        "reason": "先把材料里的稳定判断拉出来。",
+                        "outcome": "明确后续要沉淀的知识点。",
+                    }
+                ],
+            },
+            "activities": [],
+        }
+    )
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = [_response(generic_main_decision)]
+    llm = LLMClient(client=mock_client, model="gpt-4o-mini")
+
+    events = list(iter_agent_v0_events(request, repository=repository, llm=llm))
+
+    text = "".join(event.delta for event in events if event.event == "text-delta")
+    assert "我已经先整理出 3 条候选知识点" in text
+    assert "为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式" in text
+    assert "DiT 和 Transformer 范式如何从文本迁移到图像视频" in text
+    assert "LLM 作为具身智能常识大脑的边界" in text
 
 
 def test_iter_agent_v0_events_reuses_existing_material_suggestion_and_reply(tmp_path: Path) -> None:
@@ -385,7 +583,7 @@ def test_project_session_never_emits_activity_even_with_target_unit() -> None:
     assert any("skipped activity because project session" in item for item in result.graph_state.rationale)
 
 
-def test_project_session_low_info_short_circuits_without_calling_llm() -> None:
+def test_project_session_low_info_message_no_longer_short_circuits() -> None:
     llm = build_mock_llm()
     request = build_request(
         session_type="project",
@@ -397,24 +595,10 @@ def test_project_session_low_info_short_circuits_without_calling_llm() -> None:
     result = run_agent_v0(request, llm=llm)
 
     assert result.graph_state.diagnosis is not None
-    assert result.graph_state.diagnosis.primary_issue == "missing-context"
-    assert result.graph_state.activities == []
-    assert result.graph_state.knowledge_point_suggestions == []
-    assert result.graph_state.state_patch is not None
-    assert result.graph_state.state_patch.learner_state_patch is None
-    assert "project session" in (result.graph_state.assistant_message or "")
-    assert "学习方向" in (result.graph_state.assistant_message or "")
     assert result.graph_state.plan is not None
-    assert "补相关材料" in result.graph_state.plan.expected_outcome
-    assert [event.event for event in result.events] == [
-        "diagnosis",
-        "text-delta",
-        "plan",
-        "state-patch",
-        "done",
-    ]
-    assert any("project_chat low-info guardrail" in item for item in result.graph_state.rationale)
-    assert llm.client.chat.completions.create.call_count == 0
+    assert result.graph_state.assistant_message is not None
+    assert "project_chat low-info guardrail" not in " ".join(result.graph_state.rationale)
+    assert llm.client.chat.completions.create.call_count > 0
 
 
 def test_review_session_capability_message_short_circuits_without_calling_llm() -> None:

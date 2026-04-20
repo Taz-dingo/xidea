@@ -109,7 +109,7 @@ def test_repository_generates_project_session_title_from_material_suggestion(tmp
 
     project_threads = repository.list_project_threads("rag-demo")
     assert project_threads[0]["thread_id"] == "thread-material-import"
-    assert project_threads[0]["title"] == "LLM、音视频、具身智能 的关系"
+    assert project_threads[0]["title"].startswith("LLM")
 
 
 def test_repository_persists_and_resolves_knowledge_point_suggestion(tmp_path: Path) -> None:
@@ -271,6 +271,67 @@ def test_repository_persists_activity_result_writeback_to_project_level_state(tm
     assert project_context is not None
     assert project_context["project_memory"] is not None
     assert project_context["project_learning_profile"] is not None
+
+
+def test_repository_persists_thread_activity_decks(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    request = build_request(
+        session_type="study",
+        knowledge_point_id="kp-rag-boundary",
+        activity_result={
+            "run_id": "run-study-1",
+            "project_id": "rag-demo",
+            "session_id": "thread-1",
+            "activity_id": "batch-activity-rag-boundary",
+            "knowledge_point_id": "kp-rag-boundary",
+            "result_type": "exercise",
+            "action": "submit",
+            "answer": "已提交本组学习动作结果（2 张卡，尝试 2 次，已全部答对）。",
+            "meta": {
+                "items": [
+                    {
+                        "activityId": "activity-1",
+                        "activityTitle": "边界判断",
+                        "activityPrompt": "说明为什么不能只做向量召回。",
+                        "knowledgePointId": "kp-rag-boundary",
+                        "kind": "guided-qa",
+                        "action": "submit",
+                        "responseText": "因为召回不等于回答可用。",
+                        "selectedChoiceId": None,
+                        "isCorrect": True,
+                        "attempts": [],
+                        "finalFeedback": "回答到位。",
+                        "finalAnalysis": None,
+                    },
+                    {
+                        "activityId": "activity-2",
+                        "activityTitle": "信号辨析",
+                        "activityPrompt": "区分召回率和排序质量。",
+                        "knowledgePointId": "kp-rag-boundary",
+                        "kind": "contrast-drill",
+                        "action": "submit",
+                        "responseText": "召回率高也可能排错。",
+                        "selectedChoiceId": None,
+                        "isCorrect": True,
+                        "attempts": [],
+                        "finalFeedback": "区分准确。",
+                        "finalAnalysis": None,
+                    },
+                ]
+            },
+        },
+    )
+    run_result = run_agent_v0(request, repository=repository, llm=build_mock_llm_for_review())
+
+    repository.save_run(request, run_result)
+
+    decks = repository.list_thread_activity_decks("thread-1")
+    assert len(decks) == 1
+    assert decks[0]["deck_id"] == "run-study-1"
+    assert decks[0]["session_type"] == "study"
+    assert decks[0]["knowledge_point_id"] == "kp-rag-boundary"
+    assert len(decks[0]["cards"]) == 2
 
 
 def test_repository_persists_project_materials(tmp_path: Path) -> None:

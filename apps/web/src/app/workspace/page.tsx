@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { tutorFixtureScenarios } from "@/data/tutor-fixtures";
 import { sourceAssets } from "@/data/demo";
+import { buildPendingSessionId } from "@/domain/project-workspace";
 import { WorkspaceHeader } from "@/app/workspace/ui/header";
 import { ProjectInsightsStrip } from "@/app/workspace/ui/project-insights";
 import { ProjectOverviewPanel } from "@/app/workspace/ui/project-overview";
@@ -26,6 +27,34 @@ export function WorkspacePage(): ReactElement {
     activeRuntime: session.activeRuntime,
     data,
   });
+  const pendingWorkspaceSession =
+    data.pendingSessionIntent === null
+      ? null
+      : {
+          id: buildPendingSessionId({
+            projectId: data.pendingSessionIntent.projectId,
+            type: data.pendingSessionIntent.type,
+            knowledgePointId: data.pendingSessionIntent.knowledgePointId,
+          }),
+          projectId: data.pendingSessionIntent.projectId,
+          type: data.pendingSessionIntent.type,
+          knowledgePointId: data.pendingSessionIntent.knowledgePointId,
+          title:
+            data.pendingSessionIntent.type === "project"
+              ? "开始研讨"
+              : data.pendingSessionIntent.type === "review"
+                ? "开始复习"
+                : "开始学习",
+          summary:
+            data.pendingSessionIntent.type === "project"
+              ? "先输入这轮想推进的主题、材料或知识点沉淀目标。"
+              : data.pendingSessionIntent.knowledgePointTitle
+                ? `围绕「${data.pendingSessionIntent.knowledgePointTitle}」开始一轮${data.pendingSessionIntent.type === "study" ? "学习" : "复习"}。`
+                : `先输入这轮想验证的内容，再开始一轮${data.pendingSessionIntent.type === "study" ? "学习" : "复习"}。`,
+          updatedAt: "待开始",
+          status: "待开始",
+        };
+  const activeWorkspaceSession = data.selectedSession ?? pendingWorkspaceSession;
 
   return (
     <main className="xidea-shell min-h-screen bg-[var(--xidea-parchment)] text-[var(--xidea-near-black)]">
@@ -68,7 +97,7 @@ export function WorkspacePage(): ReactElement {
             />
           ) : (
             <div className="space-y-4">
-              {data.selectedSession === undefined ? (
+              {activeWorkspaceSession === null ? (
                 <>
                   <ProjectOverviewPanel
                     insights={
@@ -168,7 +197,7 @@ export function WorkspacePage(): ReactElement {
                   hasPersistedState={session.hasPersistedState}
                   hasStructuredRuntime={session.hasStructuredRuntime}
                   isAgentRunning={session.isAgentRunning}
-                  isBlankSession={session.isBlankSession}
+                  isBlankSession={session.isBlankSession || data.selectedSession === undefined}
                   isDevEnvironment={data.isDevEnvironment}
                   isMaterialsTrayOpen={session.isMaterialsTrayOpen}
                   isUsingDevTutorFixture={session.isUsingDevTutorFixture}
@@ -176,8 +205,15 @@ export function WorkspacePage(): ReactElement {
                   latestReviewedLabel={session.latestReviewedLabel}
                   nextReviewLabel={session.nextReviewLabel}
                   onChangeDraftPrompt={session.handleChangeDraftPrompt}
-                  onCloseSession={() => data.setSelectedSessionId("")}
-                  onDeleteSession={actions.handleDeleteSession}
+                  onCloseSession={() => {
+                    data.setPendingSessionIntent(null);
+                    data.setSelectedSessionId("");
+                  }}
+                  onDeleteSession={() => {
+                    if (data.selectedSession !== undefined) {
+                      actions.handleDeleteSession();
+                    }
+                  }}
                   onDisableTutorFixture={session.handleDisableTutorFixture}
                   onEditKnowledgePoint={actions.handleOpenKnowledgePointEditor}
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
@@ -220,7 +256,7 @@ export function WorkspacePage(): ReactElement {
                   selectedProject={data.selectedProject}
                   selectedProjectMaterials={data.selectedProjectMaterials}
                   selectedProjectSessions={data.selectedProjectSessions}
-                  selectedSession={data.selectedSession}
+                  selectedSession={activeWorkspaceSession}
                   selectedSourceAssetIds={session.selectedSourceAssetIds}
                   selectedUnitTitle={session.selectedUnitTitle}
                   activityInputDisabled={session.activityInputDisabled}

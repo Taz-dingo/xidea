@@ -165,6 +165,7 @@ export function SessionWorkspace({
   const projectSessions = selectedProjectSessions.filter((session) => session.type === "project");
   const learningSessions = selectedProjectSessions.filter((session) => session.type !== "project");
   const [deleteArmed, setDeleteArmed] = useState(false);
+  const isPendingSession = selectedSession.status === "待开始";
 
   useEffect(() => {
     if (!deleteArmed) {
@@ -288,22 +289,24 @@ export function SessionWorkspace({
                           ? "可用"
                           : "检查中"}
               </Badge>
-              <Button
-                aria-label={deleteArmed ? "确认删除会话" : "删除会话"}
-                className="h-10 w-10 rounded-full p-0"
-                onClick={() => {
-                  if (deleteArmed) {
-                    onDeleteSession();
-                    return;
-                  }
-                  setDeleteArmed(true);
-                }}
-                title={deleteArmed ? "再点一次删除" : "删除会话"}
-                type="button"
-                variant="outline"
-              >
-                <X className={deleteArmed ? "h-4 w-4 text-red-600" : "h-4 w-4"} />
-              </Button>
+              {!isPendingSession ? (
+                <Button
+                  aria-label={deleteArmed ? "确认删除会话" : "删除会话"}
+                  className="h-10 w-10 rounded-full p-0"
+                  onClick={() => {
+                    if (deleteArmed) {
+                      onDeleteSession();
+                      return;
+                    }
+                    setDeleteArmed(true);
+                  }}
+                  title={deleteArmed ? "再点一次删除" : "删除会话"}
+                  type="button"
+                  variant="outline"
+                >
+                  <X className={deleteArmed ? "h-4 w-4 text-red-600" : "h-4 w-4"} />
+                </Button>
+              ) : null}
               <Button className="rounded-full" onClick={onCloseSession} type="button" variant="outline">
                 关闭 session
               </Button>

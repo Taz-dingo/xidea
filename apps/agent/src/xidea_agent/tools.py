@@ -4,10 +4,14 @@ import re
 from pathlib import Path
 from typing import Any
 
-from xidea_agent.material_content import normalize_material_text
+from xidea_agent.material_content import (
+    extract_material_knowledge_point_candidates,
+    normalize_material_text,
+)
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.state import (
     AgentRequest,
+    KnowledgePoint,
     LearningUnit,
     Message,
     ProjectContext,
@@ -200,9 +204,35 @@ def retrieve_source_assets(
     return assets
 
 
-def retrieve_learning_unit(unit_id: str | None, topic: str) -> LearningUnit:
+def _build_learning_unit_from_knowledge_point(point: KnowledgePoint) -> LearningUnit:
+    summary = point.description.strip() or f"围绕知识点「{point.title}」建立稳定理解与可迁移判断。"
+    weakness_tags = ["知识点沉淀", "概念边界"]
+    if point.source_material_refs:
+        weakness_tags.append("材料迁移")
+    return LearningUnit(
+        id=point.id,
+        title=point.title,
+        summary=summary,
+        weakness_tags=list(dict.fromkeys(weakness_tags)),
+        candidate_modes=["guided-qa", "contrast-drill", "scenario-sim"],
+        difficulty=3 if point.source_material_refs else 2,
+    )
+
+
+def retrieve_learning_unit(
+    unit_id: str | None,
+    topic: str,
+    *,
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+) -> LearningUnit:
     if unit_id and unit_id in _UNIT_CATALOG:
         return _UNIT_CATALOG[unit_id]
+
+    if unit_id and repository is not None and project_id is not None:
+        point = repository.get_knowledge_point(project_id, unit_id)
+        if point is not None:
+            return _build_learning_unit_from_knowledge_point(point)
 
     lowered = topic.lower()
     if "重排" in topic or "rerank" in lowered:
@@ -247,7 +277,12 @@ def resolve_tool_result(
             ),
         )
 
-    unit = retrieve_learning_unit(request.target_unit_id, request.topic)
+    unit = retrieve_learning_unit(
+        request.target_unit_id,
+        request.topic,
+        repository=repository,
+        project_id=request.project_id,
+    )
     return ToolResult(
         kind=tool_intent,
         payload=_build_unit_detail_payload(unit),
@@ -392,7 +427,12 @@ def build_project_context(
         if request.session_type == "project"
         else []
     )
-    focus_unit = retrieve_learning_unit(request.target_unit_id, request.topic)
+    focus_unit = retrieve_learning_unit(
+        request.target_unit_id,
+        request.topic,
+        repository=repository,
+        project_id=request.project_id,
+    )
     recent_messages = (
         repository_context.get("recent_messages", [])
         if repository_context is not None
@@ -486,6 +526,10 @@ def _extract_key_concepts(summary: str) -> list[str]:
     if summary.strip() == "":
         return []
 
+    knowledge_points = extract_material_knowledge_point_candidates(summary, limit=4)
+    if knowledge_points:
+        return knowledge_points
+
     fragments = re.split(r"[。；;，,\n]+", summary)
     concepts: list[str] = []
     for fragment in fragments:
@@ -508,6 +552,8 @@ def _extract_title_concepts(title: str) -> list[str]:
     if stem == "":
         return []
     if stem.lower().startswith("imported asset "):
+        return []
+    if re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,}", stem.lower()):
         return []
 
     split_parts = [
@@ -595,6 +641,30 @@ def _summarize_project_learning_profile(project_learning_profile: object | None)
 
 def _build_unit_detail_payload(unit: LearningUnit) -> dict[str, Any]:
     enrichment = _UNIT_ENRICHMENT.get(unit.id, {})
+    generic_title = unit.title.strip()
+    generic_summary = unit.summary.strip()
+    prerequisites = enrichment.get("prerequisites")
+    if prerequisites is None:
+        prerequisites = [
+            f"先明确「{generic_title}」在当前项目里要解决什么判断问题。",
+            "先把来源材料中的关键概念、术语和例子对齐，再进入学习动作。",
+        ]
+    common_misconceptions = enrichment.get("commonMisconceptions")
+    if common_misconceptions is None:
+        common_misconceptions = [
+            f"把「{generic_title}」当成泛泛主题，而不是一个需要建立边界的知识点。",
+            "只记住表面结论，没有回到材料证据和适用条件。",
+        ]
+    core_questions = enrichment.get("coreQuestions")
+    if core_questions is None:
+        core_questions = [
+            f"「{generic_title}」最关键的判断边界是什么？",
+            f"如果要把「{generic_title}」讲给别人听，最先应该举哪个例子或证据？",
+        ]
+    related_units = enrichment.get("relatedUnits")
+    if related_units is None:
+        related_units = []
+
     return {
         "focusUnitId": unit.id,
         "title": unit.title,
@@ -602,10 +672,11 @@ def _build_unit_detail_payload(unit: LearningUnit) -> dict[str, Any]:
         "candidateModes": unit.candidate_modes,
         "weaknessTags": unit.weakness_tags,
         "difficulty": unit.difficulty,
-        "prerequisites": enrichment.get("prerequisites", []),
-        "commonMisconceptions": enrichment.get("commonMisconceptions", []),
-        "coreQuestions": enrichment.get("coreQuestions", []),
-        "relatedUnits": enrichment.get("relatedUnits", []),
+        "prerequisites": prerequisites,
+        "commonMisconceptions": common_misconceptions,
+        "coreQuestions": core_questions,
+        "relatedUnits": related_units,
+        "teachingNote": generic_summary,
     }
 
 

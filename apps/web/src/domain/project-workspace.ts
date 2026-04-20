@@ -64,6 +64,14 @@ export interface ProjectStats {
   readonly archived: number;
 }
 
+export function buildPendingSessionId(input: {
+  readonly projectId: string;
+  readonly type: SessionType;
+  readonly knowledgePointId: string | null;
+}): string {
+  return `pending-session:${input.projectId}:${input.type}:${input.knowledgePointId ?? "project"}`;
+}
+
 export function getSessionTypeLabel(type: SessionType): string {
   switch (type) {
     case "project":

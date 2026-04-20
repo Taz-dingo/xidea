@@ -25,6 +25,7 @@ import {
   getErrorMessage,
   getLatestReviewEvent,
 } from "@/domain/project-session-runtime";
+import { buildPendingSessionId } from "@/domain/project-workspace";
 import type { SourceAsset } from "@/domain/types";
 import {
   confirmKnowledgePointSuggestion,
@@ -41,6 +42,19 @@ import { useSessionDataSync } from "@/app/workspace/agent/effects/use-session-da
 import { useSessionRuntimeSync } from "@/app/workspace/agent/effects/use-session-runtime-sync";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
+function buildKnowledgePointLearningUnit(
+  point: WorkspaceData["knowledgePoints"][number],
+): typeof learningUnits[number] {
+  return {
+    id: point.id,
+    title: point.title,
+    summary: point.description,
+    weaknessTags: [],
+    candidateModes: ["guided-qa", "contrast-drill"],
+    difficulty: 3,
+  };
+}
+
 export function useSessionAgent({
   data,
   handleCreateSession,
@@ -53,8 +67,17 @@ export function useSessionAgent({
     initialSourceAssetIds?: ReadonlyArray<string>,
   ) => { id: string } | null;
 }) {
-  const selectedSessionKey = data.selectedSession?.id ?? null;
-  const selectedSessionKnowledgePointId = data.selectedSession?.knowledgePointId ?? null;
+  const pendingSessionKey =
+    data.pendingSessionIntent === null
+      ? null
+      : buildPendingSessionId({
+          projectId: data.pendingSessionIntent.projectId,
+          type: data.pendingSessionIntent.type,
+          knowledgePointId: data.pendingSessionIntent.knowledgePointId,
+        });
+  const selectedSessionKey = data.selectedSession?.id ?? pendingSessionKey;
+  const selectedSessionKnowledgePointId =
+    data.selectedSession?.knowledgePointId ?? data.pendingSessionIntent?.knowledgePointId ?? null;
   const fallbackSessionType =
     data.selectedSession?.type ?? data.pendingSessionIntent?.type ?? "project";
   const sessionSnapshotsRef = useRef(data.sessionSnapshots);
@@ -62,13 +85,18 @@ export function useSessionAgent({
   const activeRuntimeRef = useRef<ReturnType<typeof buildMockRuntimeSnapshot>>(
     buildMockRuntimeSnapshot(data.initialProfile, data.initialUnit, fallbackSessionType),
   );
+  const selectedKnowledgePoint =
+    selectedSessionKnowledgePointId === null
+      ? undefined
+      : data.knowledgePoints.find((point) => point.id === selectedSessionKnowledgePointId);
   const selectedUnit = selectedSessionKnowledgePointId
-    ? learningUnits.find((unit) => unit.id === selectedSessionKnowledgePointId)
+    ? learningUnits.find((unit) => unit.id === selectedSessionKnowledgePointId) ??
+      (selectedKnowledgePoint ? buildKnowledgePointLearningUnit(selectedKnowledgePoint) : undefined)
     : undefined;
   const runtimeUnit = selectedUnit ?? data.initialUnit;
   const selectedSourceAssetIds =
-    data.selectedSession?.type === "project"
-      ? data.sessionSourceAssetIds[data.selectedSession.id] ?? []
+    fallbackSessionType === "project" && selectedSessionKey !== null
+      ? data.sessionSourceAssetIds[selectedSessionKey] ?? []
       : [];
   const seedRuntime = useMemo(
     () => buildMockRuntimeSnapshot(data.initialProfile, runtimeUnit, fallbackSessionType),
@@ -510,8 +538,6 @@ export function useSessionAgent({
     data,
     error,
     messages: displayMessages,
-    projectContext: requestProjectContext,
-    runtimeUnit,
     sendMessage,
   });
   useSessionDataSync({
@@ -530,6 +556,7 @@ export function useSessionAgent({
   const actions = createSessionActions({
     activeRuntime,
     activeTutorFixture,
+    activeSessionType: fallbackSessionType,
     clearError,
     currentActivity,
     currentActivities,

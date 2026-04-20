@@ -98,11 +98,16 @@ export function useSessionActions(data: WorkspaceData) {
     data.setIsProjectMetaOpen(false);
     data.setIsKnowledgePointDialogOpen(false);
     data.setPendingInitialPrompt(null);
-    data.setPendingSessionIntent(null);
+    data.setPendingSessionIntent({
+      projectId: targetProject.id,
+      type,
+      knowledgePointId: targetPoint?.id ?? knowledgePointId,
+      knowledgePointTitle: targetPoint?.title ?? null,
+    });
+    data.setSelectedSessionId("");
     data.setDraftPrompt("");
     data.setSearchQuery("");
     data.setScreen("workspace");
-    handleCreateSession(targetProject.id, type, targetPoint?.id ?? knowledgePointId);
   }
 
   return {

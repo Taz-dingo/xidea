@@ -67,6 +67,11 @@ export function createAgentChatTransport(input: {
     async sendMessages({ messages, abortSignal }) {
       const prompt = getLatestUserText(messages);
       const requestConfig = input.getRequestConfig();
+      const sourceAssets = input.consumeSourceAssets();
+      const requestEntryMode =
+        requestConfig.sessionType === "project" && sourceAssets.length > 0
+          ? "material-import"
+          : requestConfig.entryMode;
       const request = buildAgentRequest({
         activityResult: input.consumeActivityResult?.() ?? null,
         projectId: input.projectId,
@@ -75,10 +80,10 @@ export function createAgentChatTransport(input: {
         sessionTitle: requestConfig.sessionTitle,
         sessionSummary: requestConfig.sessionSummary,
         knowledgePointId: requestConfig.knowledgePointId,
-        entryMode: requestConfig.entryMode,
+        entryMode: requestEntryMode,
         project: requestConfig.project,
         prompt,
-        sourceAssets: input.consumeSourceAssets(),
+        sourceAssets,
         unit: requestConfig.unit,
         targetUnitId: requestConfig.targetUnitId,
       });

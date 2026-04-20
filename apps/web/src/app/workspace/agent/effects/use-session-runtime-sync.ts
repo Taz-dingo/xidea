@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { buildDefaultAgentPrompt } from "@/domain/agent-runtime";
 import { areSameMessageHistory, mergeMessageHistory } from "@/domain/chat-message";
 import type { UIMessage } from "ai";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
@@ -9,20 +8,15 @@ export function useSessionRuntimeSync({
   data,
   error,
   messages,
-  projectContext,
-  runtimeUnit,
   sendMessage,
 }: {
   currentActivityKey: string | null;
   data: WorkspaceData;
   error: Error | undefined;
   messages: ReadonlyArray<UIMessage>;
-  projectContext: Parameters<typeof buildDefaultAgentPrompt>[1];
-  runtimeUnit: Parameters<typeof buildDefaultAgentPrompt>[0];
   sendMessage: (message: { text: string }) => PromiseLike<void> | void;
 }): void {
   const selectedSessionId = data.selectedSession?.id ?? null;
-  const selectedSessionKnowledgePointId = data.selectedSession?.knowledgePointId ?? null;
   const pendingInitialPrompt = data.pendingInitialPrompt;
   const initializedDraftKeyRef = useRef<string | null>(null);
 
@@ -32,24 +26,14 @@ export function useSessionRuntimeSync({
       return;
     }
 
-    const nextDraftKey = `${selectedSessionId}:${runtimeUnit.id}`;
+    const nextDraftKey = selectedSessionId;
     if (initializedDraftKeyRef.current === nextDraftKey) {
       return;
     }
 
-    data.setDraftPrompt(
-      selectedSessionKnowledgePointId === null
-        ? ""
-        : buildDefaultAgentPrompt(runtimeUnit, projectContext),
-    );
+    data.setDraftPrompt("");
     initializedDraftKeyRef.current = nextDraftKey;
-  }, [
-    data.setDraftPrompt,
-    projectContext,
-    runtimeUnit,
-    selectedSessionId,
-    selectedSessionKnowledgePointId,
-  ]);
+  }, [data.setDraftPrompt, selectedSessionId]);
 
   useEffect(() => {
     if (selectedSessionId !== null) {

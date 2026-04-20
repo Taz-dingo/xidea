@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import {
   getAssetSummary,
+  getThreadActivityDecks,
   getInspectorBootstrap,
   getReviewInspector,
   getThreadContext,
@@ -44,6 +45,7 @@ export function useSessionDataSync({
     sessionEntryModes,
     sessionEntryModesSetter,
     setAssetSummaryByKey,
+    setCompletedActivityDecksBySession,
     setSessionReviewInspectors,
     setSessionSnapshots,
   } = data;
@@ -143,6 +145,52 @@ export function useSessionDataSync({
     if (
       agentConnectionState !== "ready" ||
       selectedSessionKey === null ||
+      selectedSessionType === "project" ||
+      isAgentRunning ||
+      messagesLength === 0
+    ) {
+      return;
+    }
+    const abortController = new AbortController();
+    void getThreadActivityDecks(selectedSessionKey, { signal: abortController.signal })
+      .then((decks) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        setCompletedActivityDecksBySession((current) => {
+          const currentDecks = current[selectedSessionKey] ?? [];
+          const same =
+            currentDecks.length === decks.length &&
+            currentDecks.every((deck, index) => {
+              const nextDeck = decks[index];
+              return (
+                nextDeck !== undefined &&
+                deck.deckKey === nextDeck.deckKey &&
+                deck.completedAt === nextDeck.completedAt &&
+                deck.cards.length === nextDeck.cards.length
+              );
+            });
+          if (same) {
+            return current;
+          }
+          return { ...current, [selectedSessionKey]: decks };
+        });
+      })
+      .catch(() => undefined);
+    return () => abortController.abort();
+  }, [
+    agentConnectionState,
+    isAgentRunning,
+    messagesLength,
+    selectedSessionKey,
+    selectedSessionType,
+    setCompletedActivityDecksBySession,
+  ]);
+
+  useEffect(() => {
+    if (
+      agentConnectionState !== "ready" ||
+      selectedSessionKey === null ||
       selectedSessionKnowledgePointId === null ||
       isAgentRunning ||
       messagesLength === 0
@@ -182,6 +230,7 @@ export function useSessionDataSync({
     selectedSessionKnowledgePointId,
     sessionEntryModes,
     sessionEntryModesSetter,
+    setCompletedActivityDecksBySession,
     setSessionReviewInspectors,
   ]);
 }

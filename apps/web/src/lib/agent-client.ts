@@ -13,6 +13,7 @@ import type {
   AgentStreamEvent,
   AgentThreadContext,
 } from "@/domain/agent-runtime";
+import type { CompletedActivityDeck } from "@/domain/project-session-runtime";
 import type { SourceAsset } from "@/domain/types";
 
 type RawSourceAsset = SourceAsset & {
@@ -305,6 +306,44 @@ export async function getThreadMessages(
   }
 
   return (await response.json()) as ReadonlyArray<AgentMessage>;
+}
+
+export async function getThreadActivityDecks(
+  threadId: string,
+  options?: { signal?: AbortSignal },
+): Promise<ReadonlyArray<CompletedActivityDeck>> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    throw new Error("未配置 agent API 地址。开发环境可直接启动本地代理，或设置 VITE_AGENT_API_BASE_URL。");
+  }
+
+  const response = await fetch(`${baseUrl}/threads/${threadId}/activity-decks`, {
+    method: "GET",
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Thread activity decks 请求失败（${response.status}）。`);
+  }
+
+  const records = (await response.json()) as ReadonlyArray<{
+    readonly deck_id: string;
+    readonly session_id: string;
+    readonly session_type: CompletedActivityDeck["sessionType"];
+    readonly knowledge_point_id: string | null;
+    readonly completed_at: string;
+    readonly cards: CompletedActivityDeck["cards"];
+  }>;
+
+  return records.map((record) => ({
+    deckKey: record.deck_id,
+    sessionId: record.session_id,
+    sessionType: record.session_type,
+    knowledgePointId: record.knowledge_point_id,
+    completedAt: record.completed_at,
+    cards: record.cards,
+  }));
 }
 
 export async function confirmKnowledgePointSuggestion(

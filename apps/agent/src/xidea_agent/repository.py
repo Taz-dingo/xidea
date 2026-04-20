@@ -179,6 +179,16 @@ CREATE TABLE IF NOT EXISTS project_materials (
   updated_at TEXT NOT NULL,
   FOREIGN KEY(project_id) REFERENCES projects(project_id)
 );
+
+CREATE TABLE IF NOT EXISTS thread_activity_decks (
+  deck_id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  session_type TEXT NOT NULL,
+  knowledge_point_id TEXT,
+  completed_at TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  FOREIGN KEY(thread_id) REFERENCES threads(thread_id)
+);
 """
 
 THREAD_COLUMN_MIGRATIONS: dict[str, str] = {
@@ -353,6 +363,9 @@ class SQLiteRepository:
                     now_value,
                 )
 
+            if request.activity_result is not None:
+                self._upsert_thread_activity_deck(connection, request, now_value)
+
     def list_recent_messages(self, thread_id: str, limit: int = 8) -> list[Message]:
         return self.list_thread_messages(thread_id, limit=limit)
 
@@ -424,9 +437,92 @@ class SQLiteRepository:
             for row in rows
         ]
 
+    def list_thread_activity_decks(self, thread_id: str) -> list[dict[str, Any]]:
+        self.initialize()
+        with self._connect() as connection:
+            thread_row = connection.execute(
+                """
+                SELECT session_type, knowledge_point_id
+                FROM threads
+                WHERE thread_id = ?
+                """,
+                (thread_id,),
+            ).fetchone()
+            rows = connection.execute(
+                """
+                SELECT deck_id, session_type, knowledge_point_id, completed_at, payload
+                FROM thread_activity_decks
+                WHERE thread_id = ?
+                ORDER BY completed_at DESC, deck_id DESC
+                """,
+                (thread_id,),
+            ).fetchall()
+
+        records: list[dict[str, Any]] = []
+        for row in rows:
+            payload = json.loads(row["payload"])
+            records.append(
+                {
+                    "deck_id": row["deck_id"],
+                    "session_id": thread_id,
+                    "session_type": row["session_type"],
+                    "knowledge_point_id": row["knowledge_point_id"],
+                    "completed_at": row["completed_at"],
+                    "cards": payload.get("cards", []),
+                }
+            )
+        if records:
+            return records
+
+        if thread_row is None or thread_row["session_type"] == "project":
+            return records
+
+        with self._connect() as connection:
+            fallback_rows = connection.execute(
+                """
+                SELECT message_id, content, created_at
+                FROM thread_messages
+                WHERE thread_id = ? AND role = 'user' AND content LIKE '已提交本组学习动作结果%'
+                ORDER BY message_id DESC
+                """,
+                (thread_id,),
+            ).fetchall()
+
+        for row in fallback_rows:
+            records.append(
+                {
+                    "deck_id": f"recovered-message-{row['message_id']}",
+                    "session_id": thread_id,
+                    "session_type": thread_row["session_type"],
+                    "knowledge_point_id": thread_row["knowledge_point_id"],
+                    "completed_at": row["created_at"],
+                    "cards": [
+                        {
+                            "activityId": f"recovered-message-{row['message_id']}",
+                            "activityTitle": "已完成牌组",
+                            "activityPrompt": row["content"],
+                            "knowledgePointId": thread_row["knowledge_point_id"],
+                            "kind": "guided-qa",
+                            "action": "submit",
+                            "responseText": row["content"],
+                            "selectedChoiceId": None,
+                            "isCorrect": None,
+                            "attempts": [],
+                            "finalFeedback": None,
+                            "finalAnalysis": None,
+                        }
+                    ],
+                }
+            )
+        return records
+
     def delete_thread(self, thread_id: str) -> None:
         self.initialize()
         with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM thread_activity_decks WHERE thread_id = ?",
+                (thread_id,),
+            )
             connection.execute(
                 "DELETE FROM review_events WHERE thread_id = ?",
                 (thread_id,),
@@ -1081,6 +1177,42 @@ class SQLiteRepository:
                 entry_mode,
                 json.dumps(source_asset_ids, ensure_ascii=False),
                 updated_at,
+            ),
+        )
+
+    def _upsert_thread_activity_deck(
+        self,
+        connection: sqlite3.Connection,
+        request: AgentRequest,
+        completed_at: str,
+    ) -> None:
+        result = request.activity_result
+        if result is None:
+            return
+
+        cards = result.meta.get("items")
+        if not isinstance(cards, list) or len(cards) == 0:
+            return
+
+        connection.execute(
+            """
+            INSERT INTO thread_activity_decks(
+              deck_id, thread_id, session_type, knowledge_point_id, completed_at, payload
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(deck_id) DO UPDATE SET
+              session_type = excluded.session_type,
+              knowledge_point_id = excluded.knowledge_point_id,
+              completed_at = excluded.completed_at,
+              payload = excluded.payload
+            """,
+            (
+                result.run_id,
+                request.thread_id,
+                request.session_type,
+                result.knowledge_point_id,
+                completed_at,
+                json.dumps({"cards": cards}, ensure_ascii=False),
             ),
         )
 

@@ -407,7 +407,12 @@ def build_mock_llm_for_material_import() -> LLMClient:
              "reason": "基于材料教学", "outcome": "理解材料核心"},
         ],
     }
-    reply = "我先看看你导入的材料，然后基于材料内容安排学习。"
+    reply = (
+        "根据材料内容，我提炼出三个可沉淀的核心知识点："
+        "**万物皆可Token化**——LLM、音视频、具身智能共享的底层逻辑；"
+        "**DiT架构**——从U-Net到Diffusion Transformer的范式迁移；"
+        "**LLM作为具身智能的“常识大脑”**——任务拆解与语义理解的统一。"
+    )
     activities = [
         _build_activity_card(
             title="先基于材料抓主线",

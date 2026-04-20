@@ -580,8 +580,7 @@ SESSION_SYSTEM_PROMPT_BLOCKS: dict[str, dict[str, str]] = {
         "signals": """\
 信号判断偏好：
 - project session 下，优先识别 project-relevance、concept-gap、concept-confusion
-- 把“这轮该先聊哪个学习方向”“还缺什么材料”“该沉淀哪个知识点”视为 project chat 的合法推进目标
-- 如果输入是 hi / hello / 在吗 / 继续 这类低信息消息，不要脑补成学习意图；它更接近 project chat 的 missing-context""",
+- 把“这轮该先聊哪个学习方向”“还缺什么材料”“该沉淀哪个知识点”视为 project chat 的合法推进目标""",
         "diagnosis": """\
 诊断偏好：
 - recommended_action 只能使用 teach 或 clarify

@@ -7,6 +7,7 @@ export function useNavigationActions(data: WorkspaceData) {
   function handleSelectProject(projectId: string): void {
     data.setSelectedProjectId(projectId);
     data.setSelectedSessionId("");
+    data.setDraftPrompt("");
     data.setWorkspaceSection("overview");
     data.setIsProjectMetaOpen(false);
     data.setIsEditingProjectMeta(false);
@@ -18,9 +19,7 @@ export function useNavigationActions(data: WorkspaceData) {
       const firstKnowledgePoint = data.knowledgePoints.find(
         (point) => point.projectId === projectId,
       );
-      if (firstKnowledgePoint !== undefined) {
-        data.setSelectedKnowledgePointId(firstKnowledgePoint.id);
-      }
+      data.setSelectedKnowledgePointId(firstKnowledgePoint?.id ?? "");
     });
   }
 

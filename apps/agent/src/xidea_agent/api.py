@@ -62,6 +62,33 @@ class KnowledgePointRecordResponse(BaseModel):
     linked_session_message_ids: dict[str, int] = Field(default_factory=dict)
 
 
+class ThreadActivityDeckRecordResponse(BaseModel):
+    deck_id: str
+    session_id: str
+    session_type: str
+    knowledge_point_id: str | None = None
+    completed_at: str
+    cards: list[dict[str, object]] = Field(default_factory=list)
+
+
+def _normalize_agent_request(request: AgentRequest) -> AgentRequest:
+    updates: dict[str, object] = {}
+
+    if request.activity_result is not None and request.entry_mode != "coach-followup":
+        updates["entry_mode"] = "coach-followup"
+    elif (
+        request.session_type == "project"
+        and request.source_asset_ids
+        and request.entry_mode != "material-import"
+    ):
+        updates["entry_mode"] = "material-import"
+
+    if not updates:
+        return request
+
+    return request.model_copy(update=updates)
+
+
 def create_app(
     repository: SQLiteRepository | None = None,
     llm: LLMClient | None = None,
@@ -99,19 +126,22 @@ def create_app(
 
     @app.post("/graph/initialize")
     def initialize_graph(request: AgentRequest) -> GraphState:
-        return build_initial_graph_state(request)
+        normalized_request = _normalize_agent_request(request)
+        return build_initial_graph_state(normalized_request)
 
     @app.post("/runs/v0")
     def run_v0(request: AgentRequest) -> AgentRunResult:
-        result = run_agent_v0(request, repository=repository, llm=llm)
+        normalized_request = _normalize_agent_request(request)
+        result = run_agent_v0(normalized_request, repository=repository, llm=llm)
         if repository is not None:
-            repository.save_run(request, result)
+            repository.save_run(normalized_request, result)
         return result
 
     @app.post("/runs/v0/stream")
     def run_v0_stream(request: AgentRequest) -> StreamingResponse:
+        normalized_request = _normalize_agent_request(request)
         return StreamingResponse(
-            _iter_agent_run_sse(request, repository=repository, llm=llm),
+            _iter_agent_run_sse(normalized_request, repository=repository, llm=llm),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -221,6 +251,14 @@ def create_app(
     def thread_messages(thread_id: str, limit: int | None = None) -> list[dict[str, object]]:
         repo = _require_repository(repository)
         return repo.list_thread_message_records(thread_id, limit=limit)
+
+    @app.get(
+        "/threads/{thread_id}/activity-decks",
+        response_model=list[ThreadActivityDeckRecordResponse],
+    )
+    def thread_activity_decks(thread_id: str) -> list[dict[str, object]]:
+        repo = _require_repository(repository)
+        return repo.list_thread_activity_decks(thread_id)
 
     @app.delete("/threads/{thread_id}")
     def delete_thread(thread_id: str) -> dict[str, bool]:

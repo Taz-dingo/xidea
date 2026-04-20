@@ -97,24 +97,6 @@ PROJECT_CHAT_RELEVANCE_HINTS = (
     "agent",
     "workflow",
 )
-PROJECT_CHAT_LOW_INFO_MESSAGES = {
-    "hi",
-    "hello",
-    "hey",
-    "你好",
-    "您好",
-    "在吗",
-    "在么",
-    "继续",
-    "继续吧",
-    "继续聊",
-    "开始",
-    "下一步",
-    "go",
-    "ok",
-    "okay",
-    "好的",
-}
 SESSION_CAPABILITY_CUES = (
     "你可以做什么",
     "你能做什么",
@@ -1737,97 +1719,6 @@ def guard_session_capability_step(state: GraphState) -> GraphState:
     return _apply_session_capability_guardrail(state)
 
 
-def _is_low_information_project_message(message: str, project_topic: str) -> bool:
-    normalized = " ".join(message.strip().lower().split())
-    if not normalized:
-        return True
-
-    if normalized in PROJECT_CHAT_LOW_INFO_MESSAGES:
-        return True
-
-    if any(keyword in normalized for keyword in _build_project_relevance_keywords(project_topic)):
-        return False
-
-    ascii_tokens = re.findall(r"[a-z0-9_-]+", normalized)
-    chinese_chunks = re.findall(r"[\u4e00-\u9fff]+", normalized)
-
-    if len(normalized) <= 6:
-        return True
-    if ascii_tokens and len(ascii_tokens) <= 2 and len(normalized) <= 12:
-        return True
-    if chinese_chunks and all(len(chunk) <= 3 for chunk in chinese_chunks) and len(normalized) <= 8:
-        return True
-    return False
-
-
-def _build_project_chat_clarification_plan(project_topic: str) -> StudyPlan:
-    return StudyPlan(
-        headline=f"先对齐「{project_topic}」这轮想推进的学习方向",
-        summary="当前输入信息不足，这轮先按 project 对话澄清目标，不直接进入学习或复习编排。",
-        selected_mode="guided-qa",
-        expected_outcome="明确这轮是先对齐学习方向、围绕主题讨论、补相关材料、更新知识点，还是切到 study/review session。",
-        steps=[
-            StudyPlanStep(
-                id="project-chat-clarify",
-                title="继续推进当前学习讨论",
-                mode="guided-qa",
-                reason="先把这轮想推进的学习方向、主题判断或材料缺口说清楚，才能决定是否需要知识点更新或单独开学习 session。",
-                outcome="得到一个明确的 project 学习目标，而不是把低信息输入误判成学习动作。",
-            )
-        ],
-    )
-
-
-def _apply_project_chat_low_info_guardrail(state: GraphState) -> GraphState:
-    project_topic = state.project_context.topic if state.project_context is not None else state.request.topic
-    state.diagnosis = Diagnosis(
-        recommended_action="clarify",
-        reason=(
-            "当前是 project session，但这条输入还不足以支撑知识点判断或学习/复习编排，"
-            "先把这轮想推进的学习方向、主题问题或材料需求说具体。"
-        ),
-        confidence=0.95,
-        focus_unit_id=state.request.target_unit_id,
-        primary_issue="missing-context",
-        needs_tool=False,
-        explanation=Explanation(
-            summary="project session 遇到低信息输入时先做 project-chat 澄清，避免误触学习动作。",
-            evidence=[
-                f"session_type={state.request.session_type}",
-                f"latest_message={latest_user_message(state.request.messages)}",
-            ],
-            confidence=0.95,
-        ),
-    )
-    state.plan = _build_project_chat_clarification_plan(project_topic)
-    state.assistant_message = (
-        f"当前是围绕「{project_topic}」的 project session，"
-        "我会先围绕学习方向、主题问题和材料线索继续推进，不会直接进入学习或复习作答。"
-        "你现在更想继续哪一类：对齐学习方向、围绕主题讨论、补充相关材料、更新知识点，还是切到 study/review session？"
-    )
-    state.activity = None
-    state.activities = []
-    state.knowledge_point_suggestions = []
-    state.state_patch = StatePatch()
-    state.rationale.append(
-        "project_chat low-info guardrail short-circuited the learning path before LLM diagnosis."
-    )
-    return state
-
-
-def guard_project_chat_low_info_step(state: GraphState) -> GraphState:
-    if state.request.session_type != "project":
-        return state
-    if state.request.entry_mode != "chat-question":
-        return state
-
-    message = latest_user_message(state.request.messages).strip()
-    project_topic = state.project_context.topic if state.project_context is not None else state.request.topic
-    if not _is_low_information_project_message(message, project_topic):
-        return state
-    return _apply_project_chat_low_info_guardrail(state)
-
-
 def _project_session_response_looks_pedagogical(reply: str, plan: StudyPlan | None) -> bool:
     text_parts = [reply]
     if plan is not None:
@@ -1936,13 +1827,46 @@ def _build_create_knowledge_point_suggestion(
     )
 
 
-def _build_material_import_knowledge_point_suggestion(
+def _extract_material_import_suggestion_titles(reply: str) -> list[str]:
+    if not reply.strip():
+        return []
+
+    titles: list[str] = []
+
+    def _append_title(candidate: str) -> None:
+        normalized = " ".join(candidate.strip().split())
+        normalized = normalized.strip("：:；;，,。！？!?（）()[]【】\"'")
+        if len(normalized) < 2:
+            return
+        if normalized not in titles:
+            titles.append(normalized[:40])
+
+    for match in re.finditer(r"\*\*(?P<title>[^*]+)\*\*", reply):
+        _append_title(match.group("title"))
+
+    matches = list(
+        re.finditer(
+            r"(?:^|[\n。；;:：])\s*(?P<index>\d+)[)）.]\s*(?P<body>.+?)(?=(?:[\n。；;:：]\s*\d+[)）.])|$)",
+            reply,
+            flags=re.S,
+        )
+    )
+    for match in matches[:3]:
+        body = " ".join(match.group("body").strip().split())
+        if not body:
+            continue
+        title = re.split(r"[——:：；;，,。]", body, maxsplit=1)[0].strip()
+        _append_title(title)
+    return titles[:3]
+
+
+def _build_material_import_knowledge_point_suggestions(
     state: GraphState,
     repository: SQLiteRepository | None,
     timestamp: datetime,
-) -> KnowledgePointSuggestion | None:
+) -> list[KnowledgePointSuggestion]:
     if state.project_context is None or not state.project_context.source_asset_ids:
-        return None
+        return []
 
     asset_summary = build_asset_summary_payload(
         list(state.project_context.source_asset_ids),
@@ -1951,7 +1875,7 @@ def _build_material_import_knowledge_point_suggestion(
     )
     assets = asset_summary.get("assets", [])
     if not isinstance(assets, list) or not assets:
-        return None
+        return []
 
     existing_keys: set[str] = set()
     existing_pending_by_key: dict[str, KnowledgePointSuggestion] = {}
@@ -1975,18 +1899,90 @@ def _build_material_import_knowledge_point_suggestion(
             elif suggestion.status == "accepted":
                 existing_accepted_by_key[suggestion_key] = suggestion
 
+    suggestion_titles = _extract_material_import_suggestion_titles(state.assistant_message or "")
+    suggestions: list[KnowledgePointSuggestion] = []
+    seen_candidate_keys: set[str] = set()
+
     for asset in assets:
         if not isinstance(asset, dict):
             continue
-        title = _build_material_import_suggestion_title(asset)
-        candidate_key = knowledge_point_identity_key(title)
-        if candidate_key in existing_pending_by_key:
-            return existing_pending_by_key[candidate_key]
-        if candidate_key in existing_keys:
-            existing_knowledge_point_id = existing_point_id_by_key.get(candidate_key)
-            accepted_suggestion = existing_accepted_by_key.get(candidate_key)
-            if existing_knowledge_point_id is not None:
-                return KnowledgePointSuggestion(
+        asset_title = str(asset.get("title") or "当前材料").strip()
+        key_concepts = asset.get("keyConcepts") or []
+        if not isinstance(key_concepts, list):
+            key_concepts = []
+        concept_hint = "、".join(str(item) for item in key_concepts[:3] if str(item).strip())
+        topic_hint = str(asset.get("topic") or "").strip()
+        candidate_titles = list(
+            dict.fromkeys(
+                [
+                    *(title for title in suggestion_titles if title.strip()),
+                    *(
+                        str(item).strip()
+                        for item in key_concepts
+                        if str(item).strip()
+                    ),
+                ]
+            )
+        )
+        if not candidate_titles:
+            candidate_titles = [_build_material_import_suggestion_title(asset)]
+
+        for title in candidate_titles[:3]:
+            candidate_key = knowledge_point_identity_key(title)
+            if candidate_key in seen_candidate_keys:
+                continue
+            seen_candidate_keys.add(candidate_key)
+
+            if candidate_key in existing_pending_by_key:
+                suggestions.append(existing_pending_by_key[candidate_key])
+                continue
+            if candidate_key in existing_keys:
+                existing_knowledge_point_id = existing_point_id_by_key.get(candidate_key)
+                accepted_suggestion = existing_accepted_by_key.get(candidate_key)
+                if existing_knowledge_point_id is not None:
+                    suggestions.append(
+                        KnowledgePointSuggestion(
+                            id=build_suggestion_id(
+                                state.request.project_id,
+                                state.request.thread_id,
+                                title,
+                            ),
+                            kind="create",
+                            project_id=state.request.project_id,
+                            session_id=state.request.thread_id,
+                            knowledge_point_id=existing_knowledge_point_id,
+                            title=title,
+                            description=accepted_suggestion.description
+                            if accepted_suggestion is not None
+                            else f"沿用知识点「{title}」，继续围绕当前材料推进。",
+                            reason=(
+                                f"当前材料继续收敛到已存在的知识点「{title}」，"
+                                "这轮应把当前会话也挂到这张知识卡上，方便后续回看与继续编排。"
+                            ),
+                            source_material_refs=list(
+                                state.project_context.source_asset_ids
+                                if state.project_context is not None
+                                else []
+                            ),
+                            status="accepted",
+                            created_at=timestamp,
+                            resolved_at=timestamp,
+                            updated_at=timestamp,
+                        )
+                    )
+                continue
+
+            description = (
+                f"围绕材料《{asset_title}》沉淀知识点「{title}」，"
+                f"优先补齐 {concept_hint or topic_hint or '这份材料里的核心判断'}。"
+            )
+            reason = (
+                f"这轮 project 研讨挂入了材料《{asset_title}》，"
+                f"其中暴露出的重点包括 {concept_hint or topic_hint or '当前主题边界'}，"
+                f"建议把「{title}」收成独立知识点，再继续学习编排和复习安排。"
+            )
+            suggestions.append(
+                KnowledgePointSuggestion(
                     id=build_suggestion_id(
                         state.request.project_id,
                         state.request.thread_id,
@@ -1995,61 +1991,17 @@ def _build_material_import_knowledge_point_suggestion(
                     kind="create",
                     project_id=state.request.project_id,
                     session_id=state.request.thread_id,
-                    knowledge_point_id=existing_knowledge_point_id,
                     title=title,
-                    description=accepted_suggestion.description
-                    if accepted_suggestion is not None
-                    else f"沿用知识点「{title}」，继续围绕当前材料推进。",
-                    reason=(
-                        f"当前材料继续收敛到已存在的知识点「{title}」，"
-                        "这轮应把当前会话也挂到这张知识卡上，方便后续回看与继续编排。"
-                    ),
-                    source_material_refs=list(
-                        state.project_context.source_asset_ids
-                        if state.project_context is not None
-                        else []
-                    ),
-                    status="accepted",
+                    description=description,
+                    reason=reason,
+                    source_material_refs=list(state.project_context.source_asset_ids),
+                    status="pending",
                     created_at=timestamp,
-                    resolved_at=timestamp,
                     updated_at=timestamp,
                 )
-            continue
+            )
 
-        asset_title = str(asset.get("title") or "当前材料").strip()
-        key_concepts = asset.get("keyConcepts") or []
-        if not isinstance(key_concepts, list):
-            key_concepts = []
-        concept_hint = "、".join(str(item) for item in key_concepts[:3] if str(item).strip())
-        topic_hint = str(asset.get("topic") or "").strip()
-        description = (
-            f"围绕材料《{asset_title}》沉淀一条可独立推进的知识点，"
-            f"优先聚焦 {concept_hint or topic_hint or '这份材料里的核心判断'}。"
-        )
-        reason = (
-            f"这轮 project 研讨挂入了材料《{asset_title}》，"
-            f"其中暴露出的重点是 {concept_hint or topic_hint or '当前主题边界'}，"
-            "建议先沉淀成知识点，再继续学习编排和复习安排。"
-        )
-        return KnowledgePointSuggestion(
-            id=build_suggestion_id(
-                state.request.project_id,
-                state.request.thread_id,
-                title,
-            ),
-            kind="create",
-            project_id=state.request.project_id,
-            session_id=state.request.thread_id,
-            title=title,
-            description=description,
-            reason=reason,
-            source_material_refs=list(state.project_context.source_asset_ids),
-            status="pending",
-            created_at=timestamp,
-            updated_at=timestamp,
-        )
-
-    return None
+    return suggestions[:3]
 
 
 def _build_material_import_suggestion_title(asset_payload: dict[str, object]) -> str:
@@ -2107,10 +2059,16 @@ def _compose_material_import_project_reply(
         if isinstance(key_concepts, list)
         else []
     )
-    suggestion_title = (
-        state.knowledge_point_suggestions[0].title
-        if state.knowledge_point_suggestions
-        else _build_material_import_suggestion_title(asset)
+    suggestion_titles = [suggestion.title for suggestion in state.knowledge_point_suggestions]
+    primary_suggestion_title = (
+        suggestion_titles[0] if suggestion_titles else _build_material_import_suggestion_title(asset)
+    )
+    suggestion_line = (
+        f"我已经先整理出 {len(suggestion_titles)} 条候选知识点："
+        + "；".join(f"「{title}」" for title in suggestion_titles[:3])
+        + "。"
+        if len(suggestion_titles) > 1
+        else f"如果先沉淀一条知识点，我建议先收成「{primary_suggestion_title}」。"
     )
     concept_line = (
         f"我先抓到两个核心概念：{visible_concepts[0]}、{visible_concepts[1]}。"
@@ -2125,10 +2083,21 @@ def _compose_material_import_project_reply(
         for part in [
             f"我能看到你这轮挂载的材料《{asset_title}》。",
             concept_line,
-            f"如果先沉淀一条知识点，我建议先收成「{suggestion_title}」。",
-            "接下来我可以继续围绕这条知识点拆边界、补材料线索，或者按你的目标接着编排下一步。",
+            suggestion_line,
+            (
+                "接下来我可以继续围绕这些知识点拆边界、补材料线索，或者按你的目标接着编排下一步。"
+                if len(suggestion_titles) > 1
+                else "接下来我可以继续围绕这条知识点拆边界、补材料线索，或者按你的目标接着编排下一步。"
+            ),
         ]
         if part
+    )
+
+
+def _should_use_material_import_structured_reply(state: GraphState) -> bool:
+    return (
+        state.request.entry_mode == "material-import"
+        and state.request.session_type == "project"
     )
 
 
@@ -2208,14 +2177,12 @@ def build_knowledge_point_suggestions(
 
     timestamp = datetime.now(UTC)
     if state.request.entry_mode == "material-import":
-        material_suggestion = _build_material_import_knowledge_point_suggestion(
+        material_suggestions = _build_material_import_knowledge_point_suggestions(
             state,
             repository,
             timestamp,
         )
-        if material_suggestion is not None:
-            return [material_suggestion]
-        return []
+        return material_suggestions
 
     if state.request.entry_mode != "chat-question":
         return []
@@ -2332,9 +2299,6 @@ def _run_agent_v0_state(
     state = guard_session_capability_step(state)
     if state.assistant_message is not None:
         return state
-    state = guard_project_chat_low_info_step(state)
-    if state.assistant_message is not None:
-        return state
 
     for step in (
         lambda current: main_decision_step(current, llm=llm, repository=repository),
@@ -2429,29 +2393,6 @@ def iter_agent_v0_events(
         if repository is not None:
             repository.save_run(request, AgentRunResult(graph_state=state, events=events))
         return
-    state = guard_project_chat_low_info_step(state)
-    if state.assistant_message is not None:
-        if state.diagnosis is None or state.plan is None or state.state_patch is None:
-            raise RuntimeError("project-chat low-info guardrail did not produce a complete response payload.")
-        diagnosis_event = DiagnosisEvent(event="diagnosis", diagnosis=state.diagnosis)
-        events.append(diagnosis_event)
-        yield diagnosis_event
-        for chunk in _chunk_text_for_ui_local(state.assistant_message):
-            text_event = TextDeltaEvent(event="text-delta", delta=chunk)
-            events.append(text_event)
-            yield text_event
-        plan_event = PlanEvent(event="plan", plan=state.plan)
-        events.append(plan_event)
-        yield plan_event
-        state_patch_event = StatePatchEvent(event="state-patch", state_patch=state.state_patch)
-        events.append(state_patch_event)
-        yield state_patch_event
-        done_event = DoneEvent(event="done", final_message=state.assistant_message)
-        events.append(done_event)
-        yield done_event
-        if repository is not None:
-            repository.save_run(request, AgentRunResult(graph_state=state, events=events))
-        return
 
     decision_status = _build_status_event("making-decision")
     events.append(decision_status)
@@ -2476,6 +2417,12 @@ def iter_agent_v0_events(
     if state.diagnosis is None or state.learner_unit_state is None:
         raise RuntimeError("stream response requires diagnosis and learner state.")
 
+    if _should_use_material_import_structured_reply(state):
+        state.knowledge_point_suggestions = build_knowledge_point_suggestions(
+            state,
+            repository=repository,
+        )
+
     from xidea_agent.llm import llm_build_plan, stream_assistant_reply
     composing_status = _build_status_event("composing-response")
     events.append(composing_status)
@@ -2495,7 +2442,23 @@ def iter_agent_v0_events(
     else:
         plan_source = ""
 
-    if state.assistant_message is not None and state.plan is not None:
+    if _should_use_material_import_structured_reply(state):
+        fallback_reply = state.assistant_message or compose_assistant_message(
+            state.diagnosis,
+            state.plan,
+            state.tool_result,
+            state.request.session_type,
+        )
+        state.assistant_message = _compose_material_import_project_reply(
+            state,
+            fallback_message=fallback_reply,
+        )
+        reply_source = "material-import-structured"
+        for chunk in _chunk_text_for_ui_local(state.assistant_message):
+            text_event = TextDeltaEvent(event="text-delta", delta=chunk)
+            events.append(text_event)
+            yield text_event
+    elif state.assistant_message is not None and state.plan is not None:
         reply_source = "LLM-main-decision"
         for chunk in _chunk_text_for_ui_local(state.assistant_message):
             text_event = TextDeltaEvent(event="text-delta", delta=chunk)
@@ -2626,7 +2589,11 @@ def iter_agent_v0_events(
         activities_event = ActivitiesEvent(event="activities", activities=state.activities)
         events.append(activities_event)
         yield activities_event
-    state.knowledge_point_suggestions = build_knowledge_point_suggestions(state, repository=repository)
+    if not state.knowledge_point_suggestions:
+        state.knowledge_point_suggestions = build_knowledge_point_suggestions(
+            state,
+            repository=repository,
+        )
     if state.knowledge_point_suggestions:
         suggestion_event = KnowledgePointSuggestionEvent(
             event="knowledge-point-suggestion",
@@ -2742,7 +2709,12 @@ def load_context_step(
         state.rationale.append(f"load_context attached {len(state.source_assets)} source assets.")
 
     topic = state.project_context.topic if state.project_context is not None else state.request.topic
-    state.learning_unit = retrieve_learning_unit(state.request.target_unit_id, topic)
+    state.learning_unit = retrieve_learning_unit(
+        state.request.target_unit_id,
+        topic,
+        repository=repository,
+        project_id=state.request.project_id,
+    )
     state.rationale.append(f"load_context selected learning unit {state.learning_unit.id}.")
     return state
 
@@ -3272,7 +3244,7 @@ def compose_response_step(
     )
     state.activity = state.activities[0] if state.activities else None
     state.knowledge_point_suggestions = build_knowledge_point_suggestions(state, repository=repository)
-    if reply_source == "template":
+    if reply_source == "template" or _should_use_material_import_structured_reply(state):
         state.assistant_message = _compose_material_import_project_reply(
             state,
             fallback_message=state.assistant_message or "",

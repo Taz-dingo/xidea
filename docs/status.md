@@ -1,6 +1,23 @@
 # Status
 
-## As Of 2026-04-19
+## As Of 2026-04-20
+
+### Done
+
+#### Session 持久化与学习链路收口（2026-04-20）
+
+- `apps/agent` 已将 `project / study / review` 的 request 入口做服务端规范化：带材料的 `project session` 会自动归一到 `material-import`，带 `activity_result` 的 follow-up 会自动归一到 `coach-followup`，不再依赖前端每次都发对 `entry_mode`
+- `apps/agent` 已将材料导入型 `project session` 收成真正的结构化产卡链：围绕上传材料提炼出的多条知识点建议会写入 suggestion / knowledge point 持久化对象，而不再只是口头回复“我提炼出 3 条知识点”
+- `apps/agent` 已修正 `material-import` 的多知识点落库链：当前 assistant 回复里提到的多条知识点会转成多条 `knowledge_point_suggestion` 并逐条确认，不再出现“口头说 3 条、实际只落 1 张卡”的错位
+- `apps/agent` 已取消 `project session` 的低信息 deterministic 拦截主路径；像 `ok / 继续 / hi` 这类短消息默认重新回到 LLM 继续推进，不再被过度误判成模板式澄清回复
+- `apps/agent` 已支持 thread 级 `activity deck` 持久化：学习 / 复习整组卡完成后，会把 deck 结果写入 `thread_activity_decks`，并提供 `GET /threads/{thread_id}/activity-decks`
+- `apps/agent` 已为旧学习 / 复习会话补回退恢复：若历史 deck 发生在后端持久化之前，会从 `已提交本组学习动作结果...` 那条用户消息恢复出可回看的占位牌组，避免刷新后整组牌组完全消失
+- `apps/web` 已改成“点击新建 session 不立即创建 thread”：`研讨 / 学习 / 复习` 都先进入待开始态，只有用户真正发出第一条消息后才创建真实 session，并进入左侧列表
+- `apps/web` 已改成学习 / 复习会话优先从后端回读已完成牌组，而不是只靠前端 runtime store；刷新或重新打开会话后，`题卡轨迹` 与右侧 `已完成卡组` 会重新出现
+- `apps/web` 已修正跨项目残留上下文：切项目时会清掉旧的默认草稿 prompt 和旧知识卡选择，不再在新项目 placeholder 里残留上一个项目的 RAG 文案
+- `apps/web` 已修正本轮挂材发送快照：发送时会锁定本轮选中的材料再组装 request，不再出现 UI 显示已挂材、实际请求却没带 `source_asset_ids` 的错位
+- `apps/web` 已将知识卡和相关 session 的联动补成可回读对象：本会话创建或接受的知识卡会回挂到对应回复位置，知识卡详情也能按 `linkedSessionIds` 回读相关会话
+- 已在浏览器实跑验证主 demo 链：`上传材料 -> 研讨生成知识点 -> 项目主页回看知识卡 -> 围绕知识卡启动学习 session -> 完成牌组后刷新并重新打开 session 仍能回看 deck`
 
 ### Done
 

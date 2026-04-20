@@ -87,6 +87,7 @@
     - 已压缩 observation 摘要长度，减少结构化主调用里的无效 prompt 膨胀
     - 已把非 project session 的材料上下文预取收掉，避免 study / review 被 thread context 里的旧材料拖慢或污染
     - 已补 `project session` 的 low-info 快路径：`hi / hello / 在吗 / 继续` 这类 turn 会直接短路成 project-chat 澄清，不再白跑 LLM 诊断
+    - 已取消 `project session` 的 deterministic low-info 主路径拦截；当前 `ok / 继续 / hi / 细化一下` 这类短消息会重新回到 LLM 推进，而不是被模板式澄清误伤
     - 已补 `study / review session` 的 capability / meta guard：`你可以做什么 / 你能怎么帮我` 这类 turn 会先返回 session 能力说明，不再误触学习卡或复习卡
     - 已把 prompt 结构升级成“共享 base prompt + `project / study / review` 分轨 session prompt”，并继续保留 runtime guard；`project session` 也已加 pedagogical reply 过滤和 template fallback，避免文本语义漂回“先做题 / 先回忆”
     - 已把 `project session` 的默认语义进一步收成“学习方向 / 主题讨论 / 材料线索 / 知识点更新”四类推进目标，避免 prompt 和 runtime fallback 再退回空泛的 project 管理对话
@@ -95,6 +96,7 @@
     - 已把前端 mock runtime snapshot 里的预置卡片撤掉，避免 backend 已切真后，seed / fallback 状态继续把 demo 题卡泄漏到 UI
     - 已把 choice activity contract 扩成 `is_correct / feedback_layers / analysis`，前端据此本地执行“错了继续、对了再过”的即时反馈；整组卡完成后仍统一回传一次 `activity_result`
     - 已把 completed deck history 收进前端 runtime store 和右侧 inspector，当前可回看每张卡的尝试轨迹与错误分析
+    - 已把 `material-import` 的结构化知识点落库链修正成多 suggestion 路径：assistant 文本里明确提到的多条知识点会逐条写入 suggestion / knowledge point，而不是只落首条
     - 当前剩余缺口集中在两处：一是 LLM 仍主动返回 `needs_tool=true` 的少数场景；二是 split path 下如果 bundled response 没带 `activities`，runtime 仍可能多一次 activity 生成调用
 - [ ] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
   - owner: 学习引擎 owner / 产品 owner

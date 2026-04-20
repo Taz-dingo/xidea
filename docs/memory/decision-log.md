@@ -3,6 +3,61 @@
 只保留"当前仍生效、后续会反复影响协作或实现"的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-20 — 学习/复习牌组必须以后端 thread 对象持久化；前端 runtime 只能做即时交互缓存，不能作为唯一真相
+
+### 决策
+
+- 学习 / 复习会话完成的一组题卡结果，要以后端 thread 级 `activity deck` 持久化对象保存，并提供按 `thread_id` 回读的接口
+- 前端里的 `completedActivityDecksBySession` 仍可保留，用于当前会话内的即时展示和交互反馈；但它不能再被当成唯一真相
+- 刷新页面、重新进入 session、切项目后再回来时，`题卡轨迹` 与 `已完成卡组` 的来源都必须是后端回读结果，而不是只依赖浏览器内存或 localStorage
+- 对于 deck 持久化上线之前已经发生的旧学习 / 复习会话，允许从 `已提交本组学习动作结果...` 这类 thread message 恢复出占位 deck，作为兼容过渡，但长期主路径仍是显式 deck 对象
+
+### 原因
+
+- 当前最直观的问题是：同一轮学习会话里牌组能显示，但一旦刷新或重新打开 session，牌组就会消失。这说明“已完成牌组”之前只是前端 runtime 里的临时状态，没有真正进入 durable thread history
+- 这类牌组结果不仅是 UI 装饰，还承载了学习回看、会话溯源和 demo 讲述时的关键证据，不能继续靠易丢失的前端状态兜底
+
+### 影响
+
+- 后续凡是学习 / 复习 loop 的结果回写，都默认同时检查两层：`activity_result` 是否写回了学习状态，以及 `activity deck` 是否被 thread 级持久化
+- 前端后续如果继续优化 deck rail、回看弹层或强反馈，只能在后端 deck contract 之上做表现层增强，不能再偷偷发明只存在于浏览器内存里的历史对象
+
+## 2026-04-20 — `material-import` 必须以结构化知识点 suggestion 为准；assistant 口头枚举出的多条知识点要逐条落成 durable object
+
+### 决策
+
+- `project session` 带材料的导入轮，主产物是结构化 `knowledge_point_suggestion[]`，而不是一段“我提炼出 3 条知识点”的自由回复
+- 如果 assistant 在这轮明确给出了多条知识点方向，backend 必须把这些方向逐条转成 suggestion / knowledge point 持久化对象；不能继续出现“文本里说 3 条，数据库里只落 1 条”的错位
+- 前端会话里展示的“本会话知识卡”、项目主页的知识卡列表，以及后续 `study / review session` 的起点，都默认以后端真实落库结果为准；不会再根据 assistant 文本自己脑补知识卡
+
+### 原因
+
+- 这条主链是比赛版 demo 最关键的证据链之一：上传材料 -> 产出知识点 -> 进入学习 / 复习编排
+- 如果知识点只停留在 assistant 文本里，而没有逐条落成 durable object，后面的知识卡渲染、session 联动和学习编排都会断链
+
+### 影响
+
+- 后续 review `material-import` 相关改动时，要同时检查两层：assistant 文本是否准确表达了提炼结果，以及 suggestion / knowledge point 是否与文本数量和语义对齐
+- 后续如果继续优化知识点沉淀质量，应优先增强 suggestion / knowledge point schema，而不是只优化自由回复文案
+
+## 2026-04-20 — 新建 `研讨 / 学习 / 复习` session 只进入待开始态，直到用户发出第一条消息才真正创建 thread
+
+### 决策
+
+- 点击 `研讨 / 学习 / 复习` 入口时，只进入 pending / 待开始的 session 页面，不立即创建真实 thread
+- 只有当用户真正发出第一条消息后，前端才创建真实 session id，并把它写入左侧列表和后端 thread 持久化
+- 项目切换时必须清空旧项目残留的草稿 prompt、pending intent 和知识卡选择，避免新项目沿用上一个项目的具体主题或默认问题
+
+### 原因
+
+- 如果点按钮就预先创建空 session，左侧列表会快速堆满“新研讨 / 新学习 / 新复习”空壳，会话历史也会混入大量没有真实问答的噪声
+- 这类预建空会话还会放大跨项目上下文污染：用户切项目后，新的 pending session 页面仍可能带着旧项目的 topic、知识卡或默认 prompt
+
+### 影响
+
+- 后续 review 时，所有 session 入口都必须检查是否仍在“点一下就先建空 thread”；这条规则对 project / study / review 一视同仁
+- session 标题生成、knowledge point 关联和消息持久化都应以“首条真实消息后的真实 thread”作为主对象，而不是继续兼容预建空 session 的路径
+
 ## 2026-04-19 — `Project / 工作区` 只是当前比赛版的主案例承载方式，不代表产品长期边界
 
 ### 决策

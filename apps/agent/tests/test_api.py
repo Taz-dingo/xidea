@@ -359,6 +359,28 @@ def test_run_v0_project_session_returns_suggestion_without_activity(client: Test
     assert payload["graph_state"]["knowledge_point_suggestions"][0]["kind"] == "create"
 
 
+def test_run_v0_normalizes_project_material_requests_to_material_import(
+    persisted_client: TestClient,
+) -> None:
+    response = persisted_client.post(
+        "/runs/v0",
+        json={
+            "project_id": "rag-demo",
+            "thread_id": "thread-project-materials",
+            "session_type": "project",
+            "entry_mode": "chat-question",
+            "topic": "RAG 系统设计",
+            "messages": [{"role": "user", "content": "根据这份材料生成一些知识点"}],
+            "source_asset_ids": ["material-1"],
+        },
+    )
+
+    assert response.status_code == 200
+    context = persisted_client.get("/threads/thread-project-materials/context").json()
+    assert context["entry_mode"] == "material-import"
+    assert context["source_asset_ids"] == ["material-1"]
+
+
 def test_stream_endpoint_off_topic_does_not_emit_activity_or_suggestion(client: TestClient) -> None:
     import json
 
@@ -556,6 +578,68 @@ def test_run_v0_persists_activity_result_writeback(tmp_path: Path) -> None:
     knowledge_point_state = repository.get_knowledge_point_state("kp-rag-boundary")
     assert knowledge_point_state is not None
     assert knowledge_point_state.review_status == "scheduled"
+    thread_context = repository.get_thread_context("thread-1")
+    assert thread_context is not None
+    assert thread_context["entry_mode"] == "coach-followup"
+
+
+def test_thread_activity_decks_endpoint_returns_persisted_decks(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm_for_review()))
+
+    response = client.post(
+        "/runs/v0",
+        json={
+            "project_id": "rag-demo",
+            "thread_id": "thread-activity",
+            "session_type": "study",
+            "knowledge_point_id": "kp-rag-boundary",
+            "entry_mode": "coach-followup",
+            "topic": "RAG retrieval design",
+            "target_unit_id": "unit-rag-retrieval",
+            "messages": [{"role": "user", "content": "这是这轮学习动作结果。"}],
+            "activity_result": {
+                "run_id": "run-activity-1",
+                "project_id": "rag-demo",
+                "session_id": "thread-activity",
+                "activity_id": "batch-activity-1",
+                "knowledge_point_id": "kp-rag-boundary",
+                "result_type": "exercise",
+                "action": "submit",
+                "answer": "已提交本组学习动作结果（2 张卡，尝试 2 次，已全部答对）。",
+                "meta": {
+                    "items": [
+                        {
+                            "activityId": "activity-1",
+                            "activityTitle": "边界判断",
+                            "activityPrompt": "说明为什么不能只做向量召回。",
+                            "knowledgePointId": "kp-rag-boundary",
+                            "kind": "guided-qa",
+                            "action": "submit",
+                            "responseText": "召回不等于回答可用。",
+                            "selectedChoiceId": None,
+                            "isCorrect": True,
+                            "attempts": [],
+                            "finalFeedback": "回答到位。",
+                            "finalAnalysis": None,
+                        }
+                    ]
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+
+    decks_response = client.get("/threads/thread-activity/activity-decks")
+    assert decks_response.status_code == 200
+    payload = decks_response.json()
+    assert len(payload) == 1
+    assert payload[0]["deck_id"] == "run-activity-1"
+    assert payload[0]["session_type"] == "study"
+    assert payload[0]["knowledge_point_id"] == "kp-rag-boundary"
+    assert len(payload[0]["cards"]) == 1
 
 
 def test_consolidation_preview_summarizes_project_state(tmp_path: Path) -> None:

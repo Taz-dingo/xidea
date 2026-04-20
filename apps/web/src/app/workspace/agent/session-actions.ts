@@ -22,6 +22,7 @@ import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 export function createSessionActions({
   activeRuntime,
   activeTutorFixture,
+  activeSessionType,
   clearError,
   currentActivity,
   currentActivities,
@@ -59,6 +60,7 @@ export function createSessionActions({
   currentDeckKey: string | null;
   currentActivityKey: string | null;
   currentActivityBatchState: SessionActivityBatchState | null;
+  activeSessionType: "project" | "study" | "review";
   data: WorkspaceData;
   error: Error | undefined;
   handleCreateSession: (
@@ -146,8 +148,21 @@ export function createSessionActions({
         data.pendingSessionIntent.projectId,
         data.pendingSessionIntent.type,
         data.pendingSessionIntent.knowledgePointId,
+        selectedSessionKey === null ? [] : data.sessionSourceAssetIds[selectedSessionKey] ?? [],
       );
       if (createdSession !== null) {
+        if (selectedSessionKey !== null) {
+          data.setSessionSourceAssetIds((current) => {
+            const next = { ...current };
+            delete next[selectedSessionKey];
+            return next;
+          });
+          data.setSessionMaterialTrayOpen((current) => {
+            const next = { ...current };
+            delete next[selectedSessionKey];
+            return next;
+          });
+        }
         data.setPendingInitialPrompt({ sessionId: createdSession.id, text, sessionSummary: text });
         data.setDraftPrompt("");
       }
@@ -375,7 +390,7 @@ export function createSessionActions({
     handleSubmitActivity,
     handleSubmitPrompt,
     handleToggleMaterialsTray: () => {
-      if (selectedSessionKey !== null && data.selectedSession?.type === "project") {
+      if (selectedSessionKey !== null && activeSessionType === "project") {
         data.setSessionMaterialTrayOpen((current) => ({
           ...current,
           [selectedSessionKey]: !isMaterialsTrayOpen,
@@ -383,12 +398,12 @@ export function createSessionActions({
       }
     },
     handleToggleProjectMaterial: (assetId: string) => {
-      if (data.selectedSession?.type === "project") {
+      if (selectedSessionKey !== null && activeSessionType === "project") {
         data.setSessionSourceAssetIds((current) => {
-          const currentSelection = current[data.selectedSession!.id] ?? [];
+          const currentSelection = current[selectedSessionKey] ?? [];
           return {
             ...current,
-            [data.selectedSession!.id]: currentSelection.includes(assetId)
+            [selectedSessionKey]: currentSelection.includes(assetId)
               ? currentSelection.filter((id) => id !== assetId)
               : [...currentSelection, assetId],
           };
@@ -396,12 +411,10 @@ export function createSessionActions({
       }
     },
     handleUnsetSourceAsset: (assetId: string) => {
-      if (data.selectedSession?.type === "project") {
+      if (selectedSessionKey !== null && activeSessionType === "project") {
         data.setSessionSourceAssetIds((current) => ({
           ...current,
-          [data.selectedSession!.id]: (current[data.selectedSession!.id] ?? []).filter(
-            (id) => id !== assetId,
-          ),
+          [selectedSessionKey]: (current[selectedSessionKey] ?? []).filter((id) => id !== assetId),
         }));
       }
     },
