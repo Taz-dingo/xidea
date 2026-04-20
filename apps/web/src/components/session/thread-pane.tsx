@@ -187,15 +187,7 @@ export function SessionThreadPane({
               >
                 已附 {selectedSourceAssetIds.length} 份材料
               </Badge>
-            ) : (
-              <span className="text-sm text-[var(--xidea-stone)]">
-                {selectedSessionType === "project"
-                  ? "当前先按纯对话推进，需要时再补材料或调整主题。"
-                  : selectedSessionType === "study"
-                    ? "学习会话只围绕当前知识卡编排动作，这里不挂项目材料。"
-                    : "复习会话只围绕回忆和校准推进，这里不挂项目材料。"}
-              </span>
-            )}
+            ) : null}
           </div>
 
           {canManageMaterials && selectedSourceAssetIds.length > 0 ? (
@@ -244,9 +236,6 @@ export function SessionThreadPane({
                   </div>
                   <div>
                     <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
-                    <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                      这些材料只会在研讨会话里作为本轮附加上下文送给 agent。
-                    </p>
                   </div>
                 </div>
                 <div className="flex justify-end">
@@ -255,7 +244,7 @@ export function SessionThreadPane({
                 <AssetListGrid
                   assets={selectedProjectMaterials}
                   className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4"
-                  emptyText="当前项目还没有材料。先到“编辑”里加入项目材料，再挂进这轮会话。"
+                  emptyText="当前项目还没有材料。"
                   onAssetClick={onToggleProjectMaterial}
                   selectedAssetIds={selectedSourceAssetIds}
                 />
@@ -265,11 +254,9 @@ export function SessionThreadPane({
             {displayMessages.length === 0 &&
             !shouldShowStreamingPreview &&
             !shouldShowRunningPlaceholder ? (
-                <Card className="rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+              <Card className="rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
                 <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
-                  {selectedSessionType === "project"
-                    ? "当前还没有消息。你可以先继续研讨、补材料，或让系统沉淀知识点建议。"
-                    : "当前还没有消息。先输入这轮真正想验证的问题，再开始一组动作。"}
+                  还没有消息。
                 </CardContent>
               </Card>
             ) : (
@@ -369,15 +356,8 @@ export function SessionThreadPane({
                     message.id === latestAssistantMessageId &&
                     shouldShowPostReplyStatus ? (
                       <div className="w-full max-w-[82%] pl-1">
-                        <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3">
+                        <div className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3">
                           <SessionStreamingStatus label={streamingStatusLabel} />
-                          <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
-                            {activeRuntime.streamStatusPhase === "preparing-followup"
-                              ? selectedSessionType === "project"
-                                ? "正在整理知识点建议和材料线索。"
-                                : "正在整理下一组动作。"
-                              : "正在写回本轮状态。"}
-                          </p>
                         </div>
                       </div>
                     ) : null}
@@ -393,13 +373,8 @@ export function SessionThreadPane({
                     {shouldShowStreamingPreview ? (
                       <MarkdownContent content={streamingPreviewText} />
                     ) : (
-                      <div className="space-y-3">
+                      <div>
                         <SessionStreamingStatus label={streamingStatusLabel} />
-                        <p className="text-[14px] leading-6 text-[var(--xidea-stone)]">
-                          {selectedSessionType === "project"
-                            ? "正在生成回复。"
-                            : "正在生成回复和动作。"}
-                        </p>
                       </div>
                     )}
                   </div>
@@ -425,7 +400,7 @@ export function SessionThreadPane({
                       ? "补一句你希望系统先围绕这些材料判断什么。"
                       : selectedSessionType === "project"
                         ? "输入这轮想推进的方向、材料判断或知识点沉淀诉求。"
-                        : "输入这轮想验证的问题，系统会据此安排下一组动作。"
+                        : "输入这轮想验证的问题。"
                 }
                 value={draftPrompt}
               />

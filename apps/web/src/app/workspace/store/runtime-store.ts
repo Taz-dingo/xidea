@@ -12,7 +12,6 @@ import type {
 import {
   type ActivityResolution,
   type CompletedActivityDeck,
-  type DevTutorFixtureState,
   type SessionActivityBatchState,
 } from "@/domain/project-session-runtime";
 
@@ -25,15 +24,10 @@ function resolveState<T>(
     : nextState;
 }
 
-function getInitialDevTutorFixtureState(): DevTutorFixtureState | null {
-  return null;
-}
-
 interface WorkspaceRuntimeState {
   readonly sessionEntryModes: Record<string, AgentEntryMode>;
   readonly sessionSourceAssetIds: Record<string, ReadonlyArray<string>>;
   readonly sessionMaterialTrayOpen: Record<string, boolean>;
-  readonly devTutorFixtureState: DevTutorFixtureState | null;
   readonly sessionSnapshots: Record<string, RuntimeSnapshot>;
   readonly sessionReviewInspectors: Record<string, AgentReviewInspector | null>;
   readonly assetSummaryByKey: Record<string, AgentAssetSummary>;
@@ -52,9 +46,6 @@ interface WorkspaceRuntimeState {
   ) => void;
   readonly setSessionMaterialTrayOpen: (
     nextState: SetStateAction<Record<string, boolean>>,
-  ) => void;
-  readonly setDevTutorFixtureState: (
-    nextState: SetStateAction<DevTutorFixtureState | null>,
   ) => void;
   readonly setSessionSnapshots: (
     nextState: SetStateAction<Record<string, RuntimeSnapshot>>,
@@ -95,7 +86,6 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()(
       sessionEntryModes: {},
       sessionSourceAssetIds: {},
       sessionMaterialTrayOpen: {},
-      devTutorFixtureState: getInitialDevTutorFixtureState(),
       sessionSnapshots: {},
       sessionReviewInspectors: {},
       assetSummaryByKey: {},
@@ -117,10 +107,6 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()(
       setSessionMaterialTrayOpen: (nextState) =>
         set((state) => ({
           sessionMaterialTrayOpen: resolveState(nextState, state.sessionMaterialTrayOpen),
-        })),
-      setDevTutorFixtureState: (nextState) =>
-        set((state) => ({
-          devTutorFixtureState: resolveState(nextState, state.devTutorFixtureState),
         })),
       setSessionSnapshots: (nextState) =>
         set((state) => ({

@@ -1,7 +1,6 @@
 import { useChat } from "@ai-sdk/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { learningUnits } from "@/data/demo";
-import { getTutorFixtureScenario } from "@/data/tutor-fixtures";
 import {
   type AgentActivityResult,
   type AgentEntryMode,
@@ -34,7 +33,6 @@ import {
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
 import { createSessionActions } from "@/app/workspace/agent/session-actions";
 import { useAgentHealth } from "@/app/workspace/agent/effects/use-agent-health";
-import { useFixtureSync } from "@/app/workspace/agent/effects/use-fixture-sync";
 import { useProjectKnowledgeSync } from "@/app/workspace/agent/effects/use-project-knowledge-sync";
 import { useProjectMaterialsSync } from "@/app/workspace/agent/effects/use-project-materials-sync";
 import { useProjectSessionsSync } from "@/app/workspace/agent/effects/use-project-sessions-sync";
@@ -102,33 +100,16 @@ export function useSessionAgent({
     () => buildMockRuntimeSnapshot(data.initialProfile, runtimeUnit, fallbackSessionType),
     [data.initialProfile, fallbackSessionType, runtimeUnit],
   );
-  const fixtureIdFromUrl =
-    data.isDevEnvironment && typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("mockTutor")
-      : null;
-  const activeTutorFixture =
-    data.devTutorFixtureState === null
-      ? null
-      : getTutorFixtureScenario(data.devTutorFixtureState.fixtureId);
   const persistedMessageCount = data.selectedSession
     ? data.sessionMessagesById[data.selectedSession.id]?.length ?? 0
     : 0;
   const persistedRuntimeSource = data.selectedSession
     ? data.sessionSnapshots[data.selectedSession.id]?.source ?? null
     : null;
-  const hasRealSessionState =
-    data.selectedSession !== undefined &&
-    (persistedMessageCount > 0 ||
-      persistedRuntimeSource === "hydrated-state" ||
-      persistedRuntimeSource === "live-agent" ||
-      data.runningSessionIds[data.selectedSession.id] === true);
-  const isUsingDevTutorFixture = activeTutorFixture !== null && !hasRealSessionState;
   const activeRuntime =
     data.selectedSession === undefined
       ? seedRuntime
-      : isUsingDevTutorFixture
-        ? data.devTutorFixtureState?.snapshot ?? seedRuntime
-        : data.sessionSnapshots[data.selectedSession.id] ?? seedRuntime;
+      : data.sessionSnapshots[data.selectedSession.id] ?? seedRuntime;
   activeRuntimeRef.current = activeRuntime;
   const deckKey = buildActivityDeckKey(activeRuntime);
   const activityBatchState =
@@ -250,9 +231,7 @@ export function useSessionAgent({
   const pendingActivityResultRef = useRef<AgentActivityResult | null>(null);
   const agentBaseUrl = getAgentBaseUrl();
   const isAgentRunning =
-    isUsingDevTutorFixture
-      ? false
-      : selectedSessionKey !== null && data.runningSessionIds[selectedSessionKey] === true;
+    selectedSessionKey !== null && data.runningSessionIds[selectedSessionKey] === true;
   const isAwaitingActivityFollowup = activityBatchState?.awaitingAgent === true;
   const hasPendingActivity =
     hasStructuredRuntime &&
@@ -266,7 +245,6 @@ export function useSessionAgent({
     ? formatDateLabel(activeReviewInspector.scheduledAt) ?? "待安排"
     : activeRuntime.state.nextReviewAt ?? "待安排";
   const selectedUnitTitle = selectedUnit?.title ?? null;
-  const activeTutorFixtureId = activeTutorFixture?.id ?? null;
 
   const handleTransportSnapshot = useCallback(
     (sessionId: string, snapshot: typeof activeRuntime) => {
@@ -418,27 +396,16 @@ export function useSessionAgent({
       : data.sessionMessagesById[data.selectedSession.id] ?? [];
   const displayMessages = useMemo(
     () => {
-      if (isUsingDevTutorFixture) {
-        return data.devTutorFixtureState?.messages ?? [];
-      }
       if (!isAgentRunning) {
         return persistedMessages.length > 0 ? persistedMessages : messages;
       }
       return mergeMessageHistory(persistedMessages, messages);
     },
-    [
-      data.devTutorFixtureState?.messages,
-      isAgentRunning,
-      isUsingDevTutorFixture,
-      messages,
-      persistedMessages,
-    ],
+    [isAgentRunning, messages, persistedMessages],
   );
   const latestAssistantMessageId =
     [...displayMessages].reverse().find((message) => message.role === "assistant")?.id ?? null;
-  const errorMessage = isUsingDevTutorFixture
-    ? data.devTutorFixtureState?.errorMessage ?? null
-    : getErrorMessage(error);
+  const errorMessage = getErrorMessage(error);
   const composerDisabled = hasPendingActivity || isAgentRunning || agentBaseUrl === null;
   const activityInputDisabled =
     isAgentRunning || agentBaseUrl === null || isAwaitingActivityFollowup;
@@ -456,13 +423,6 @@ export function useSessionAgent({
     projectId: data.selectedProject.id,
     selectedSessionKey,
   });
-
-  useEffect(() => {
-    if (activeTutorFixture === null || !hasRealSessionState) {
-      return;
-    }
-    data.setDevTutorFixtureState(null);
-  }, [activeTutorFixture, data.setDevTutorFixtureState, hasRealSessionState]);
 
   useEffect(() => {
     if (selectedSessionKey === null || activityBatchState === null || deckKey === null) {
@@ -548,7 +508,6 @@ export function useSessionAgent({
     selectedSessionKey,
   ]);
 
-  useFixtureSync({ data, fixtureIdFromUrl });
   useAgentHealth(data);
   useSessionRuntimeSync({
     currentActivityKey,
@@ -572,7 +531,6 @@ export function useSessionAgent({
 
   const actions = createSessionActions({
     activeRuntime,
-    activeTutorFixture,
     activeSessionType: fallbackSessionType,
     clearError,
     currentActivity,
@@ -585,7 +543,6 @@ export function useSessionAgent({
     error,
     handleCreateSession,
     isMaterialsTrayOpen,
-    isUsingDevTutorFixture,
     latestAssistantMessageId,
     onQueueActivityResult: (result) => {
       pendingActivityResultRef.current = result;
@@ -603,7 +560,6 @@ export function useSessionAgent({
     activeReviewInspector,
     activeRuntime,
     activeSourceAssets,
-    activeTutorFixtureId,
     currentActivities,
     currentActivity,
     currentActivityKey,
@@ -619,7 +575,6 @@ export function useSessionAgent({
     isAgentRunning,
     isBlankSession,
     isMaterialsTrayOpen,
-    isUsingDevTutorFixture,
     latestAssistantMessageId,
     latestReviewedEvent,
     latestReviewedLabel,

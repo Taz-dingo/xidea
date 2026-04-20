@@ -94,10 +94,13 @@
     - 已修正 reply 生成链路里的 `user_msg` 传递错误：当前使用真实 `message.content`，不再把整个 `Message` 对象字符串塞进 prompt
     - 已把 study / review 的 activity 主路径切到 LLM 实时生成：当前优先消费 `main_decision` / `bundled response` 内直接返回的 `activities`，只有模型没稳定给卡时才回退到模板 builder
     - 已把前端 mock runtime snapshot 里的预置卡片撤掉，避免 backend 已切真后，seed / fallback 状态继续把 demo 题卡泄漏到 UI
+    - 已把 dev tutor fixture 从比赛版前端主路径移除；正常 session 不再被 inspector、URL 参数或残留 runtime state 误切到 fixture
     - 已把 choice activity contract 扩成 `is_correct / feedback_layers / analysis`，前端据此本地执行“错了继续、对了再过”的即时反馈；整组卡完成后仍统一回传一次 `activity_result`
+    - 已将 choice 题干与选项提示词再收紧：题目必须围绕知识点本身提问，错误项要对应真实误解；并已把正确答案位置做稳定打散，避免长期固定在第一个选项
     - 已把 completed deck history 收进前端 runtime store 和右侧 inspector，当前可回看每张卡的尝试轨迹与错误分析
     - 已把 `material-import` 的结构化知识点落库链修正成多 suggestion 路径：assistant 文本里明确提到的多条知识点会逐条写入 suggestion / knowledge point，而不是只落首条
-    - 当前剩余缺口集中在两处：一是 LLM 仍主动返回 `needs_tool=true` 的少数场景；二是 split path 下如果 bundled response 没带 `activities`，runtime 仍可能多一次 activity 生成调用
+    - 已将材料导入后知识卡的 `description / reason` 改成 LLM 补全，模板只保留为 fallback；历史模板 desc 已做一次性回刷
+    - 当前剩余缺口集中在三处：一是 LLM 仍主动返回 `needs_tool=true` 的少数场景；二是 split path 下如果 bundled response 没带 `activities`，runtime 仍可能多一次 activity 生成调用；三是新知识卡仍缺少更完整的“教学化沉淀对象”，study / review 对用户动态知识卡的上下文支撑还不够厚
 - [ ] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
   - owner: 学习引擎 owner / 产品 owner
 - [ ] 定义 Project 最小持久化对象：project memory、learning profile、knowledge points、sessions
@@ -141,6 +144,9 @@
   - 参考：`docs/reference/project-workspace-ui.md`
 - [ ] 收敛 project chat 行为：默认继续当前会话，支持手动新建 `project session`，不自动切分
   - owner: 前端 owner / 学习引擎 owner
+  - 当前进展：
+    - 点击 `研讨 / 学习 / 复习` 已统一先进入待开始态，只有首条真实消息后才创建 thread
+    - 当前仍需继续检查跨项目切换、切 session 和挂材后多轮追问时，是否还有旧 thread 上下文或旧草稿泄漏
 - [ ] 支持 project chat 中的新增材料、知识点建议新增、知识点轻量编辑、topic/rules 修改入口
   - owner: 前端 owner / 学习引擎 owner
   - 说明：

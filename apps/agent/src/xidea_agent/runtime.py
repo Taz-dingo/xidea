@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import re
 from typing import TYPE_CHECKING
 
+from xidea_agent.activity_choices import reorder_activity_choice_input
 from xidea_agent.activity_results import apply_activity_result_writeback
 from xidea_agent.guardrails import get_violations, validate_diagnosis
 from xidea_agent.knowledge_points import (
@@ -148,12 +149,12 @@ ACTION_REASON: dict[PedagogicalAction, str] = {
     "practice": "当前适合通过练习把已有理解转成更稳定的应用能力。",
 }
 SESSION_STATUS_MESSAGES = {
-    "loading-context": "正在读取当前 project、材料和历史状态",
-    "making-decision": "正在判断这一轮更适合先学什么",
-    "retrieving-context": "正在补充这轮需要的上下文证据",
-    "composing-response": "正在组织本轮回复和学习动作",
-    "preparing-followup": "正在整理这轮回复后续需要展示的动作和建议",
-    "writing-state": "正在写回这轮判断和最新学习状态",
+    "loading-context": "正在读取上下文",
+    "making-decision": "正在判断下一步",
+    "retrieving-context": "正在补上下文",
+    "composing-response": "正在生成回复",
+    "preparing-followup": "正在整理动作",
+    "writing-state": "正在写回状态",
 }
 TOOL_STATUS_MESSAGES: dict[ToolIntent, str] = {
     "none": SESSION_STATUS_MESSAGES["composing-response"],
@@ -184,10 +185,25 @@ def _build_choice(
 
 
 def _build_choice_input(*choice_specs: dict[str, object]) -> ActivityChoiceInput:
-    return ActivityChoiceInput(
+    choice_input = ActivityChoiceInput(
         type="choice",
         choices=[_build_choice(**choice_spec) for choice_spec in choice_specs],
     )
+    seed = "|".join(
+        f"{choice.id}:{choice.label}" for choice in choice_input.choices
+    )
+    return reorder_activity_choice_input(choice_input, seed=seed)
+
+
+def _normalize_activity_summary(learning_unit: LearningUnit | None) -> str:
+    if learning_unit is None:
+        return "先说清这条知识点真正解决的判断问题，而不是泛泛堆信息。"
+
+    summary = " ".join((learning_unit.summary or "").split()).strip()
+    if summary:
+        return summary.rstrip("。；;")
+
+    return f"「{learning_unit.title}」的关键是先讲清它解决什么判断问题、边界在哪里。"
 
 
 def _build_activity_choice_set(
@@ -196,6 +212,8 @@ def _build_activity_choice_set(
     action: PedagogicalAction,
 ):
     unit_id = learning_unit.id if learning_unit is not None else None
+    unit_title = learning_unit.title if learning_unit is not None else "当前知识点"
+    summary_statement = _normalize_activity_summary(learning_unit)
 
     if unit_id == "unit-rag-retrieval":
         if mode == "contrast-drill":
@@ -436,39 +454,39 @@ def _build_activity_choice_set(
     if mode == "contrast-drill":
         return _build_choice_input(
             {
-                "choice_id": "trace-boundary",
-                "label": "先把这条知识点里最关键的边界拉开，再决定下一步该补哪条证据。",
-                "detail": "先定位真正的判断对象，而不是继续泛泛补信息。",
+                "choice_id": "core-summary",
+                "label": summary_statement,
+                "detail": "这句直接落在知识点本身，能先把核心判断边界说清楚。",
                 "is_correct": True,
                 "feedback_layers": [
-                    "对，先把边界拉开，后面补证据才不会越补越乱。",
-                    "这轮先确认“到底哪两层最容易混”，比立刻堆更多信息更重要。",
+                    "对，这句先把知识点本身讲清楚了，不是在绕着答题方式打转。",
+                    f"围绕「{unit_title}」，先把核心边界说准，后面的证据和例子才有落点。",
                 ],
-                "analysis": "这条回答先处理边界，再决定补证据方向，更符合辨析题的目标。",
+                "analysis": "这条回答直接概括了当前知识点的核心边界，更符合辨析题要验证的内容理解。",
             },
             {
-                "choice_id": "increase-context",
-                "label": "先继续加更多信息，看看能不能把当前问题一起覆盖掉。",
-                "detail": "会把边界没拉开的缺口继续藏在信息噪音里。",
+                "choice_id": "more-context-is-enough",
+                "label": f"理解「{unit_title}」时，先继续补更多材料和信息，通常就能自然解决当前判断问题。",
+                "detail": "这会把真正的边界问题伪装成“信息还不够”。",
                 "is_correct": False,
                 "feedback_layers": [
-                    "先别急着加信息。现在更缺的是问题定位，不是覆盖率。",
-                    "如果边界还没拉开，继续加材料通常只会把噪音一起放大。",
-                    "真正要先回答的是：你现在混的是哪两层、哪一个判断标准还不稳。没定位前继续加料，后面会更难纠偏。",
+                    "先别急着加信息。现在更关键的是把这条知识点的判断边界说清楚。",
+                    "如果连核心边界还没拉开，继续堆材料通常只会把噪音一起放大。",
+                    f"围绕「{unit_title}」，系统现在要验证的是你是否抓住核心判断，而不是是否愿意继续加更多背景材料。",
                 ],
-                "analysis": "这条选择把边界问题误写成信息不足，容易继续跑偏。",
+                "analysis": "这条选择把知识点本身的边界问题误写成信息不足，容易让学习继续跑偏。",
             },
             {
-                "choice_id": "skip-diagnosis",
-                "label": "先给一个大概结论，判断依据先不展开。",
-                "detail": "会让真正的混淆点继续藏着，系统也更难给出下一步。",
+                "choice_id": "model-capability-blame",
+                "label": f"「{unit_title}」本质上只是模型能力强弱问题，系统设计和判断链路影响不大。",
+                "detail": "会把本来该讲清的知识点边界偷换成模型崇拜。",
                 "is_correct": False,
                 "feedback_layers": [
-                    "只给结论还不够，这轮更关键的是把判断依据露出来。",
-                    "如果不展开依据，系统就看不见你到底是概念边界没稳，还是证据选择没稳。",
-                    "辨析题的价值就在于暴露“你靠什么区分它们”。如果把依据省掉，后面的学习编排就只能走更保守的路径。",
+                    "这句先把问题推成模型强弱，焦点已经偏了。",
+                    "当前更关键的是说清知识点本身解决什么判断问题，而不是把一切归因成模型能力。",
+                    f"如果把「{unit_title}」讲成单纯的模型强弱问题，后面就很难再解释它为什么值得单独学习、在哪些场景下真的有用。",
                 ],
-                "analysis": "这条选择回避了判断依据，系统难以定位真实缺口。",
+                "analysis": "这条选择把知识点边界偷换成模型能力问题，会削弱当前学习目标。",
             },
         )
 
@@ -514,39 +532,39 @@ def _build_activity_choice_set(
     if mode in ("guided-qa", "socratic"):
         return _build_choice_input(
             {
-                "choice_id": "explain-boundary",
-                "label": "先给出和当前知识点直接相关的判断边界，再补一句为什么。",
-                "detail": "先让答案落在这条知识点本身，而不是只绕着答题方式打转。",
+                "choice_id": "state-core-summary",
+                "label": summary_statement,
+                "detail": "这句直接落在知识点内容本身，而不是绕去讲答题套路。",
                 "is_correct": True,
                 "feedback_layers": [
-                    "对，先把当前知识点里的判断边界说清楚，后面的解释才有落点。",
-                    "这能更快看出你是否真的理解，而不是只会复述表面定义。",
+                    "对，这句先把知识点本身说清楚了。",
+                    f"围绕「{unit_title}」，系统最想看到的是你能否准确说出它的核心判断，而不是复述答题策略。",
                 ],
-                "analysis": "这条回答先落在知识点本身，再补原因，更容易验证理解是否稳定。",
+                "analysis": "这条回答直接概括知识点本身，更容易验证理解是否真的稳定。",
             },
             {
-                "choice_id": "repeat-definition",
-                "label": "先复述概念定义，边界和应用后面再说。",
-                "detail": "只停在定义层，往往会把真正的判断缺口继续盖住。",
+                "choice_id": "just-repeat-term",
+                "label": f"先把「{unit_title}」这个概念名字和定义背出来，边界与应用后面再说。",
+                "detail": "会把真正需要验证的判断能力继续藏起来。",
                 "is_correct": False,
                 "feedback_layers": [
-                    "先别退回纯定义。当前更重要的是把边界和判断标准拉开。",
-                    "只复述定义常常会让人“看起来懂了”，但一到实际判断还是会混。",
-                    "这轮要验证的是你能不能把知识点用在判断上，而不是能不能背出教材式表述。只停在定义层，真实缺口会继续被盖住。",
+                    "先别退回纯定义。当前更重要的是把这条知识点真正解决什么问题说清楚。",
+                    "只背定义常常会让人“看起来懂了”，但一到具体判断就会重新混淆。",
+                    f"围绕「{unit_title}」，这轮要确认的是你能否用它做判断，而不是能否背出一个教材式表述。",
                 ],
-                "analysis": "这条选择把任务退回成复述定义，绕开了当前真正要验证的内容。",
+                "analysis": "这条选择把任务退回成背定义，绕开了当前真正要验证的内容理解。",
             },
             {
-                "choice_id": "jump-to-solution",
-                "label": "先直接给一个结论，判断依据之后再补。",
-                "detail": "会让系统看不见你是怎么区分、怎么推到这个答案的。",
+                "choice_id": "stuff-more-context",
+                "label": f"只要把更多材料和例子继续补进去，关于「{unit_title}」的判断自然会变清楚。",
+                "detail": "这会把知识点边界问题继续藏在信息堆叠里。",
                 "is_correct": False,
                 "feedback_layers": [
-                    "先给结论还不够，因为这轮还要看到你的判断过程。",
-                    "如果不解释为什么这样判断，后面就很难区分你是真的理解，还是碰巧押中了答案。",
-                    "这轮最有价值的信息是：你靠什么证据、什么标准得出这个判断。如果直接跳到结论，这层学习信号会直接丢掉。",
+                    "补材料不等于补清边界，先把知识点本身说准更重要。",
+                    "如果核心判断还没说清，继续堆例子只会让你越来越像在背材料，而不是在理解概念。",
+                    f"系统当前想确认的是：你是否已经抓住「{unit_title}」的核心边界。没有这层前提，继续补更多信息只会降低辨识度。",
                 ],
-                "analysis": "这条选择省掉了判断过程，系统难以确认理解是否真的稳固。",
+                "analysis": "这条选择把问题误写成信息量不足，会让知识点理解继续停留在模糊状态。",
             },
         )
 

@@ -176,6 +176,14 @@ function mapKnowledgePointItem(
       status === "archived" ? null : formatNextReviewLabel(state?.next_review_at),
     updatedAt: formatRelativeDateLabel(state?.updated_at ?? point.updated_at),
     sourceAssetIds: [...point.source_material_refs],
+    originSessionId: point.origin_session_id,
+    linkedSessionIds: [...(record.linked_session_ids ?? [])],
+    linkedMessageIdsBySession: Object.fromEntries(
+      Object.entries(record.linked_session_message_ids ?? {}).map(([sessionId, messageId]) => [
+        sessionId,
+        String(messageId),
+      ]),
+    ),
     archiveSuggestion:
       state?.archive_suggested === true
         ? {

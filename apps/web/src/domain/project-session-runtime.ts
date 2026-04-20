@@ -1,4 +1,3 @@
-import type { UIMessage } from "ai";
 import type {
   AgentAction,
   AgentActivityResult,
@@ -6,7 +5,6 @@ import type {
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
 import type { SessionType } from "@/domain/project-workspace";
-import type { TutorFixtureScenario } from "@/data/tutor-fixtures";
 import type {
   LearningActivity,
   LearningActivityKind,
@@ -48,13 +46,6 @@ export interface SessionActivityBatchState {
   readonly results: ReadonlyArray<ActivityBatchResult>;
 }
 
-export interface DevTutorFixtureState {
-  readonly fixtureId: string;
-  readonly messages: ReadonlyArray<UIMessage>;
-  readonly snapshot: RuntimeSnapshot;
-  readonly errorMessage: string | null;
-}
-
 export function getActionLabel(action: AgentAction): string {
   switch (action) {
     case "apply":
@@ -68,32 +59,6 @@ export function getActionLabel(action: AgentAction): string {
     case "teach":
       return "导师建模";
   }
-}
-
-export function createFixtureUiMessage(
-  role: "assistant" | "user",
-  content: string,
-  seed: string,
-): UIMessage {
-  return {
-    id: `fixture-${seed}-${Math.random().toString(36).slice(2, 8)}`,
-    role,
-    parts: [{ type: "text", text: content }],
-    content,
-  } as UIMessage;
-}
-
-export function buildDevTutorFixtureState(
-  fixture: TutorFixtureScenario,
-): DevTutorFixtureState {
-  return {
-    fixtureId: fixture.id,
-    messages: fixture.messages.map((message, index) =>
-      createFixtureUiMessage(message.role, message.content, `${fixture.id}-${index}`),
-    ),
-    snapshot: fixture.snapshot,
-    errorMessage: null,
-  };
 }
 
 export function getDefaultSourceAssetIds(): ReadonlyArray<string> {

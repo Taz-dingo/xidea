@@ -71,10 +71,25 @@ def test_run_agent_v0_prefers_clarify_for_confusion() -> None:
     choice_labels = [choice.label for choice in result.graph_state.activity.input.choices]
     assert any("正确文档通常已经进 top-k" in label for label in choice_labels)
     assert all("最容易混淆的两个判断对象" not in label for label in choice_labels)
-    assert result.graph_state.activity.input.choices[0].is_correct is True
-    assert result.graph_state.activity.input.choices[1].is_correct is False
-    assert len(result.graph_state.activity.input.choices[1].feedback_layers) >= 3
-    assert result.graph_state.activity.input.choices[1].analysis is not None
+    correct_indexes = [
+        index
+        for index, choice in enumerate(result.graph_state.activity.input.choices)
+        if choice.is_correct
+    ]
+    assert len(correct_indexes) == 1
+    assert correct_indexes[0] != 0
+    assert all(
+        result.graph_state.activity.input.choices[index].is_correct is False
+        for index in range(len(result.graph_state.activity.input.choices))
+        if index != correct_indexes[0]
+    )
+    first_wrong_choice = next(
+        choice
+        for choice in result.graph_state.activity.input.choices
+        if not choice.is_correct
+    )
+    assert len(first_wrong_choice.feedback_layers) >= 3
+    assert first_wrong_choice.analysis is not None
     assert [event.event for event in result.events] == [
         "diagnosis",
         "text-delta",

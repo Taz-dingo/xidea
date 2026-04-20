@@ -689,11 +689,19 @@ def test_compose_response_step_uses_llm_when_available() -> None:
     assert result.graph_state.plan.headline == "围绕 retrieval vs reranking 的辨析路径"
     assert any("plan=LLM" in item and "reply=LLM" in item for item in result.graph_state.rationale)
     assert result.graph_state.activities[0].title == "先判断什么时候该补重排"
+    assert result.graph_state.activities[0].input.type == "choice"
+    first_activity_correct_indexes = [
+        index
+        for index, choice in enumerate(result.graph_state.activities[0].input.choices)
+        if choice.is_correct
+    ]
+    assert len(first_activity_correct_indexes) == 1
+    assert first_activity_correct_indexes[0] != 0
     assert any("compose_response emitted activity" in item for item in result.graph_state.rationale)
 
 
-def test_diagnose_step_raises_when_llm_diagnosis_fails() -> None:
-    """When all LLM calls fail, diagnose_step raises RuntimeError instead of falling back."""
+def test_diagnose_step_falls_back_to_rules_when_llm_diagnosis_fails() -> None:
+    """When all LLM calls fail, diagnose_step still returns a rule-based diagnosis."""
     from xidea_agent.runtime import run_agent_v0
     from xidea_agent.state import AgentRequest
 
@@ -709,8 +717,11 @@ def test_diagnose_step_raises_when_llm_diagnosis_fails() -> None:
         target_unit_id="unit-rag-retrieval",
         messages=[{"role": "user", "content": "我分不清 retrieval 和 reranking 的职责"}],
     )
-    with pytest.raises(RuntimeError, match="LLM diagnosis returned None"):
-        run_agent_v0(request, llm=llm)
+    result = run_agent_v0(request, llm=llm)
+
+    assert result.graph_state.diagnosis is not None
+    assert result.graph_state.assistant_message
+    assert any("diagnosis=rules" in item for item in result.graph_state.rationale)
 
 
 def test_run_agent_v0_returns_safe_reply_on_provider_filter() -> None:
@@ -1373,6 +1384,16 @@ def test_llm_build_reply_and_plan_returns_valid_payload() -> None:
     )
 
     assert result is not None
+    _, _, activities = result
+    assert activities is not None
+    assert activities[0].input.type == "choice"
+    correct_indexes = [
+        index
+        for index, choice in enumerate(activities[0].input.choices)
+        if choice.is_correct
+    ]
+    assert len(correct_indexes) == 1
+    assert correct_indexes[0] != 0
     reply, plan, activities = result
     assert "retrieval" in reply
     assert plan.headline == "围绕 RAG 检索设计的辨析路径"

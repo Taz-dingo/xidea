@@ -24,6 +24,7 @@ from types import SimpleNamespace
 
 import httpx
 
+from xidea_agent.activity_choices import reorder_activity_choice_input
 from xidea_agent.state import (
     Activity,
     ActivityChoice,
@@ -535,6 +536,10 @@ ACTIVITY_GENERATION_SYSTEM_PROMPT = """\
 - activities 数量必须和 plan.steps 数量一致，顺序一致
 - 每张卡都必须直接围绕当前学习主题 / 当前知识点本身出题，不要问“你应该怎么答题”“系统下一步会怎么做”这类 meta 问题
 - 题干和选项必须贴合用户当前主题与最新问题，不能写成系统自指文案
+- 题干必须让用户一眼知道“现在在判断什么”，优先写成边界判断、场景判断、概念辨析或因果判断，不要写成空泛口号
+- 选项必须是对知识点内容本身的 substantive statement，禁止出现“先把/先继续/先复述/先给结论”这类答题策略型选项
+- 正确选项要直接命中当前知识点的核心边界或核心因果，不要只是“更稳妥”“更完整”这种模糊表述
+- 错误选项要分别对应常见误解：边界混淆、问题归因错误、把堆信息当成解决方案、把模型能力当成系统设计判断
 - 默认使用 choice input
 - choice 至少 3 个，且必须恰好 1 个正确答案
 - 错误选项必须是贴着当前知识点的 plausible misconception，不能是明显废话
@@ -1235,6 +1240,11 @@ def _parse_activity_list_payload(
         input_payload = _parse_activity_input_payload(item.get("input"))
         if input_payload is None:
             return None
+        if isinstance(input_payload, ActivityChoiceInput):
+            input_payload = reorder_activity_choice_input(
+                input_payload,
+                seed=f"{knowledge_point_id or learner_state.unit_id}|{title}|{prompt}|{index}",
+            )
 
         kind = _activity_kind_for_mode(step.mode, diagnosis.recommended_action)
         activities.append(

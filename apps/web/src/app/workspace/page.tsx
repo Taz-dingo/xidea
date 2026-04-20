@@ -1,5 +1,4 @@
 import type { ReactElement } from "react";
-import { tutorFixtureScenarios } from "@/data/tutor-fixtures";
 import { sourceAssets } from "@/data/demo";
 import { buildPendingSessionId } from "@/domain/project-workspace";
 import { WorkspaceHeader } from "@/app/workspace/ui/header";
@@ -47,10 +46,10 @@ export function WorkspacePage(): ReactElement {
                 : "开始学习",
           summary:
             data.pendingSessionIntent.type === "project"
-              ? "先输入这轮想推进的主题、材料或知识点沉淀目标。"
+              ? "从这轮想推进的方向开始。"
               : data.pendingSessionIntent.knowledgePointTitle
-                ? `围绕「${data.pendingSessionIntent.knowledgePointTitle}」开始一轮${data.pendingSessionIntent.type === "study" ? "学习" : "复习"}。`
-                : `先输入这轮想验证的内容，再开始一轮${data.pendingSessionIntent.type === "study" ? "学习" : "复习"}。`,
+                ? `围绕「${data.pendingSessionIntent.knowledgePointTitle}」开始。`
+                : "从这轮想验证的问题开始。",
           updatedAt: "待开始",
           status: "待开始",
         };
@@ -183,8 +182,6 @@ export function WorkspacePage(): ReactElement {
                   activeReviewInspector={session.activeReviewInspector}
                   activeRuntime={session.activeRuntime}
                   activeSourceAssets={session.activeSourceAssets}
-                  activeTutorFixtureId={session.activeTutorFixtureId}
-                  agentConnectionState={data.agentConnectionState}
                   currentActivities={session.currentActivities}
                   currentActivity={session.currentActivity}
                   currentActivityKey={session.currentActivityKey}
@@ -198,9 +195,7 @@ export function WorkspacePage(): ReactElement {
                   hasStructuredRuntime={session.hasStructuredRuntime}
                   isAgentRunning={session.isAgentRunning}
                   isBlankSession={session.isBlankSession || data.selectedSession === undefined}
-                  isDevEnvironment={data.isDevEnvironment}
                   isMaterialsTrayOpen={session.isMaterialsTrayOpen}
-                  isUsingDevTutorFixture={session.isUsingDevTutorFixture}
                   latestAssistantMessageId={session.latestAssistantMessageId}
                   latestReviewedLabel={session.latestReviewedLabel}
                   nextReviewLabel={session.nextReviewLabel}
@@ -210,7 +205,6 @@ export function WorkspacePage(): ReactElement {
                       actions.handleDeleteSession();
                     }
                   }}
-                  onDisableTutorFixture={session.handleDisableTutorFixture}
                   onEditKnowledgePoint={actions.handleOpenKnowledgePointEditor}
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
                   onOpenProjectMetaEditor={actions.handleOpenProjectMetaEditor}
@@ -235,7 +229,6 @@ export function WorkspacePage(): ReactElement {
                       model.studyTargetPoint?.id ?? null,
                     )
                   }
-                  onSelectTutorFixture={session.handleSelectTutorFixture}
                   onSkipActivity={session.handleSkipActivity}
                   onSubmitActivity={session.handleSubmitActivity}
                   onSubmitPrompt={session.handleSubmitPrompt}
@@ -258,7 +251,6 @@ export function WorkspacePage(): ReactElement {
                   activityInputDisabled={session.activityInputDisabled}
                   composerDisabled={session.composerDisabled}
                   studyDisabled={model.studyTargetPoint === null}
-                  tutorFixtureScenarios={tutorFixtureScenarios}
                   workspaceSection={data.workspaceSection}
                 />
               )}

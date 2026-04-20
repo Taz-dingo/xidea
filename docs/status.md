@@ -4,6 +4,17 @@
 
 ### Done
 
+#### 真实学习主链与前端主路径收口（2026-04-20）
+
+- `apps/web` 已将 dev tutor fixture 从比赛版主路径移除：正常 workspace / session 页面不再通过 inspector、URL 参数或残留 runtime state 误切到 fixture，真实会话统一只走后端 contract
+- `apps/web` 已进一步压短 session 顶部和 loading 文案：去掉一批解释系统机制、重复说明等待阶段的提示字，主路径只保留必要状态词与短占位
+- `apps/agent` 已将 `material-import` 产出的知识卡沉淀质量继续收口：新知识卡的 `description / reason` 默认通过 LLM 结构化补全，而不是只靠模板句硬拼；模板文案只作为失败回退
+- `apps/agent` 已将选择题 contract 再收紧：题干必须直接落在当前知识点判断上，错误选项要对应真实误解；不再允许“先复述 / 先继续补信息”这类答题策略型选项混进主路径
+- `apps/agent` 已将 choice 选项顺序做稳定打散，并避免正确答案长期固定在第一个位置，减少用户形成位置偏置
+- `apps/agent` 与 `apps/web` 已补 session / knowledge point 删除闭环：session 右上角只保留一个删除入口；知识卡删除会同步清理相关 learner state、thread deck、suggestion 和 thread 关联，避免删完仍残留脏引用
+- `apps/agent` 已手动回刷本地旧知识卡的模板 desc；当前比赛库里的历史知识卡描述不再停留在“围绕材料《...》补齐...”那种硬模板风格
+- `apps/agent` 已继续收口材料导入后的 project 回复：当 backend 已经真实提炼出多条知识点 suggestion 时，assistant 文本会优先围绕这些已落库结果组织，而不是继续说“先收成一条”
+
 #### Session 持久化与学习链路收口（2026-04-20）
 
 - `apps/agent` 已将 `project / study / review` 的 request 入口做服务端规范化：带材料的 `project session` 会自动归一到 `material-import`，带 `activity_result` 的 follow-up 会自动归一到 `coach-followup`，不再依赖前端每次都发对 `entry_mode`

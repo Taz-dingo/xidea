@@ -9,7 +9,6 @@ import {
 } from "@/components/workspace/core";
 import { SessionListSection } from "@/components/workspace/session-list";
 import { WorkspaceNavButton } from "@/components/workspace/monitor";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
@@ -34,7 +33,6 @@ import type {
   LearningActivitySubmission,
   SourceAsset,
 } from "@/domain/types";
-import type { TutorFixtureScenario } from "@/data/tutor-fixtures";
 import type { UIMessage } from "ai";
 
 export function SessionWorkspace({
@@ -42,9 +40,7 @@ export function SessionWorkspace({
   activeReviewInspector,
   activeRuntime,
   activeSourceAssets,
-  activeTutorFixtureId,
   activityInputDisabled,
-  agentConnectionState,
   composerDisabled,
   currentActivities,
   currentActivity,
@@ -54,22 +50,17 @@ export function SessionWorkspace({
   displayMessages,
   draftPrompt,
   errorMessage,
-  activityInputDisabled,
-  composerDisabled,
   hasPendingActivity,
   hasPersistedState,
   hasStructuredRuntime,
   isAgentRunning,
   isBlankSession,
-  isDevEnvironment,
   isMaterialsTrayOpen,
-  isUsingDevTutorFixture,
   latestAssistantMessageId,
   latestReviewedLabel,
   nextReviewLabel,
   onChangeDraftPrompt,
   onDeleteSession,
-  onDisableTutorFixture,
   onEditKnowledgePoint,
   onOpenKnowledgePoint,
   onOpenProjectMetaEditor,
@@ -77,7 +68,6 @@ export function SessionWorkspace({
   onStartProjectSession,
   onStartReview,
   onStartStudy,
-  onSelectTutorFixture,
   onSkipActivity,
   onSubmitActivity,
   onSubmitPrompt,
@@ -97,7 +87,6 @@ export function SessionWorkspace({
   selectedSourceAssetIds,
   selectedUnitTitle,
   selectedProjectSessions,
-  tutorFixtureScenarios,
   studyDisabled,
   workspaceSection,
 }: {
@@ -105,9 +94,7 @@ export function SessionWorkspace({
   activeReviewInspector: AgentReviewInspector | null;
   activeRuntime: RuntimeSnapshot;
   activeSourceAssets: ReadonlyArray<SourceAsset>;
-  activeTutorFixtureId: string | null;
   activityInputDisabled: boolean;
-  agentConnectionState: "checking" | "ready" | "offline";
   composerDisabled: boolean;
   currentActivities: RuntimeSnapshot["activities"];
   currentActivity: RuntimeSnapshot["activity"];
@@ -117,22 +104,17 @@ export function SessionWorkspace({
   displayMessages: ReadonlyArray<UIMessage>;
   draftPrompt: string;
   errorMessage: string | null;
-  activityInputDisabled: boolean;
-  composerDisabled: boolean;
   hasPendingActivity: boolean;
   hasPersistedState: boolean;
   hasStructuredRuntime: boolean;
   isAgentRunning: boolean;
   isBlankSession: boolean;
-  isDevEnvironment: boolean;
   isMaterialsTrayOpen: boolean;
-  isUsingDevTutorFixture: boolean;
   latestAssistantMessageId: string | null;
   latestReviewedLabel: string;
   nextReviewLabel: string;
   onChangeDraftPrompt: (value: string) => void;
   onDeleteSession: () => void;
-  onDisableTutorFixture: () => void;
   onEditKnowledgePoint: (pointId: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
   onOpenProjectMetaEditor: () => void;
@@ -140,7 +122,6 @@ export function SessionWorkspace({
   onStartProjectSession: () => void;
   onStartReview: () => void;
   onStartStudy: () => void;
-  onSelectTutorFixture: (fixture: TutorFixtureScenario) => void;
   onSkipActivity: (attempts?: ReadonlyArray<LearningActivityAttempt>) => void;
   onSubmitActivity: (submission: LearningActivitySubmission) => void;
   onSubmitPrompt: () => void;
@@ -160,7 +141,6 @@ export function SessionWorkspace({
   selectedSourceAssetIds: ReadonlyArray<string>;
   selectedUnitTitle: string | null;
   selectedProjectSessions: ReadonlyArray<SessionItem>;
-  tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario>;
   studyDisabled: boolean;
   workspaceSection: WorkspaceSection;
 }): ReactElement {
@@ -275,22 +255,6 @@ export function SessionWorkspace({
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Badge
-                className="border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-stone)] shadow-none"
-                variant="outline"
-              >
-                {isAgentRunning
-                  ? "实时处理中"
-                  : agentConnectionState === "offline"
-                    ? "连接离线"
-                    : activeRuntime.source === "live-agent"
-                      ? "实时 Agent"
-                      : activeRuntime.source === "hydrated-state"
-                        ? "已回填"
-                        : agentConnectionState === "ready"
-                          ? "可用"
-                          : "检查中"}
-              </Badge>
               {!isPendingSession ? (
                 <Button
                   aria-label={deleteArmed ? "确认删除会话" : "删除会话"}
@@ -329,8 +293,6 @@ export function SessionWorkspace({
           displayMessages={displayMessages}
           draftPrompt={draftPrompt}
           errorMessage={errorMessage}
-          activityInputDisabled={activityInputDisabled}
-          composerDisabled={composerDisabled}
           hasPendingActivity={hasPendingActivity}
           hasStructuredRuntime={hasStructuredRuntime}
           isAgentRunning={isAgentRunning}
@@ -358,19 +320,14 @@ export function SessionWorkspace({
         activeAssetSummary={activeAssetSummary}
         activeReviewInspector={activeReviewInspector}
         activeRuntime={activeRuntime}
-        activeTutorFixtureId={activeTutorFixtureId}
         completedActivityDecks={completedActivityDecks}
         hasPersistedState={hasPersistedState}
         hasStructuredRuntime={hasStructuredRuntime}
         isBlankSession={isBlankSession}
-        isDevEnvironment={isDevEnvironment}
-        isUsingDevTutorFixture={isUsingDevTutorFixture}
         latestReviewedLabel={latestReviewedLabel}
         nextReviewLabel={nextReviewLabel}
-        onDisableTutorFixture={onDisableTutorFixture}
         onEditKnowledgePoint={onEditKnowledgePoint}
         onOpenKnowledgePoint={onOpenKnowledgePoint}
-        onSelectTutorFixture={onSelectTutorFixture}
         relatedKnowledgePoints={relatedKnowledgePoints}
         requestSourceAssetIds={requestSourceAssetIds}
         selectedProject={selectedProject}
@@ -378,7 +335,6 @@ export function SessionWorkspace({
         selectedSessionType={selectedSession.type}
         selectedSourceAssetIds={selectedSourceAssetIds}
         selectedUnitTitle={selectedUnitTitle}
-        tutorFixtureScenarios={tutorFixtureScenarios}
       />
     </div>
   );

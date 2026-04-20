@@ -20,7 +20,6 @@ import {
   type KnowledgePointItem,
   type ProjectItem,
 } from "@/domain/project-workspace";
-import type { TutorFixtureScenario } from "@/data/tutor-fixtures";
 
 function formatDeckCompletionLabel(value: string): string {
   const date = new Date(value);
@@ -257,19 +256,14 @@ export function SessionInspector({
   activeAssetSummary,
   activeReviewInspector,
   activeRuntime,
-  activeTutorFixtureId,
   completedActivityDecks,
   hasPersistedState,
   hasStructuredRuntime,
   isBlankSession,
-  isDevEnvironment,
-  isUsingDevTutorFixture,
   latestReviewedLabel,
   nextReviewLabel,
-  onDisableTutorFixture,
   onEditKnowledgePoint,
   onOpenKnowledgePoint,
-  onSelectTutorFixture,
   relatedKnowledgePoints,
   requestSourceAssetIds,
   selectedProject,
@@ -277,24 +271,18 @@ export function SessionInspector({
   selectedSessionType,
   selectedSourceAssetIds,
   selectedUnitTitle,
-  tutorFixtureScenarios,
 }: {
   activeAssetSummary: AgentAssetSummary | null;
   activeReviewInspector: AgentReviewInspector | null;
   activeRuntime: RuntimeSnapshot;
-  activeTutorFixtureId: string | null;
   completedActivityDecks: ReadonlyArray<CompletedActivityDeck>;
   hasPersistedState: boolean;
   hasStructuredRuntime: boolean;
   isBlankSession: boolean;
-  isDevEnvironment: boolean;
-  isUsingDevTutorFixture: boolean;
   latestReviewedLabel: string;
   nextReviewLabel: string;
-  onDisableTutorFixture: () => void;
   onEditKnowledgePoint: (pointId: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
-  onSelectTutorFixture: (fixture: TutorFixtureScenario) => void;
   relatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
   requestSourceAssetIds: ReadonlyArray<string>;
   selectedProject: ProjectItem;
@@ -302,7 +290,6 @@ export function SessionInspector({
   selectedSessionType: "project" | "study" | "review";
   selectedSourceAssetIds: ReadonlyArray<string>;
   selectedUnitTitle: string | null;
-  tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario>;
 }): ReactElement {
   const [openDeckKey, setOpenDeckKey] = useState<string | null>(null);
   const previewDecks = useMemo(
@@ -449,39 +436,6 @@ export function SessionInspector({
                 ))}
               </div>
             ) : null}
-          </MonitorSection>
-        ) : null}
-
-        {isDevEnvironment ? (
-          <MonitorSection accent="仅开发" title="调试场景">
-            <div className="space-y-2">
-              <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                这块只服务前端交互打磨，不属于正式 demo 叙事。
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  className="h-8 rounded-full px-3"
-                  onClick={onDisableTutorFixture}
-                  size="sm"
-                  type="button"
-                  variant={isUsingDevTutorFixture ? "outline" : "default"}
-                >
-                  关闭
-                </Button>
-                {tutorFixtureScenarios.map((fixture) => (
-                  <Button
-                    className="h-8 rounded-full px-3"
-                    key={fixture.id}
-                    onClick={() => onSelectTutorFixture(fixture)}
-                    size="sm"
-                    type="button"
-                    variant={activeTutorFixtureId === fixture.id ? "default" : "outline"}
-                  >
-                    {fixture.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
           </MonitorSection>
         ) : null}
       </div>

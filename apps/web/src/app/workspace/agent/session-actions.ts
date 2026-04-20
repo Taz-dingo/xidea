@@ -1,5 +1,4 @@
 import { formatActivitySubmissionForAgent } from "@/domain/agent-runtime";
-import type { TutorFixtureScenario } from "@/data/tutor-fixtures";
 import {
   buildAggregateActivityResult,
   buildActivityBatchSummaryMessage,
@@ -10,18 +9,10 @@ import {
 } from "@/domain/project-session-runtime";
 import type { AgentActivityResult } from "@/domain/agent-runtime";
 import type { LearningActivityAttempt, LearningActivitySubmission } from "@/domain/types";
-import {
-  buildFreeReplyFixtureState,
-  buildSubmittedFixtureState,
-  buildSkippedFixtureState,
-  selectFixture,
-  setDevTutorFixtureQueryParam,
-} from "@/app/workspace/agent/session-fixture";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function createSessionActions({
   activeRuntime,
-  activeTutorFixture,
   activeSessionType,
   clearError,
   currentActivity,
@@ -33,7 +24,6 @@ export function createSessionActions({
   error,
   handleCreateSession,
   isMaterialsTrayOpen,
-  isUsingDevTutorFixture,
   latestAssistantMessageId,
   onQueueActivityResult,
   prepareSourceAssetsForSend,
@@ -44,14 +34,6 @@ export function createSessionActions({
   activeRuntime: {
     state: { recommendedAction: "apply" | "clarify" | "practice" | "review" | "teach" };
   };
-  activeTutorFixture:
-    | {
-        id: string;
-        skipReply: string;
-        submitReply: string;
-        submitErrorMessage: string | null;
-      }
-    | null;
   clearError: () => void;
   currentActivity:
     | Parameters<typeof formatActivitySubmissionForAgent>[0]["activity"]
@@ -70,7 +52,6 @@ export function createSessionActions({
     initialSourceAssetIds?: ReadonlyArray<string>,
   ) => { id: string } | null;
   isMaterialsTrayOpen: boolean;
-  isUsingDevTutorFixture: boolean;
   latestAssistantMessageId: string | null;
   onQueueActivityResult: (result: AgentActivityResult | null) => void;
   prepareSourceAssetsForSend: () => void;
@@ -169,14 +150,6 @@ export function createSessionActions({
       return;
     }
 
-    if (isUsingDevTutorFixture) {
-      data.setDevTutorFixtureState((current) =>
-        current === null ? current : buildFreeReplyFixtureState(current, text),
-      );
-      data.setDraftPrompt("");
-      return;
-    }
-
     handleSendToAgent(text, text);
     data.setDraftPrompt("");
   }
@@ -187,32 +160,6 @@ export function createSessionActions({
     }
     if (error !== undefined) {
       clearError();
-    }
-
-    if (isUsingDevTutorFixture && activeTutorFixture !== null) {
-      data.setActivityResolutionsBySession((current) => ({
-        ...current,
-        [data.selectedSession!.id]: {
-          ...(current[data.selectedSession!.id] ?? {}),
-          [currentActivityKey]: "submitted",
-        },
-      }));
-      if (activeTutorFixture.submitErrorMessage !== null) {
-        data.setDevTutorFixtureState((current) =>
-          current === null
-            ? current
-            : { ...current, errorMessage: activeTutorFixture.submitErrorMessage },
-        );
-        return;
-      }
-
-      const submissionText = formatActivitySubmissionForAgent({ activity: currentActivity, submission });
-      data.setDevTutorFixtureState((current) =>
-        current === null
-          ? current
-          : buildSubmittedFixtureState(current, submissionText, activeTutorFixture.submitReply),
-      );
-      return;
     }
 
     const nextBatchState = buildNextBatchState(
@@ -279,22 +226,6 @@ export function createSessionActions({
     }
     if (error !== undefined) {
       clearError();
-    }
-
-    if (isUsingDevTutorFixture && activeTutorFixture !== null) {
-      data.setActivityResolutionsBySession((current) => ({
-        ...current,
-        [data.selectedSession!.id]: {
-          ...(current[data.selectedSession!.id] ?? {}),
-          [currentActivityKey]: "skipped",
-        },
-      }));
-      data.setDevTutorFixtureState((current) =>
-        current === null
-          ? current
-          : buildSkippedFixtureState(current, currentActivity.title, activeTutorFixture.skipReply),
-      );
-      return;
     }
 
     const nextBatchState = buildNextBatchState(
@@ -372,19 +303,7 @@ export function createSessionActions({
       if (error !== undefined) {
         clearError();
       }
-      if (isUsingDevTutorFixture) {
-        data.setDevTutorFixtureState((current) =>
-          current === null ? current : { ...current, errorMessage: null },
-        );
-      }
       data.setDraftPrompt(value);
-    },
-    handleDisableTutorFixture: () => {
-      setDevTutorFixtureQueryParam(null);
-      data.setDevTutorFixtureState(null);
-    },
-    handleSelectTutorFixture: (fixture: TutorFixtureScenario) => {
-      data.setDevTutorFixtureState(selectFixture(fixture));
     },
     handleSkipActivity,
     handleSubmitActivity,

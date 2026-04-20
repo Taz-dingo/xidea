@@ -27,6 +27,7 @@ interface WorkspaceEntitiesState {
   readonly projects: ReadonlyArray<ProjectItem>;
   readonly knowledgePoints: ReadonlyArray<KnowledgePointItem>;
   readonly sessions: ReadonlyArray<SessionItem>;
+  readonly sourceAssets: ReadonlyArray<SourceAsset>;
   readonly projectMaterialIdsByProject: Record<string, ReadonlyArray<string>>;
   readonly projectAssetsByProject: Record<string, ReadonlyArray<SourceAsset>>;
   readonly setProjects: (
@@ -37,6 +38,9 @@ interface WorkspaceEntitiesState {
   ) => void;
   readonly setSessions: (
     nextState: SetStateAction<ReadonlyArray<SessionItem>>,
+  ) => void;
+  readonly setSourceAssets: (
+    nextState: SetStateAction<ReadonlyArray<SourceAsset>>,
   ) => void;
   readonly setProjectMaterialIdsByProject: (
     nextState: SetStateAction<Record<string, ReadonlyArray<string>>>,
@@ -76,6 +80,7 @@ export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
       projects: initialProjects,
       knowledgePoints: initialKnowledgePoints,
       sessions: [],
+      sourceAssets,
       projectMaterialIdsByProject: initialProjectMaterials,
       projectAssetsByProject: initialProjectAssets,
       setProjects: (nextState) =>
@@ -86,6 +91,8 @@ export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
         })),
       setSessions: (nextState) =>
         set((state) => ({ sessions: resolveState(nextState, state.sessions) })),
+      setSourceAssets: (nextState) =>
+        set((state) => ({ sourceAssets: resolveState(nextState, state.sourceAssets) })),
       setProjectMaterialIdsByProject: (nextState) =>
         set((state) => ({
           projectMaterialIdsByProject: resolveState(
@@ -105,9 +112,10 @@ export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
         projectAssetsByProject: state.projectAssetsByProject,
         projectMaterialIdsByProject: state.projectMaterialIdsByProject,
         projects: state.projects,
+        sourceAssets: state.sourceAssets,
       }),
       storage: createJSONStorage(() => localStorage),
-      version: 4,
+      version: 5,
     },
   ),
 );

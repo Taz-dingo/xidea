@@ -3,6 +3,42 @@
 只保留"当前仍生效、后续会反复影响协作或实现"的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-20 — 比赛版前端主路径不再保留 dev tutor fixture；真实 session 统一只走后端 contract
+
+### 决策
+
+- 比赛版 demo 的正常 workspace / session 页面，不再保留会劫持真实会话的 dev tutor fixture 入口
+- inspector、URL 参数、残留 runtime state 都不应再把一个真实 `project / study / review session` 切到 fixture 文案和 fixture 题卡
+- 如需本地调试伪造 session / card 情况，必须走隔离的开发工具或单独页面，而不是把 fixture 继续挂在比赛版主路径里
+
+### 原因
+
+- fixture 最大的问题不是“偶尔看起来怪”，而是它太像真实链路，误触后会直接制造“一张卡一轮对话”“本地导师追问抢管真实回复”这类假问题
+- 一旦 fixture 和真实后端 contract 混在一起，浏览器验证就失去意义，前后端联调时也很难分清到底是 agent 回了这段话，还是前端本地自己编出来的
+
+### 影响
+
+- 后续任何为了开发方便重新引入 fixture 的改动，都必须明确隔离到不影响比赛版主路径的入口；不能再回到“默认页面也能误切进去”的状态
+- 后续浏览器验收和 PR review 默认以真实后端链路为准，不接受“这是 fixture 先顶一下”的长期解释
+
+## 2026-04-20 — 材料导入生成的知识卡要先沉淀成可教学对象；`description / reason` 默认由 LLM 补全，模板文案只允许 fallback
+
+### 决策
+
+- `material-import` 产出的知识卡，不能只保留标题和模板句式描述；`description / reason` 默认要通过 LLM 结合材料摘要和候选标题做结构化补全
+- 模板文案只允许作为 LLM 失败时的 fallback，不能继续作为主路径上的知识卡描述来源
+- 后续 `study / review session` 读取用户动态创建的知识卡时，默认优先消费这份沉淀后的 `description / reason`，而不是再从“标题 + 一句硬模板”上现推
+
+### 原因
+
+- 之前材料导入虽然已经能真实落库知识卡，但 desc 质量明显像死代码拼接，无法支撑后续学习编排，也会直接拉低 demo 可信度
+- 如果知识卡本身没有足够厚的上下文，后续学习 / 复习就只能围绕标题泛化出题，很容易再次滑回模糊题干和空泛反馈
+
+### 影响
+
+- 后续 review 材料导入相关改动时，除了检查 suggestion 数量和落库结果，还要显式检查知识卡描述质量是否仍然在走 fallback
+- 后续如果继续增强知识点沉淀，应优先补“教学化 detail/context”这层 durable object，而不是继续只优化自由回复文案
+
 ## 2026-04-20 — 学习/复习牌组必须以后端 thread 对象持久化；前端 runtime 只能做即时交互缓存，不能作为唯一真相
 
 ### 决策
@@ -225,28 +261,6 @@
 
 - 后续 review 不只要检查 `project session` 会不会发题，还要检查回复是否真正落到这四类推进目标之一
 - 后续如果继续优化 `project session` 的 LLM 质量，few-shot 和 fallback reply 也要围绕这四类目标组织，不能再回到抽象的 “继续 project 讨论”
-
-## 2026-04-18 — `project session` 必须先按 project chat 推进，低信息输入不触发学习编排
-
-### 决策
-
-- `project session` 新增 deterministic low-info guard：像 `hi / hello / 在吗 / 继续` 这类低信息输入，不再走 LLM 学习诊断和学习动作链路
-- 这类输入会直接返回 project-chat 澄清回复，只提示用户明确这轮是要继续讨论设计问题、补材料、沉淀知识点，还是切到 `study / review session`
-- `project session` 的 LLM prompt 必须显式看到 `session_type`，并遵守“只能 project chat，不得把回复写成回忆 / 练习 / 作答 / 情境模拟”这条约束
-- `project session` 的空 fallback 计划和空 state patch 也要遵守这条边界：不再把 project chat 写回成 learner state / review patch
-
-### 原因
-
-- 之前即使前端已经不再渲染题卡，backend prompt 仍把所有 session 都当成 pedagogical turn，导致 `project session` 文本语义继续漂成“来做个快速回顾”
-- 对低信息输入缺少专门 guard，会让 `hi` 这类消息也被硬套进 diagnosis / reply 模板，既慢又明显不符合 spec
-- 回复生成链路里还存在把整个 `Message` 对象而不是纯 `content` 传进 LLM prompt 的问题，会进一步降低 reply 对用户输入的贴合度
-
-### 影响
-
-- 后续 review 要同时检查两层：`project session` 不仅不能发题卡，reply / plan 语义本身也不能漂回学习 session 口吻
-- `project session` 默认不再写 learner/review state patch；这类 session 的主产物应回到 project chat、本轮解释和 knowledge point suggestion
-- 后续 prompt 设计默认按“共享 base prompt + session-specific prompt”分层，不再继续把 `project / study / review` 的行为差异堆进一份超长共享 prompt
-- 后续若继续优化响应速度，`project session` 的 greeting / continue 类 turn 已经有了稳定的无 LLM 快路径
 
 ## 2026-04-18 — `project / study / review` 的边界按 session 类型硬收口，学习动作改成整组 `activities[]`
 
