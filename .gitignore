@@ -19,6 +19,8 @@ __pycache__
 *.egg-info
 uv.lock
 .playwright-cli
+apps/agent/output/
+output/
 output/playwright
 apps/agent/output/
 apps/web/package-lock.json

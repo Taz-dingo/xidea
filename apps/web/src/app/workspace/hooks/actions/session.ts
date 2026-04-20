@@ -2,69 +2,15 @@ import type {
   SessionItem,
   SessionType,
 } from "@/domain/project-workspace";
-import { getDefaultSourceAssetIds } from "@/domain/project-session-runtime";
-import { getAgentBaseUrl } from "@/lib/agent-client";
-import { createWorkspaceSession } from "@/lib/agent-workspace-client";
-import { hydrateWorkspaceFromBackend } from "@/app/workspace/hooks/data/backend-hydration";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useSessionActions(data: WorkspaceData) {
-  function handlePrepareSessionStart(
-    projectId: string,
-    type: Extract<SessionType, "review" | "study">,
-    knowledgePointId: string | null = null,
-  ): void {
-    const targetProject =
-      data.projects.find((project) => project.id === projectId) ??
-      data.selectedProject ??
-      data.projects[0];
-
-    if (targetProject === undefined) {
-      return;
-    }
-
-    const targetPoint =
-      knowledgePointId === null
-        ? null
-        : (data.knowledgePoints.find(
-            (point) => point.id === knowledgePointId,
-          ) ?? null);
-    const projectMaterialIds =
-      data.projectMaterialIdsByProject[targetProject.id] ?? [];
-    const suggestedSourceAssetIds =
-      targetPoint === null
-        ? []
-        : targetPoint.sourceAssetIds.filter((assetId) =>
-            projectMaterialIds.includes(assetId),
-          );
-
-    data.setSelectedProjectId(targetProject.id);
-    data.setSelectedSessionId("");
-    data.setSelectedKnowledgePointId(
-      targetPoint?.id ?? data.selectedKnowledgePointId,
-    );
-    data.setWorkspaceSection(type === "review" ? "due-review" : "overview");
-    data.setIsEditingProjectMeta(false);
-    data.setIsProjectMetaOpen(false);
-    data.setPendingInitialPrompt(null);
-    data.setDraftPrompt("");
-    data.setSearchQuery("");
-    data.setPendingSessionIntent({
-      projectId: targetProject.id,
-      type,
-      knowledgePointId: targetPoint?.id ?? knowledgePointId,
-      knowledgePointTitle: targetPoint?.title ?? null,
-      sourceAssetIds: suggestedSourceAssetIds,
-    });
-    data.setScreen("workspace");
-  }
-
-  async function handleCreateSession(
+  function handleCreateSession(
     projectId: string,
     type: SessionType = "project",
     knowledgePointId: string | null = null,
-    initialSourceAssetIds: ReadonlyArray<string> = getDefaultSourceAssetIds(),
-  ): Promise<SessionItem | null> {
+    initialSourceAssetIds: ReadonlyArray<string> = [],
+  ): SessionItem | null {
     const targetProject =
       data.projects.find((project) => project.id === projectId) ??
       data.selectedProject ??
@@ -74,59 +20,31 @@ export function useSessionActions(data: WorkspaceData) {
       return null;
     }
 
-    if (getAgentBaseUrl() !== null) {
-      try {
-        const detail = await createWorkspaceSession(targetProject.id, {
-          type,
-          entry_mode: "chat-question",
-          focus_knowledge_point_ids:
-            knowledgePointId === null ? [] : [knowledgePointId],
-          project_material_ids: [...initialSourceAssetIds],
-        });
-
-        await hydrateWorkspaceFromBackend(data, {
-          preferredKnowledgePointId: knowledgePointId ?? data.selectedKnowledgePointId,
-          preferredProjectId: targetProject.id,
-          preferredSessionId: detail.session.id,
-        });
-        data.setDraftPrompt("");
-        data.setIsEditingProjectMeta(false);
-        data.setIsProjectMetaOpen(false);
-        data.setPendingSessionIntent(null);
-        data.setScreen("workspace");
-
-        return {
-          id: detail.session.id,
-          projectId: detail.session.project_id,
-          type: detail.session.type,
-          knowledgePointId: detail.session.focus_knowledge_point_ids[0] ?? null,
-          title: detail.session.title,
-          summary: "",
-          updatedAt: "刚刚",
-          status: "空白",
-        };
-      } catch {
-        return null;
-      }
-    }
+    const targetPoint =
+      knowledgePointId === null
+        ? null
+        : (data.knowledgePoints.find((point) => point.id === knowledgePointId) ?? null);
 
     const nextIndex =
       data.sessions.filter((session) => session.projectId === targetProject.id)
         .length + 1;
-    const titlePrefix =
-      type === "study" ? "学习" : type === "review" ? "复习" : "project";
     const createdSession: SessionItem = {
       id: `session-${Date.now()}`,
       projectId: targetProject.id,
       type,
       knowledgePointId,
-      title: `${titlePrefix} session ${nextIndex}`,
+      title:
+        type === "project"
+          ? "新研讨"
+          : type === "review"
+            ? "新复习"
+            : "新学习",
       summary:
         type === "study"
           ? "围绕未学知识点启动一轮学习。"
           : type === "review"
             ? "围绕待复习知识点安排一轮回拉。"
-            : "继续围绕 project 目标推进材料与知识点。",
+            : "继续围绕项目目标推进材料与知识点。",
       updatedAt: "刚刚",
       status: "空白",
     };
@@ -143,7 +61,7 @@ export function useSessionActions(data: WorkspaceData) {
     }));
     data.setSessionSourceAssetIds((current) => ({
       ...current,
-      [createdSession.id]: initialSourceAssetIds,
+      [createdSession.id]: type === "project" ? initialSourceAssetIds : [],
     }));
     data.setSelectedProjectId(targetProject.id);
     data.setSelectedSessionId(createdSession.id);
@@ -154,6 +72,44 @@ export function useSessionActions(data: WorkspaceData) {
     return createdSession;
   }
 
+  function handlePrepareSessionStart(
+    projectId: string,
+    type: SessionType,
+    knowledgePointId: string | null = null,
+  ): void {
+    const targetProject =
+      data.projects.find((project) => project.id === projectId) ??
+      data.selectedProject ??
+      data.projects[0];
+
+    if (targetProject === undefined) {
+      return;
+    }
+
+    const targetPoint =
+      knowledgePointId === null
+        ? null
+        : (data.knowledgePoints.find((point) => point.id === knowledgePointId) ?? null);
+
+    data.setSelectedProjectId(targetProject.id);
+    data.setSelectedKnowledgePointId(targetPoint?.id ?? data.selectedKnowledgePointId);
+    data.setWorkspaceSection(type === "review" ? "due-review" : "overview");
+    data.setIsEditingProjectMeta(false);
+    data.setIsProjectMetaOpen(false);
+    data.setIsKnowledgePointDialogOpen(false);
+    data.setPendingInitialPrompt(null);
+    data.setPendingSessionIntent({
+      projectId: targetProject.id,
+      type,
+      knowledgePointId: targetPoint?.id ?? knowledgePointId,
+      knowledgePointTitle: targetPoint?.title ?? null,
+    });
+    data.setSelectedSessionId("");
+    data.setDraftPrompt("");
+    data.setSearchQuery("");
+    data.setScreen("workspace");
+  }
+
   return {
     handleCancelPendingSession: () => {
       data.setPendingSessionIntent(null);
@@ -161,17 +117,6 @@ export function useSessionActions(data: WorkspaceData) {
     },
     handleCreateSession,
     handlePrepareSessionStart,
-    handleTogglePendingMaterial: (assetId: string) => {
-      data.setPendingSessionIntent((current) =>
-        current === null
-          ? current
-          : {
-              ...current,
-              sourceAssetIds: current.sourceAssetIds.includes(assetId)
-                ? current.sourceAssetIds.filter((id) => id !== assetId)
-                : [...current.sourceAssetIds, assetId],
-            },
-      );
-    },
+    handleTogglePendingMaterial: (_assetId: string) => {},
   };
 }

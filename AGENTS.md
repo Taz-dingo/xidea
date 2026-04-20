@@ -76,6 +76,8 @@
 - 命名优先短而具体；在 feature folder 内避免重复 `project-workspace-` 这类冗长前缀。`apps/web/src/app` 和 `apps/web/src/components` 下单文件默认不超过 500 行，除非确实无法继续拆分
 - 前端跨组件、跨页面、跨 feature 共享的客户端状态默认使用 `zustand`；组件内部的临时交互状态、表单草稿和局部 UI 开合仍优先使用 React state
 - 不要把需要跨组件复用的前端全局状态继续堆在 page hook、controller hook 或逐层透传的 props 包里
+- 同类 UI 展示优先收敛到共享组件；材料卡、session 行、状态 badge 这类在多个页面重复出现的视图，不允许各处各写一套近似实现
+- 如果多个位置只是文案、尺寸或交互态不同，应先扩展共享组件的参数，而不是复制一个新组件分叉维护
 
 ## Collaboration Rules
 

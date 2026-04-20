@@ -1,6 +1,8 @@
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
 import {
   buildAgentRequest,
+  type AgentKnowledgePointSuggestion,
+  type AgentRequest,
   normalizePartialAgentStreamResult,
   normalizeAgentStreamResult,
   normalizeAgentRunResult,
@@ -8,6 +10,7 @@ import {
   type AgentStreamEvent,
   type RuntimeSnapshot,
 } from "@/domain/agent-runtime";
+import type { SessionType } from "@/domain/project-workspace";
 import type { LearningUnit, ProjectContext, SourceAsset } from "@/domain/types";
 import { getLearnerUnitState, runAgentV0, runAgentV0Stream } from "@/lib/agent-client";
 
@@ -37,27 +40,52 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function createAgentChatTransport(input: {
+  readonly consumeActivityResult?: () => Parameters<typeof buildAgentRequest>[0]["activityResult"];
   readonly projectId: string;
   readonly sessionId: string;
-  readonly entryMode: AgentEntryMode;
-  readonly project: ProjectContext;
-  readonly getSourceAssets: () => ReadonlyArray<SourceAsset>;
-  readonly unit: LearningUnit;
+  readonly getRequestConfig: () => {
+    readonly sessionType: SessionType;
+    readonly sessionTitle: string | null;
+    readonly sessionSummary: string | null;
+    readonly knowledgePointId: string | null;
+    readonly entryMode: AgentEntryMode;
+    readonly project: ProjectContext;
+    readonly unit: LearningUnit;
+    readonly targetUnitId: string | null;
+  };
+  readonly consumeSourceAssets: () => ReadonlyArray<SourceAsset>;
   readonly getFallbackSnapshot: () => RuntimeSnapshot;
   readonly onSnapshot: (snapshot: RuntimeSnapshot) => void;
+  readonly onKnowledgePointSuggestions?: (
+    suggestions: ReadonlyArray<AgentKnowledgePointSuggestion>,
+    request: AgentRequest,
+    assistantMessageId: string,
+  ) => void | Promise<void>;
   readonly onRunStateChange?: (isRunning: boolean) => void;
 }): ChatTransport<UIMessage> {
   return {
     async sendMessages({ messages, abortSignal }) {
       const prompt = getLatestUserText(messages);
+      const requestConfig = input.getRequestConfig();
+      const sourceAssets = input.consumeSourceAssets();
+      const requestEntryMode =
+        requestConfig.sessionType === "project" && sourceAssets.length > 0
+          ? "material-import"
+          : requestConfig.entryMode;
       const request = buildAgentRequest({
+        activityResult: input.consumeActivityResult?.() ?? null,
         projectId: input.projectId,
         sessionId: input.sessionId,
-        entryMode: input.entryMode,
-        project: input.project,
+        sessionType: requestConfig.sessionType,
+        sessionTitle: requestConfig.sessionTitle,
+        sessionSummary: requestConfig.sessionSummary,
+        knowledgePointId: requestConfig.knowledgePointId,
+        entryMode: requestEntryMode,
+        project: requestConfig.project,
         prompt,
-        sourceAssets: input.getSourceAssets(),
-        unit: input.unit,
+        sourceAssets,
+        unit: requestConfig.unit,
+        targetUnitId: requestConfig.targetUnitId,
       });
       const messageId = `assistant-${Date.now()}`;
 
@@ -89,6 +117,13 @@ export function createAgentChatTransport(input: {
                 );
 
                 if (event.event !== "text-delta") {
+                  if (event.event === "knowledge-point-suggestion") {
+                    void input.onKnowledgePointSuggestions?.(
+                      event.suggestions,
+                      request,
+                      messageId,
+                    );
+                  }
                   return;
                 }
 
@@ -126,7 +161,11 @@ export function createAgentChatTransport(input: {
             controller.enqueue({ type: "text-end", id: messageId });
             controller.close();
 
-            void getLearnerUnitState(input.sessionId, input.unit.id, {
+            if (request.target_unit_id === null) {
+              return;
+            }
+
+            void getLearnerUnitState(input.sessionId, request.target_unit_id, {
               signal: abortSignal,
             })
               .then((learnerState) => {
@@ -161,6 +200,21 @@ export function createAgentChatTransport(input: {
                 )
                 .map((event) => event.delta)
                 .filter((delta) => delta.trim().length > 0);
+              const suggestionEvents = fallbackResult.events.filter(
+                (
+                  event,
+                ): event is Extract<
+                  (typeof fallbackResult.events)[number],
+                  { event: "knowledge-point-suggestion" }
+                > => event.event === "knowledge-point-suggestion",
+              );
+              for (const suggestionEvent of suggestionEvents) {
+                void input.onKnowledgePointSuggestions?.(
+                  suggestionEvent.suggestions,
+                  request,
+                  messageId,
+                );
+              }
 
               ensureStarted();
               for (const delta of deltas.length > 0 ? deltas : [fallbackText || "Agent 已完成本轮判断。"]) {

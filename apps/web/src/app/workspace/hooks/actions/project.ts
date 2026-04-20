@@ -1,12 +1,5 @@
-import type { SessionItem } from "@/domain/project-workspace";
-import { getDefaultSourceAssetIds } from "@/domain/project-session-runtime";
-import { getAgentBaseUrl } from "@/lib/agent-client";
-import {
-  createWorkspaceProject,
-  updateWorkspaceProject,
-} from "@/lib/agent-workspace-client";
-import { buildProjectMaterialInputs } from "@/app/workspace/model/backend-adapter";
-import { hydrateWorkspaceFromBackend } from "@/app/workspace/hooks/data/backend-hydration";
+import { sourceAssets } from "@/data/demo";
+import { uploadProjectMaterial } from "@/lib/agent-client";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useProjectActions(data: WorkspaceData) {
@@ -23,7 +16,7 @@ export function useProjectActions(data: WorkspaceData) {
     data.setPendingSessionIntent(null);
   }
 
-  async function handleSaveProject(): Promise<void> {
+  function handleSaveProject(): void {
     const nextName = data.projectDraft.name.trim();
     const nextTopic = data.projectDraft.topic.trim();
     const nextDescription = data.projectDraft.description.trim();
@@ -33,36 +26,6 @@ export function useProjectActions(data: WorkspaceData) {
       .filter((rule) => rule !== "");
 
     if (nextName === "" || nextTopic === "" || nextDescription === "") {
-      return;
-    }
-
-    if (getAgentBaseUrl() !== null) {
-      try {
-        const createdProject = await createWorkspaceProject({
-          title: nextName,
-          topic: nextTopic,
-          description: nextDescription,
-          special_rules:
-            specialRules.length > 0
-              ? specialRules
-              : ["先收敛主题和材料，再开始学习编排。"],
-          initial_materials: buildProjectMaterialInputs(
-            data.projectDraft.initialMaterialIds,
-            data.sourceAssets,
-          ),
-        });
-
-        await hydrateWorkspaceFromBackend(data, {
-          preferredProjectId: createdProject.project.id,
-        });
-        data.setIsProjectMetaOpen(true);
-        data.setIsCreatingProject(false);
-        data.setPendingSessionIntent(null);
-        data.setSearchQuery("");
-        data.setScreen("workspace");
-      } catch {
-        return;
-      }
       return;
     }
 
@@ -77,30 +40,18 @@ export function useProjectActions(data: WorkspaceData) {
           : ["先收敛主题和材料，再开始学习编排。"],
       updatedAt: "刚刚",
     };
-    const createdSession: SessionItem = {
-      id: `session-${Date.now()}-project`,
-      projectId: createdProject.id,
-      type: "project",
-      knowledgePointId: null,
-      title: "初始 project session",
-      summary: "围绕项目目标、材料边界和知识点池初始化这轮工作区。",
-      updatedAt: "刚刚",
-      status: "空白",
-    };
+    const initialProjectAssets = sourceAssets.filter((asset) =>
+      data.projectDraft.initialMaterialIds.includes(asset.id),
+    );
 
     data.setProjects((current) => [createdProject, ...current]);
+    data.setProjectAssetsByProject((current) => ({
+      ...current,
+      [createdProject.id]: initialProjectAssets,
+    }));
     data.setProjectMaterialIdsByProject((current) => ({
       ...current,
       [createdProject.id]: data.projectDraft.initialMaterialIds,
-    }));
-    data.setSessions((current) => [createdSession, ...current]);
-    data.setSessionMessagesById((current) => ({
-      ...current,
-      [createdSession.id]: [],
-    }));
-    data.setSessionSourceAssetIds((current) => ({
-      ...current,
-      [createdSession.id]: getDefaultSourceAssetIds(),
     }));
     data.setSelectedKnowledgePointId("");
     data.setSelectedProjectId(createdProject.id);
@@ -114,6 +65,7 @@ export function useProjectActions(data: WorkspaceData) {
 
   function handleStartEditingProjectMeta(): void {
     data.setProjectMetaDraft({
+      name: data.selectedProject.name,
       topic: data.selectedProject.topic,
       description: data.selectedProject.description,
       specialRulesText: data.selectedProject.specialRules.join("\n"),
@@ -128,7 +80,8 @@ export function useProjectActions(data: WorkspaceData) {
     handleStartEditingProjectMeta();
   }
 
-  async function handleSaveProjectMeta(): Promise<void> {
+  function handleSaveProjectMeta(): void {
+    const nextName = data.projectMetaDraft.name.trim();
     const nextTopic = data.projectMetaDraft.topic.trim();
     const nextDescription = data.projectMetaDraft.description.trim();
     const nextSpecialRules = data.projectMetaDraft.specialRulesText
@@ -136,33 +89,7 @@ export function useProjectActions(data: WorkspaceData) {
       .map((rule) => rule.trim())
       .filter((rule) => rule !== "");
 
-    if (nextTopic === "" || nextDescription === "") {
-      return;
-    }
-
-    if (getAgentBaseUrl() !== null) {
-      try {
-        await updateWorkspaceProject(data.selectedProject.id, {
-          topic: nextTopic,
-          description: nextDescription,
-          special_rules:
-            nextSpecialRules.length > 0
-              ? nextSpecialRules
-              : ["先收敛主题和材料，再开始学习编排。"],
-          initial_materials: buildProjectMaterialInputs(
-            data.projectMetaDraft.materialIds,
-            data.sourceAssets,
-          ),
-        });
-        await hydrateWorkspaceFromBackend(data, {
-          preferredKnowledgePointId: data.selectedKnowledgePoint?.id ?? data.selectedKnowledgePointId,
-          preferredProjectId: data.selectedProject.id,
-          preferredSessionId: data.selectedSession?.id ?? data.selectedSessionId,
-        });
-        data.setIsEditingProjectMeta(false);
-      } catch {
-        return;
-      }
+    if (nextName === "" || nextTopic === "" || nextDescription === "") {
       return;
     }
 
@@ -171,6 +98,7 @@ export function useProjectActions(data: WorkspaceData) {
         project.id === data.selectedProject.id
           ? {
               ...project,
+              name: nextName,
               topic: nextTopic,
               description: nextDescription,
               specialRules:
@@ -187,10 +115,78 @@ export function useProjectActions(data: WorkspaceData) {
       [data.selectedProject.id]: data.projectMetaDraft.materialIds,
     }));
     data.setIsEditingProjectMeta(false);
+    data.setIsProjectMetaOpen(false);
+  }
+
+  async function uploadAndStoreProjectMaterial(file: File) {
+    const projectId = data.selectedProject.id;
+    const projectTopic = data.selectedProject.topic;
+    const uploadedAsset = await uploadProjectMaterial({
+      projectId,
+      file,
+      topic: projectTopic,
+    });
+
+    data.setProjectAssetsByProject((current) => {
+      const projectAssets = current[projectId] ?? [];
+      if (projectAssets.some((asset) => asset.id === uploadedAsset.id)) {
+        return current;
+      }
+      return {
+        ...current,
+        [projectId]: [uploadedAsset, ...projectAssets],
+      };
+    });
+    data.setProjectMaterialIdsByProject((current) => {
+      const currentIds = current[projectId] ?? [];
+      if (currentIds.includes(uploadedAsset.id)) {
+        return current;
+      }
+      return {
+        ...current,
+        [projectId]: [uploadedAsset.id, ...currentIds],
+      };
+    });
+    if (data.isEditingProjectMeta) {
+      data.setProjectMetaDraft((current) => ({
+        ...current,
+        materialIds: current.materialIds.includes(uploadedAsset.id)
+          ? current.materialIds
+          : [uploadedAsset.id, ...current.materialIds],
+      }));
+    }
+
+    return uploadedAsset;
+  }
+
+  async function handleUploadProjectMaterial(file: File): Promise<void> {
+    await uploadAndStoreProjectMaterial(file);
+  }
+
+  async function handleUploadProjectMaterialAndAttach(file: File): Promise<void> {
+    const selectedSessionId = data.selectedSession?.id ?? null;
+    const selectedSessionType = data.selectedSession?.type ?? null;
+    const uploadedAsset = await uploadAndStoreProjectMaterial(file);
+
+    if (selectedSessionId === null || selectedSessionType !== "project") {
+      return;
+    }
+
+    data.setSessionSourceAssetIds((current) => {
+      const currentIds = current[selectedSessionId] ?? [];
+      if (currentIds.includes(uploadedAsset.id)) {
+        return current;
+      }
+      return {
+        ...current,
+        [selectedSessionId]: [...currentIds, uploadedAsset.id],
+      };
+    });
   }
 
   function handleCancelEditingProjectMeta(): void {
     data.setProjectMetaDraft({
+      name: data.selectedProject.name,
       topic: data.selectedProject.topic,
       description: data.selectedProject.description,
       specialRulesText: data.selectedProject.specialRules.join("\n"),
@@ -198,6 +194,7 @@ export function useProjectActions(data: WorkspaceData) {
         data.projectMaterialIdsByProject[data.selectedProject.id] ?? [],
     });
     data.setIsEditingProjectMeta(false);
+    data.setIsProjectMetaOpen(false);
   }
 
   return {
@@ -206,6 +203,8 @@ export function useProjectActions(data: WorkspaceData) {
     handleOpenProjectMetaEditor,
     handleSaveProject,
     handleSaveProjectMeta,
+    handleUploadProjectMaterial,
+    handleUploadProjectMaterialAndAttach,
     handleStartCreatingProject,
     handleStartEditingProjectMeta,
     handleToggleProjectMeta: () =>

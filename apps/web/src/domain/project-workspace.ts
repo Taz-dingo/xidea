@@ -1,6 +1,6 @@
 export type SessionType = "project" | "study" | "review";
 
-export type AppScreen = "home" | "workspace" | "detail";
+export type AppScreen = "home" | "workspace";
 
 export type HomeSection =
   | "all-projects"
@@ -43,6 +43,9 @@ export interface SessionItem {
 export interface KnowledgePointItem {
   readonly id: string;
   readonly projectId: string;
+  readonly originSessionId: string | null;
+  readonly linkedSessionIds: ReadonlyArray<string>;
+  readonly linkedMessageIdsBySession: Readonly<Record<string, string>>;
   readonly title: string;
   readonly description: string;
   readonly status: KnowledgePointStatus;
@@ -61,14 +64,44 @@ export interface ProjectStats {
   readonly archived: number;
 }
 
+export function buildPendingSessionId(input: {
+  readonly projectId: string;
+  readonly type: SessionType;
+  readonly knowledgePointId: string | null;
+}): string {
+  return `pending-session:${input.projectId}:${input.type}:${input.knowledgePointId ?? "project"}`;
+}
+
 export function getSessionTypeLabel(type: SessionType): string {
   switch (type) {
     case "project":
-      return "project";
+      return "研讨";
     case "review":
-      return "review";
+      return "复习";
     case "study":
-      return "study";
+      return "学习";
+  }
+}
+
+export function getSessionTypeDescription(type: SessionType): string {
+  switch (type) {
+    case "project":
+      return "围绕学习方向、材料线索和知识点演化持续推进。";
+    case "review":
+      return "针对已学知识点做回忆校准和复盘。";
+    case "study":
+      return "围绕当前知识点继续学习编排和练习。";
+  }
+}
+
+export function getWorkspaceSectionLabel(section: WorkspaceSection): string {
+  switch (section) {
+    case "overview":
+      return "总览";
+    case "due-review":
+      return "待复习";
+    case "archived":
+      return "已归档";
   }
 }
 
@@ -100,5 +133,5 @@ export function getNextSuggestedAction(
     return `开始学习 ${unlearnedCount} 个未学知识点`;
   }
 
-  return "继续当前 project";
+  return "继续当前研讨";
 }

@@ -10,6 +10,9 @@ type KnowledgePointSeed = Omit<
 
 const knowledgePointMetaByUnitId: Record<string, KnowledgePointSeed> = {
   "unit-1": {
+    originSessionId: null,
+    linkedSessionIds: [],
+    linkedMessageIdsBySession: {},
     status: "active_review",
     mastery: 68,
     stageLabel: "待复习",
@@ -19,6 +22,9 @@ const knowledgePointMetaByUnitId: Record<string, KnowledgePointSeed> = {
     archiveSuggestion: null,
   },
   "unit-2": {
+    originSessionId: null,
+    linkedSessionIds: [],
+    linkedMessageIdsBySession: {},
     status: "active_unlearned",
     mastery: 24,
     stageLabel: "未学",
@@ -28,6 +34,9 @@ const knowledgePointMetaByUnitId: Record<string, KnowledgePointSeed> = {
     archiveSuggestion: null,
   },
   "unit-3": {
+    originSessionId: null,
+    linkedSessionIds: [],
+    linkedMessageIdsBySession: {},
     status: "active_review",
     mastery: 84,
     stageLabel: "待复习",
@@ -61,6 +70,9 @@ export const initialKnowledgePoints: ReadonlyArray<KnowledgePointItem> =
     return {
       id: unit.id,
       projectId,
+      originSessionId: meta?.originSessionId ?? null,
+      linkedSessionIds: meta?.linkedSessionIds ?? [],
+      linkedMessageIdsBySession: meta?.linkedMessageIdsBySession ?? {},
       title: unit.title,
       description: unit.summary,
       status: meta?.status ?? "active_unlearned",
@@ -79,9 +91,9 @@ export const initialSessions: ReadonlyArray<SessionItem> = [
     projectId,
     type: "project",
     knowledgePointId: null,
-    title: "当前 project session",
+    title: "当前研讨",
     summary: "围绕材料导入、知识点演化和项目答辩叙事继续推进。",
-    updatedAt: "1h",
+    updatedAt: "1 小时前",
     status: "活跃",
   },
   {
@@ -101,7 +113,7 @@ export const initialSessions: ReadonlyArray<SessionItem> = [
     knowledgePointId: "unit-3",
     title: "学习：答辩表达迁移",
     summary: "把设计取舍转成比赛答辩可讲的表达结构。",
-    updatedAt: "2d",
+    updatedAt: "2 天前",
     status: "进行中",
   },
   {

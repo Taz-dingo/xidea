@@ -1,8 +1,8 @@
 import type { SetStateAction } from "react";
 import type { UIMessage } from "ai";
 import { create } from "zustand";
-import { initialSessions } from "@/data/project-workspace-demo";
-import { getTutorFixtureScenario } from "@/data/tutor-fixtures";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { resetLegacyWorkspaceStorage } from "@/app/workspace/store/persistence";
 import type {
   AgentAssetSummary,
   AgentEntryMode,
@@ -10,10 +10,9 @@ import type {
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
 import {
-  getDefaultSourceAssetIds,
   type ActivityResolution,
-  type DevTutorFixtureState,
-  buildDevTutorFixtureState,
+  type CompletedActivityDeck,
+  type SessionActivityBatchState,
 } from "@/domain/project-session-runtime";
 
 function resolveState<T>(
@@ -25,21 +24,10 @@ function resolveState<T>(
     : nextState;
 }
 
-function getInitialDevTutorFixtureState(): DevTutorFixtureState | null {
-  if (!import.meta.env.DEV || typeof window === "undefined") {
-    return null;
-  }
-
-  const fixtureId = new URLSearchParams(window.location.search).get("mockTutor");
-  const fixture = getTutorFixtureScenario(fixtureId);
-  return fixture ? buildDevTutorFixtureState(fixture) : null;
-}
-
 interface WorkspaceRuntimeState {
   readonly sessionEntryModes: Record<string, AgentEntryMode>;
   readonly sessionSourceAssetIds: Record<string, ReadonlyArray<string>>;
   readonly sessionMaterialTrayOpen: Record<string, boolean>;
-  readonly devTutorFixtureState: DevTutorFixtureState | null;
   readonly sessionSnapshots: Record<string, RuntimeSnapshot>;
   readonly sessionReviewInspectors: Record<string, AgentReviewInspector | null>;
   readonly assetSummaryByKey: Record<string, AgentAssetSummary>;
@@ -48,6 +36,8 @@ interface WorkspaceRuntimeState {
   readonly activityResolutionsBySession: Record<string, Record<string, ActivityResolution>>;
   readonly runningSessionIds: Record<string, boolean>;
   readonly bootstrapLoadedKeys: Record<string, boolean>;
+  readonly activityBatchStateBySession: Record<string, SessionActivityBatchState>;
+  readonly completedActivityDecksBySession: Record<string, ReadonlyArray<CompletedActivityDeck>>;
   readonly setSessionEntryModes: (
     nextState: SetStateAction<Record<string, AgentEntryMode>>,
   ) => void;
@@ -56,9 +46,6 @@ interface WorkspaceRuntimeState {
   ) => void;
   readonly setSessionMaterialTrayOpen: (
     nextState: SetStateAction<Record<string, boolean>>,
-  ) => void;
-  readonly setDevTutorFixtureState: (
-    nextState: SetStateAction<DevTutorFixtureState | null>,
   ) => void;
   readonly setSessionSnapshots: (
     nextState: SetStateAction<Record<string, RuntimeSnapshot>>,
@@ -81,90 +68,115 @@ interface WorkspaceRuntimeState {
   readonly setRunningSessionIds: (
     nextState: SetStateAction<Record<string, boolean>>,
   ) => void;
+  readonly setActivityBatchStateBySession: (
+    nextState: SetStateAction<Record<string, SessionActivityBatchState>>,
+  ) => void;
+  readonly setCompletedActivityDecksBySession: (
+    nextState: SetStateAction<Record<string, ReadonlyArray<CompletedActivityDeck>>>,
+  ) => void;
   readonly markBootstrapLoaded: (key: string) => void;
   readonly clearBootstrapLoaded: (key: string) => void;
 }
 
-export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set) => ({
-  sessionEntryModes: Object.fromEntries(
-    initialSessions.map((session) => [session.id, "chat-question"]),
-  ),
-  sessionSourceAssetIds: Object.fromEntries(
-    initialSessions.map((session) => [session.id, getDefaultSourceAssetIds()]),
-  ),
-  sessionMaterialTrayOpen: {},
-  devTutorFixtureState: getInitialDevTutorFixtureState(),
-  sessionSnapshots: {},
-  sessionReviewInspectors: {},
-  assetSummaryByKey: {},
-  agentConnectionState: "checking",
-  sessionMessagesById: Object.fromEntries(
-    initialSessions.map((session) => [session.id, []]),
-  ),
-  activityResolutionsBySession: {},
-  runningSessionIds: {},
-  bootstrapLoadedKeys: {},
-  setSessionEntryModes: (nextState) =>
-    set((state) => ({
-      sessionEntryModes: resolveState(nextState, state.sessionEntryModes),
-    })),
-  setSessionSourceAssetIds: (nextState) =>
-    set((state) => ({
-      sessionSourceAssetIds: resolveState(nextState, state.sessionSourceAssetIds),
-    })),
-  setSessionMaterialTrayOpen: (nextState) =>
-    set((state) => ({
-      sessionMaterialTrayOpen: resolveState(nextState, state.sessionMaterialTrayOpen),
-    })),
-  setDevTutorFixtureState: (nextState) =>
-    set((state) => ({
-      devTutorFixtureState: resolveState(nextState, state.devTutorFixtureState),
-    })),
-  setSessionSnapshots: (nextState) =>
-    set((state) => ({
-      sessionSnapshots: resolveState(nextState, state.sessionSnapshots),
-    })),
-  setSessionReviewInspectors: (nextState) =>
-    set((state) => ({
-      sessionReviewInspectors: resolveState(nextState, state.sessionReviewInspectors),
-    })),
-  setAssetSummaryByKey: (nextState) =>
-    set((state) => ({
-      assetSummaryByKey: resolveState(nextState, state.assetSummaryByKey),
-    })),
-  setAgentConnectionState: (nextState) =>
-    set((state) => ({
-      agentConnectionState: resolveState(nextState, state.agentConnectionState),
-    })),
-  setSessionMessagesById: (nextState) =>
-    set((state) => ({
-      sessionMessagesById: resolveState(nextState, state.sessionMessagesById),
-    })),
-  setActivityResolutionsBySession: (nextState) =>
-    set((state) => ({
-      activityResolutionsBySession: resolveState(
-        nextState,
-        state.activityResolutionsBySession,
-      ),
-    })),
-  setRunningSessionIds: (nextState) =>
-    set((state) => ({
-      runningSessionIds: resolveState(nextState, state.runningSessionIds),
-    })),
-  markBootstrapLoaded: (key) =>
-    set((state) => ({
-      bootstrapLoadedKeys:
-        state.bootstrapLoadedKeys[key] === true
-          ? state.bootstrapLoadedKeys
-          : { ...state.bootstrapLoadedKeys, [key]: true },
-    })),
-  clearBootstrapLoaded: (key) =>
-    set((state) => {
-      if (state.bootstrapLoadedKeys[key] === undefined) {
-        return state;
-      }
-      const nextKeys = { ...state.bootstrapLoadedKeys };
-      delete nextKeys[key];
-      return { bootstrapLoadedKeys: nextKeys };
+resetLegacyWorkspaceStorage();
+
+export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()(
+  persist(
+    (set) => ({
+      sessionEntryModes: {},
+      sessionSourceAssetIds: {},
+      sessionMaterialTrayOpen: {},
+      sessionSnapshots: {},
+      sessionReviewInspectors: {},
+      assetSummaryByKey: {},
+      agentConnectionState: "checking",
+      sessionMessagesById: {},
+      activityResolutionsBySession: {},
+      runningSessionIds: {},
+      bootstrapLoadedKeys: {},
+      activityBatchStateBySession: {},
+      completedActivityDecksBySession: {},
+      setSessionEntryModes: (nextState) =>
+        set((state) => ({
+          sessionEntryModes: resolveState(nextState, state.sessionEntryModes),
+        })),
+      setSessionSourceAssetIds: (nextState) =>
+        set((state) => ({
+          sessionSourceAssetIds: resolveState(nextState, state.sessionSourceAssetIds),
+        })),
+      setSessionMaterialTrayOpen: (nextState) =>
+        set((state) => ({
+          sessionMaterialTrayOpen: resolveState(nextState, state.sessionMaterialTrayOpen),
+        })),
+      setSessionSnapshots: (nextState) =>
+        set((state) => ({
+          sessionSnapshots: resolveState(nextState, state.sessionSnapshots),
+        })),
+      setSessionReviewInspectors: (nextState) =>
+        set((state) => ({
+          sessionReviewInspectors: resolveState(nextState, state.sessionReviewInspectors),
+        })),
+      setAssetSummaryByKey: (nextState) =>
+        set((state) => ({
+          assetSummaryByKey: resolveState(nextState, state.assetSummaryByKey),
+        })),
+      setAgentConnectionState: (nextState) =>
+        set((state) => ({
+          agentConnectionState: resolveState(nextState, state.agentConnectionState),
+        })),
+      setSessionMessagesById: (nextState) =>
+        set((state) => ({
+          sessionMessagesById: resolveState(nextState, state.sessionMessagesById),
+        })),
+      setActivityResolutionsBySession: (nextState) =>
+        set((state) => ({
+          activityResolutionsBySession: resolveState(
+            nextState,
+            state.activityResolutionsBySession,
+          ),
+        })),
+      setRunningSessionIds: (nextState) =>
+        set((state) => ({
+          runningSessionIds: resolveState(nextState, state.runningSessionIds),
+        })),
+      setActivityBatchStateBySession: (nextState) =>
+        set((state) => ({
+          activityBatchStateBySession: resolveState(
+            nextState,
+            state.activityBatchStateBySession,
+          ),
+        })),
+      setCompletedActivityDecksBySession: (nextState) =>
+        set((state) => ({
+          completedActivityDecksBySession: resolveState(
+            nextState,
+            state.completedActivityDecksBySession,
+          ),
+        })),
+      markBootstrapLoaded: (key) =>
+        set((state) => ({
+          bootstrapLoadedKeys:
+            state.bootstrapLoadedKeys[key] === true
+              ? state.bootstrapLoadedKeys
+              : { ...state.bootstrapLoadedKeys, [key]: true },
+        })),
+      clearBootstrapLoaded: (key) =>
+        set((state) => {
+          if (state.bootstrapLoadedKeys[key] === undefined) {
+            return state;
+          }
+          const nextKeys = { ...state.bootstrapLoadedKeys };
+          delete nextKeys[key];
+          return { bootstrapLoadedKeys: nextKeys };
+        }),
     }),
-}));
+    {
+      name: "xidea-workspace-runtime-v1",
+      partialize: (state) => ({
+        completedActivityDecksBySession: state.completedActivityDecksBySession,
+      }),
+      storage: createJSONStorage(() => localStorage),
+      version: 1,
+    },
+  ),
+);

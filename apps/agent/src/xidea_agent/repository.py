@@ -3,61 +3,31 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from xidea_agent.knowledge_points import build_knowledge_point_id
-from xidea_agent.project_bootstrap import (
-    build_bootstrap_knowledge_points,
-    build_project_id,
-    build_project_learning_profile_id,
-    build_project_material_id,
-    build_project_memory_id,
-    build_project_memory_key_facts,
-    build_project_memory_summary,
-    build_session_attachment_id,
-    build_session_id,
-    build_session_title,
-    default_session_title,
-    infer_session_type,
-)
 from xidea_agent.state import (
     AgentRequest,
     AgentRunResult,
-    CreateProjectRequest,
-    CreateSessionRequest,
+    GraphState,
     KnowledgePoint,
-    KnowledgePointRecord,
     KnowledgePointState,
     KnowledgePointSuggestion,
     KnowledgePointSuggestionResolution,
     LearnerUnitState,
     Message,
-    Project,
-    ProjectBootstrap,
-    ProjectMaterial,
-    ProjectMaterialInput,
     ProjectLearningProfile,
     ProjectMemory,
     ReviewPatch,
-    Session,
-    SessionDetail,
-    SessionAttachment,
+    SourceAsset,
     StatePatch,
-    ThreadContextRecord,
-    UpdateKnowledgePointRequest,
-    UpdateProjectRequest,
-    UpdateSessionRequest,
 )
 
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS projects (
   project_id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
   topic TEXT NOT NULL,
-  description TEXT NOT NULL,
-  special_rules TEXT NOT NULL DEFAULT '[]',
-  status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -65,13 +35,13 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS threads (
   thread_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
-  session_type TEXT NOT NULL DEFAULT 'project',
-  title TEXT NOT NULL,
   topic TEXT NOT NULL,
+  session_type TEXT NOT NULL DEFAULT 'project',
+  knowledge_point_id TEXT,
+  title TEXT,
+  summary TEXT,
+  status TEXT NOT NULL DEFAULT '活跃',
   entry_mode TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active',
-  focus_knowledge_point_ids TEXT NOT NULL DEFAULT '[]',
-  current_activity_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY(project_id) REFERENCES projects(project_id)
@@ -164,6 +134,7 @@ CREATE TABLE IF NOT EXISTS knowledge_point_suggestions (
   suggestion_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
+  origin_message_id INTEGER,
   kind TEXT NOT NULL,
   knowledge_point_id TEXT,
   title TEXT NOT NULL,
@@ -179,17 +150,13 @@ CREATE TABLE IF NOT EXISTS knowledge_point_suggestions (
 
 CREATE TABLE IF NOT EXISTS project_memories (
   project_id TEXT PRIMARY KEY,
-  memory_id TEXT,
   summary TEXT NOT NULL,
-  key_facts TEXT NOT NULL DEFAULT '[]',
-  open_threads TEXT NOT NULL DEFAULT '[]',
   updated_at TEXT NOT NULL,
   FOREIGN KEY(project_id) REFERENCES projects(project_id)
 );
 
 CREATE TABLE IF NOT EXISTS project_learning_profiles (
   project_id TEXT PRIMARY KEY,
-  profile_id TEXT,
   current_stage TEXT NOT NULL,
   primary_weaknesses TEXT NOT NULL,
   learning_preferences TEXT NOT NULL,
@@ -199,29 +166,42 @@ CREATE TABLE IF NOT EXISTS project_learning_profiles (
 );
 
 CREATE TABLE IF NOT EXISTS project_materials (
-  project_material_id TEXT PRIMARY KEY,
+  material_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
-  kind TEXT NOT NULL,
   title TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  topic TEXT NOT NULL,
   source_uri TEXT,
   content_ref TEXT,
   summary TEXT,
-  status TEXT NOT NULL DEFAULT 'active',
+  status TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY(project_id) REFERENCES projects(project_id)
 );
 
-CREATE TABLE IF NOT EXISTS session_attachments (
-  attachment_id TEXT PRIMARY KEY,
-  session_id TEXT NOT NULL,
-  project_material_id TEXT NOT NULL,
-  role TEXT NOT NULL,
-  attached_at TEXT NOT NULL,
-  FOREIGN KEY(session_id) REFERENCES threads(thread_id),
-  FOREIGN KEY(project_material_id) REFERENCES project_materials(project_material_id)
+CREATE TABLE IF NOT EXISTS thread_activity_decks (
+  deck_id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  session_type TEXT NOT NULL,
+  knowledge_point_id TEXT,
+  completed_at TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  FOREIGN KEY(thread_id) REFERENCES threads(thread_id)
 );
 """
+
+THREAD_COLUMN_MIGRATIONS: dict[str, str] = {
+    "session_type": "ALTER TABLE threads ADD COLUMN session_type TEXT NOT NULL DEFAULT 'project'",
+    "knowledge_point_id": "ALTER TABLE threads ADD COLUMN knowledge_point_id TEXT",
+    "title": "ALTER TABLE threads ADD COLUMN title TEXT",
+    "summary": "ALTER TABLE threads ADD COLUMN summary TEXT",
+    "status": "ALTER TABLE threads ADD COLUMN status TEXT NOT NULL DEFAULT '活跃'",
+}
+
+KNOWLEDGE_POINT_SUGGESTION_COLUMN_MIGRATIONS: dict[str, str] = {
+    "origin_message_id": "ALTER TABLE knowledge_point_suggestions ADD COLUMN origin_message_id INTEGER",
+}
 
 
 class SQLiteRepository:
@@ -232,73 +212,73 @@ class SQLiteRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.executescript(SCHEMA_SQL)
-            self._migrate_schema(connection)
+            self._apply_schema_migrations(connection)
 
     def save_run(self, request: AgentRequest, run_result: AgentRunResult) -> None:
         self.initialize()
         state = run_result.graph_state
         now = state.learner_unit_state.updated_at if state.learner_unit_state else None
         now_value = now.isoformat() if now else _utc_now()
-        focus_knowledge_point_ids = [request.target_unit_id] if request.target_unit_id else []
-        current_activity_id = state.activity.id if state.activity is not None else None
-        existing_project_memory = (
-            self.get_project_memory(request.project_id)
-            if state.project_memory_writeback is not None
-            else None
-        )
 
         with self._connect() as connection:
+            existing_thread = connection.execute(
+                """
+                SELECT title, summary
+                FROM threads
+                WHERE thread_id = ?
+                """,
+                (request.thread_id,),
+            ).fetchone()
+            thread_title = _resolve_thread_title(
+                request,
+                state=state,
+                connection=connection,
+                existing_title=existing_thread["title"] if existing_thread is not None else None,
+            )
+            thread_summary = _resolve_thread_summary(
+                request,
+                state.assistant_message,
+                existing_summary=existing_thread["summary"] if existing_thread is not None else None,
+            )
+            thread_status = _resolve_thread_status(state.assistant_message)
+            knowledge_point_id = request.knowledge_point_id or request.target_unit_id
             connection.execute(
                 """
-                INSERT INTO projects(
-                  project_id, title, topic, description, special_rules, status, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO projects(project_id, topic, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(project_id) DO UPDATE SET
                   topic = excluded.topic,
-                  title = CASE
-                    WHEN projects.title IS NULL OR projects.title = '' THEN excluded.title
-                    ELSE projects.title
-                  END,
                   updated_at = excluded.updated_at
                 """,
-                (
-                    request.project_id,
-                    request.topic,
-                    request.topic,
-                    request.topic,
-                    "[]",
-                    "active",
-                    now_value,
-                    now_value,
-                ),
+                (request.project_id, request.topic, now_value, now_value),
             )
             connection.execute(
                 """
                 INSERT INTO threads(
-                  thread_id, project_id, session_type, title, topic, entry_mode, status,
-                  focus_knowledge_point_ids, current_activity_id, created_at, updated_at
+                  thread_id, project_id, topic, session_type, knowledge_point_id,
+                  title, summary, status, entry_mode, created_at, updated_at
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(thread_id) DO UPDATE SET
-                  session_type = excluded.session_type,
-                  title = excluded.title,
                   topic = excluded.topic,
+                  session_type = excluded.session_type,
+                  knowledge_point_id = excluded.knowledge_point_id,
+                  title = excluded.title,
+                  summary = excluded.summary,
+                  status = excluded.status,
                   entry_mode = excluded.entry_mode,
-                  focus_knowledge_point_ids = excluded.focus_knowledge_point_ids,
-                  current_activity_id = excluded.current_activity_id,
                   updated_at = excluded.updated_at
                 """,
                 (
                     request.thread_id,
                     request.project_id,
-                    infer_session_type(request),
-                    default_session_title(request),
                     request.topic,
+                    request.session_type,
+                    knowledge_point_id,
+                    thread_title,
+                    thread_summary,
+                    thread_status,
                     request.entry_mode,
-                    "active",
-                    json.dumps(focus_knowledge_point_ids, ensure_ascii=False),
-                    current_activity_id,
                     now_value,
                     now_value,
                 ),
@@ -312,13 +292,15 @@ class SQLiteRepository:
                 request.source_asset_ids,
                 now_value,
             )
+            assistant_message_id: int | None = None
             if state.assistant_message:
-                self._append_messages(
+                assistant_message_ids = self._append_messages(
                     connection,
                     request.thread_id,
                     [Message(role="assistant", content=state.assistant_message)],
                     now_value,
                 )
+                assistant_message_id = assistant_message_ids[0] if assistant_message_ids else None
 
             if state.is_off_topic:
                 return
@@ -343,14 +325,27 @@ class SQLiteRepository:
                 )
 
             if state.knowledge_point_suggestions:
+                persisted_suggestions = [
+                    suggestion.model_copy(
+                        update={
+                            "origin_message_id": (
+                                assistant_message_id
+                                if suggestion.kind == "create"
+                                and suggestion.origin_message_id is None
+                                else suggestion.origin_message_id
+                            )
+                        }
+                    )
+                    for suggestion in state.knowledge_point_suggestions
+                ]
                 self._upsert_knowledge_point_suggestions(
                     connection,
-                    state.knowledge_point_suggestions,
+                    persisted_suggestions,
                     now_value,
                 )
                 self._mark_archive_suggestion_states(
                     connection,
-                    state.knowledge_point_suggestions,
+                    persisted_suggestions,
                     now_value,
                 )
 
@@ -359,14 +354,7 @@ class SQLiteRepository:
                     self._upsert_knowledge_point_state(connection, knowledge_point_state, now_value)
 
             if state.project_memory_writeback is not None:
-                self._upsert_project_memory(
-                    connection,
-                    self._merge_project_memory(
-                        existing_project_memory,
-                        state.project_memory_writeback,
-                    ),
-                    now_value,
-                )
+                self._upsert_project_memory(connection, state.project_memory_writeback, now_value)
 
             if state.project_learning_profile_writeback is not None:
                 self._upsert_project_learning_profile(
@@ -375,20 +363,239 @@ class SQLiteRepository:
                     now_value,
                 )
 
+            if request.activity_result is not None:
+                self._upsert_thread_activity_deck(connection, request, now_value)
+
     def list_recent_messages(self, thread_id: str, limit: int = 8) -> list[Message]:
+        return self.list_thread_messages(thread_id, limit=limit)
+
+    def list_thread_messages(self, thread_id: str, limit: int | None = None) -> list[Message]:
+        self.initialize()
+        with self._connect() as connection:
+            if limit is None:
+                rows = connection.execute(
+                    """
+                    SELECT role, content
+                    FROM thread_messages
+                    WHERE thread_id = ?
+                    ORDER BY message_id ASC
+                    """,
+                    (thread_id,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT role, content
+                    FROM thread_messages
+                    WHERE thread_id = ?
+                    ORDER BY message_id DESC
+                    LIMIT ?
+                    """,
+                    (thread_id, limit),
+                ).fetchall()
+                rows = list(reversed(rows))
+
+        return [Message(role=row["role"], content=row["content"]) for row in rows]
+
+    def list_thread_message_records(
+        self,
+        thread_id: str,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        self.initialize()
+        with self._connect() as connection:
+            if limit is None:
+                rows = connection.execute(
+                    """
+                    SELECT message_id, role, content, created_at
+                    FROM thread_messages
+                    WHERE thread_id = ?
+                    ORDER BY message_id ASC
+                    """,
+                    (thread_id,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT message_id, role, content, created_at
+                    FROM thread_messages
+                    WHERE thread_id = ?
+                    ORDER BY message_id DESC
+                    LIMIT ?
+                    """,
+                    (thread_id, limit),
+                ).fetchall()
+                rows = list(reversed(rows))
+
+        return [
+            {
+                "message_id": row["message_id"],
+                "role": row["role"],
+                "content": row["content"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def list_thread_activity_decks(self, thread_id: str) -> list[dict[str, Any]]:
+        self.initialize()
+        with self._connect() as connection:
+            thread_row = connection.execute(
+                """
+                SELECT session_type, knowledge_point_id
+                FROM threads
+                WHERE thread_id = ?
+                """,
+                (thread_id,),
+            ).fetchone()
+            rows = connection.execute(
+                """
+                SELECT deck_id, session_type, knowledge_point_id, completed_at, payload
+                FROM thread_activity_decks
+                WHERE thread_id = ?
+                ORDER BY completed_at DESC, deck_id DESC
+                """,
+                (thread_id,),
+            ).fetchall()
+
+        records: list[dict[str, Any]] = []
+        for row in rows:
+            payload = json.loads(row["payload"])
+            records.append(
+                {
+                    "deck_id": row["deck_id"],
+                    "session_id": thread_id,
+                    "session_type": row["session_type"],
+                    "knowledge_point_id": row["knowledge_point_id"],
+                    "completed_at": row["completed_at"],
+                    "cards": payload.get("cards", []),
+                }
+            )
+        if records:
+            return records
+
+        if thread_row is None or thread_row["session_type"] == "project":
+            return records
+
+        with self._connect() as connection:
+            fallback_rows = connection.execute(
+                """
+                SELECT message_id, content, created_at
+                FROM thread_messages
+                WHERE thread_id = ? AND role = 'user' AND content LIKE '已提交本组学习动作结果%'
+                ORDER BY message_id DESC
+                """,
+                (thread_id,),
+            ).fetchall()
+
+        for row in fallback_rows:
+            records.append(
+                {
+                    "deck_id": f"recovered-message-{row['message_id']}",
+                    "session_id": thread_id,
+                    "session_type": thread_row["session_type"],
+                    "knowledge_point_id": thread_row["knowledge_point_id"],
+                    "completed_at": row["created_at"],
+                    "cards": [
+                        {
+                            "activityId": f"recovered-message-{row['message_id']}",
+                            "activityTitle": "已完成牌组",
+                            "activityPrompt": row["content"],
+                            "knowledgePointId": thread_row["knowledge_point_id"],
+                            "kind": "guided-qa",
+                            "action": "submit",
+                            "responseText": row["content"],
+                            "selectedChoiceId": None,
+                            "isCorrect": None,
+                            "attempts": [],
+                            "finalFeedback": None,
+                            "finalAnalysis": None,
+                        }
+                    ],
+                }
+            )
+        return records
+
+    def delete_thread(self, thread_id: str) -> None:
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM thread_activity_decks WHERE thread_id = ?",
+                (thread_id,),
+            )
+            connection.execute(
+                "DELETE FROM review_events WHERE thread_id = ?",
+                (thread_id,),
+            )
+            connection.execute(
+                "DELETE FROM review_state WHERE thread_id = ?",
+                (thread_id,),
+            )
+            connection.execute(
+                "DELETE FROM learner_unit_state WHERE thread_id = ?",
+                (thread_id,),
+            )
+            connection.execute(
+                "DELETE FROM thread_messages WHERE thread_id = ?",
+                (thread_id,),
+            )
+            connection.execute(
+                "DELETE FROM thread_context WHERE thread_id = ?",
+                (thread_id,),
+            )
+            connection.execute(
+                "DELETE FROM knowledge_point_suggestions WHERE session_id = ?",
+                (thread_id,),
+            )
+            connection.execute(
+                "DELETE FROM threads WHERE thread_id = ?",
+                (thread_id,),
+            )
+
+    def list_project_threads(self, project_id: str) -> list[dict[str, Any]]:
+        self.initialize()
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT role, content
-                FROM thread_messages
-                WHERE thread_id = ?
-                ORDER BY message_id DESC
-                LIMIT ?
+                SELECT
+                  threads.thread_id,
+                  threads.project_id,
+                  threads.topic,
+                  threads.session_type,
+                  threads.knowledge_point_id,
+                  threads.title,
+                  threads.summary,
+                  threads.status,
+                  threads.entry_mode,
+                  threads.created_at,
+                  threads.updated_at,
+                  thread_context.source_asset_ids
+                FROM threads
+                LEFT JOIN thread_context
+                  ON thread_context.thread_id = threads.thread_id
+                WHERE threads.project_id = ?
+                ORDER BY threads.updated_at DESC, threads.created_at DESC, threads.thread_id DESC
                 """,
-                (thread_id, limit),
+                (project_id,),
             ).fetchall()
 
-        return [Message(role=row["role"], content=row["content"]) for row in reversed(rows)]
+        return [
+            {
+                "thread_id": row["thread_id"],
+                "project_id": row["project_id"],
+                "topic": row["topic"],
+                "session_type": row["session_type"] or "project",
+                "knowledge_point_id": row["knowledge_point_id"],
+                "title": row["title"] or _default_thread_title(row["session_type"] or "project", row["topic"]),
+                "summary": row["summary"] or "",
+                "status": row["status"] or "已更新",
+                "entry_mode": row["entry_mode"],
+                "source_asset_ids": json.loads(row["source_asset_ids"]) if row["source_asset_ids"] else [],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
 
     def get_learner_unit_state(self, thread_id: str, unit_id: str) -> LearnerUnitState | None:
         with self._connect() as connection:
@@ -418,579 +625,6 @@ class SQLiteRepository:
             updated_at=row["updated_at"],
         )
 
-    def create_project(self, request: CreateProjectRequest) -> ProjectBootstrap:
-        self.initialize()
-        now_value = _utc_now()
-        project_id = request.project_id or build_project_id(request.title)
-        existing_project = self.get_project(project_id)
-        if existing_project is not None:
-            raise ValueError(f"Project already exists: {project_id}")
-
-        project = Project(
-            id=project_id,
-            title=request.title,
-            topic=request.topic,
-            description=request.description,
-            special_rules=request.special_rules,
-            status="active",
-            created_at=now_value,
-            updated_at=now_value,
-        )
-        project_session = Session(
-            id=build_session_id(project_id, "project"),
-            project_id=project_id,
-            type="project",
-            title="初始 project session",
-            status="active",
-            created_at=now_value,
-            updated_at=now_value,
-        )
-        project_materials = [
-            self._build_project_material(project_id, material, now_value)
-            for material in request.initial_materials
-        ]
-        session_attachments = [
-            SessionAttachment(
-                id=build_session_attachment_id(project_session.id, material.id, "selected"),
-                session_id=project_session.id,
-                project_material_id=material.id,
-                role="selected",
-                attached_at=now_value,
-            )
-            for material in project_materials
-        ]
-        knowledge_points = build_bootstrap_knowledge_points(
-            project,
-            project_materials,
-            project_session.id,
-            now_value,
-        )
-        knowledge_point_states = [
-            KnowledgePointState(
-                knowledge_point_id=knowledge_point.id,
-                mastery=0,
-                learning_status="new",
-                review_status="idle",
-                archive_suggested=False,
-                updated_at=now_value,
-            )
-            for knowledge_point in knowledge_points
-        ]
-        project_memory = ProjectMemory(
-            id=build_project_memory_id(project_id),
-            project_id=project_id,
-            summary=build_project_memory_summary(project, project_materials),
-            key_facts=build_project_memory_key_facts(project, project_materials),
-            open_threads=[project_session.id],
-            updated_at=now_value,
-        )
-        project_learning_profile = ProjectLearningProfile(
-            id=build_project_learning_profile_id(project_id),
-            project_id=project_id,
-            current_stage="bootstrapping",
-            primary_weaknesses=[],
-            learning_preferences=["project-centric"],
-            freshness="fresh",
-            updated_at=now_value,
-        )
-
-        with self._connect() as connection:
-            self._upsert_project(connection, project, now_value)
-            self._upsert_session(connection, project_session, "chat-question", now_value)
-            self._upsert_thread_context(
-                connection,
-                project_session.id,
-                "chat-question",
-                [material.id for material in project_materials],
-                now_value,
-            )
-            for material in project_materials:
-                self._upsert_project_material(connection, material, now_value)
-            self._replace_session_attachments(connection, project_session.id, session_attachments)
-            for knowledge_point in knowledge_points:
-                self._upsert_knowledge_point(connection, knowledge_point, now_value)
-            for knowledge_point_state in knowledge_point_states:
-                self._upsert_knowledge_point_state(connection, knowledge_point_state, now_value)
-            self._upsert_project_memory(connection, project_memory, now_value)
-            self._upsert_project_learning_profile(connection, project_learning_profile, now_value)
-
-        bootstrap = self.get_project_bootstrap(project_id)
-        if bootstrap is None:
-            raise RuntimeError(f"Project bootstrap not found after create: {project_id}")
-        return bootstrap
-
-    def update_project(
-        self,
-        project_id: str,
-        request: UpdateProjectRequest,
-    ) -> ProjectBootstrap | None:
-        self.initialize()
-        existing_project = self.get_project(project_id)
-        if existing_project is None:
-            return None
-
-        now_value = _utc_now()
-        next_project = Project(
-            id=existing_project.id,
-            title=request.title or existing_project.title,
-            topic=request.topic or existing_project.topic,
-            description=request.description or existing_project.description,
-            special_rules=(
-                request.special_rules
-                if request.special_rules is not None
-                else existing_project.special_rules
-            ),
-            status=existing_project.status,
-            created_at=existing_project.created_at,
-            updated_at=now_value,
-        )
-
-        sessions = self.list_project_sessions(project_id)
-        project_session = next((session for session in sessions if session.type == "project"), None)
-        if project_session is None:
-            project_session = Session(
-                id=build_session_id(project_id, "project"),
-                project_id=project_id,
-                type="project",
-                title="初始 project session",
-                status="active",
-                created_at=now_value,
-                updated_at=now_value,
-            )
-
-        existing_materials = {material.id: material for material in self.list_project_materials(project_id)}
-        next_materials = list(existing_materials.values())
-        next_attachments = self.list_session_attachments(project_session.id)
-
-        if request.initial_materials is not None:
-            requested_materials = [
-                self._build_project_material(project_id, material, now_value)
-                for material in request.initial_materials
-            ]
-            requested_ids = {material.id for material in requested_materials}
-            next_materials = []
-            for material in existing_materials.values():
-                if material.id in requested_ids:
-                    continue
-                archived_payload = material.model_dump(mode="python")
-                archived_payload["status"] = "archived"
-                archived_payload["updated_at"] = now_value
-                next_materials.append(
-                    ProjectMaterial(**archived_payload)
-                )
-            next_materials.extend(requested_materials)
-            next_attachments = [
-                SessionAttachment(
-                    id=build_session_attachment_id(project_session.id, material.id, "selected"),
-                    session_id=project_session.id,
-                    project_material_id=material.id,
-                    role="selected",
-                    attached_at=now_value,
-                )
-                for material in requested_materials
-            ]
-
-        with self._connect() as connection:
-            self._upsert_project(connection, next_project, now_value)
-            self._upsert_session(connection, project_session, "chat-question", now_value)
-            for material in next_materials:
-                self._upsert_project_material(connection, material, now_value)
-            self._replace_session_attachments(connection, project_session.id, next_attachments)
-            self._upsert_thread_context(
-                connection,
-                project_session.id,
-                "chat-question",
-                [attachment.project_material_id for attachment in next_attachments],
-                now_value,
-            )
-
-        return self.get_project_bootstrap(project_id)
-
-    def get_project(self, project_id: str) -> Project | None:
-        with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT *
-                FROM projects
-                WHERE project_id = ?
-                """,
-                (project_id,),
-            ).fetchone()
-
-        return self._row_to_project(row) if row is not None else None
-
-    def list_projects(self) -> list[Project]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT *
-                FROM projects
-                ORDER BY updated_at DESC, project_id ASC
-                """
-            ).fetchall()
-
-        return [self._row_to_project(row) for row in rows]
-
-    def get_project_bootstrap(self, project_id: str) -> ProjectBootstrap | None:
-        project = self.get_project(project_id)
-        if project is None:
-            return None
-
-        sessions = self.list_project_sessions(project_id)
-        project_materials = self.list_project_materials(project_id)
-        session_attachments: list[SessionAttachment] = []
-        for session in sessions:
-            session_attachments.extend(self.list_session_attachments(session.id))
-
-        knowledge_points = self.list_project_knowledge_points(project_id)
-        knowledge_point_states = [
-            state
-            for state in (
-                self.get_knowledge_point_state(knowledge_point.id)
-                for knowledge_point in knowledge_points
-            )
-            if state is not None
-        ]
-
-        return ProjectBootstrap(
-            project=project,
-            sessions=sessions,
-            project_materials=project_materials,
-            session_attachments=session_attachments,
-            knowledge_points=knowledge_points,
-            knowledge_point_states=knowledge_point_states,
-            project_memory=self.get_project_memory(project_id),
-            project_learning_profile=self.get_project_learning_profile(project_id),
-        )
-
-    def create_session(
-        self,
-        project_id: str,
-        request: CreateSessionRequest,
-    ) -> SessionDetail | None:
-        self.initialize()
-        project = self.get_project(project_id)
-        if project is None:
-            return None
-
-        now_value = _utc_now()
-        existing_sessions = self.list_project_sessions(project_id)
-        existing_session_ids = {session.id for session in existing_sessions}
-        project_materials = self.list_project_materials(project_id)
-        active_project_material_ids = {
-            material.id for material in project_materials if material.status == "active"
-        }
-        requested_project_material_ids = _dedupe_preserving_order(request.project_material_ids)
-        invalid_project_material_ids = sorted(
-            set(requested_project_material_ids) - active_project_material_ids
-        )
-        if invalid_project_material_ids:
-            raise ValueError(
-                "Unknown active project material ids: "
-                + ", ".join(invalid_project_material_ids)
-            )
-
-        knowledge_points = self.list_project_knowledge_points(project_id)
-        knowledge_point_by_id = {knowledge_point.id: knowledge_point for knowledge_point in knowledge_points}
-        requested_focus_ids = _dedupe_preserving_order(request.focus_knowledge_point_ids)
-        invalid_focus_ids = sorted(set(requested_focus_ids) - set(knowledge_point_by_id))
-        if invalid_focus_ids:
-            raise ValueError(
-                "Unknown project knowledge point ids: " + ", ".join(invalid_focus_ids)
-            )
-
-        session_id = request.session_id or self._build_next_session_id(
-            project_id,
-            request.type,
-            existing_session_ids,
-        )
-        if session_id in existing_session_ids:
-            raise ValueError(f"Session already exists: {session_id}")
-
-        focus_title = (
-            knowledge_point_by_id[requested_focus_ids[0]].title
-            if len(requested_focus_ids) == 1
-            else None
-        )
-        title = request.title or build_session_title(
-            request.type,
-            sum(1 for session in existing_sessions if session.type == request.type) + 1,
-            focus_title=focus_title,
-        )
-        session = Session(
-            id=session_id,
-            project_id=project_id,
-            type=request.type,
-            title=title,
-            status="active",
-            focus_knowledge_point_ids=requested_focus_ids,
-            created_at=now_value,
-            updated_at=now_value,
-        )
-        session_attachments = [
-            SessionAttachment(
-                id=build_session_attachment_id(session_id, project_material_id, "selected"),
-                session_id=session_id,
-                project_material_id=project_material_id,
-                role="selected",
-                attached_at=now_value,
-            )
-            for project_material_id in requested_project_material_ids
-        ]
-
-        existing_project_memory = self.get_project_memory(project_id)
-        next_project_memory = self._build_project_memory_with_open_threads(
-            project=project,
-            project_materials=project_materials,
-            existing_project_memory=existing_project_memory,
-            open_threads=[
-                *(
-                    existing_project_memory.open_threads
-                    if existing_project_memory is not None
-                    else []
-                ),
-                session_id,
-            ],
-            now_value=now_value,
-        )
-
-        with self._connect() as connection:
-            self._upsert_session(connection, session, request.entry_mode, now_value)
-            self._replace_session_attachments(connection, session.id, session_attachments)
-            self._upsert_thread_context(
-                connection,
-                session.id,
-                request.entry_mode,
-                requested_project_material_ids,
-                now_value,
-            )
-            self._upsert_project_memory(connection, next_project_memory, now_value)
-
-        detail = self.get_session_detail(project_id, session.id)
-        if detail is None:
-            raise RuntimeError(f"Session detail not found after create: {session.id}")
-        return detail
-
-    def update_session(
-        self,
-        project_id: str,
-        session_id: str,
-        request: UpdateSessionRequest,
-    ) -> SessionDetail | None:
-        self.initialize()
-        project = self.get_project(project_id)
-        if project is None:
-            return None
-
-        existing_session = self.get_session(project_id, session_id)
-        if existing_session is None:
-            return None
-
-        current_detail = self.get_session_detail(project_id, session_id)
-        if current_detail is None:
-            return None
-
-        project_materials = self.list_project_materials(project_id)
-        project_material_ids = (
-            _dedupe_preserving_order(request.project_material_ids)
-            if request.project_material_ids is not None
-            else [attachment.project_material_id for attachment in current_detail.session_attachments]
-        )
-        active_project_material_ids = {
-            material.id for material in project_materials if material.status == "active"
-        }
-        invalid_project_material_ids = sorted(set(project_material_ids) - active_project_material_ids)
-        if invalid_project_material_ids:
-            raise ValueError(
-                "Unknown active project material ids: "
-                + ", ".join(invalid_project_material_ids)
-            )
-
-        knowledge_points = self.list_project_knowledge_points(project_id)
-        requested_focus_ids = (
-            _dedupe_preserving_order(request.focus_knowledge_point_ids)
-            if request.focus_knowledge_point_ids is not None
-            else existing_session.focus_knowledge_point_ids
-        )
-        knowledge_point_ids = {knowledge_point.id for knowledge_point in knowledge_points}
-        invalid_focus_ids = sorted(set(requested_focus_ids) - knowledge_point_ids)
-        if invalid_focus_ids:
-            raise ValueError(
-                "Unknown project knowledge point ids: " + ", ".join(invalid_focus_ids)
-            )
-
-        next_session = Session(
-            id=existing_session.id,
-            project_id=existing_session.project_id,
-            type=existing_session.type,
-            title=request.title or existing_session.title,
-            status=request.status or existing_session.status,
-            focus_knowledge_point_ids=requested_focus_ids,
-            current_activity_id=existing_session.current_activity_id,
-            created_at=existing_session.created_at,
-            updated_at=existing_session.updated_at,
-        )
-        materials_changed = (
-            request.project_material_ids is not None
-            and project_material_ids
-            != [attachment.project_material_id for attachment in current_detail.session_attachments]
-        )
-        session_changed = (
-            next_session.title != existing_session.title
-            or next_session.status != existing_session.status
-            or next_session.focus_knowledge_point_ids != existing_session.focus_knowledge_point_ids
-        )
-        if not session_changed and not materials_changed:
-            return current_detail
-
-        now_value = _utc_now()
-        next_session.updated_at = now_value
-        current_thread_context = current_detail.thread_context
-        entry_mode = (
-            current_thread_context.entry_mode
-            if current_thread_context is not None
-            else "chat-question"
-        )
-        next_session_attachments = (
-            [
-                SessionAttachment(
-                    id=build_session_attachment_id(session_id, project_material_id, "selected"),
-                    session_id=session_id,
-                    project_material_id=project_material_id,
-                    role="selected",
-                    attached_at=now_value,
-                )
-                for project_material_id in project_material_ids
-            ]
-            if request.project_material_ids is not None
-            else current_detail.session_attachments
-        )
-
-        next_project_memory: ProjectMemory | None = None
-        if next_session.status != existing_session.status:
-            existing_project_memory = self.get_project_memory(project_id)
-            next_open_threads = _dedupe_preserving_order(
-                [
-                    thread_id
-                    for thread_id in (
-                        existing_project_memory.open_threads
-                        if existing_project_memory is not None
-                        else [
-                            session.id
-                            for session in self.list_project_sessions(project_id)
-                            if session.status == "active"
-                        ]
-                    )
-                    if thread_id != session_id
-                ]
-            )
-            if next_session.status == "active":
-                next_open_threads.append(session_id)
-            next_project_memory = self._build_project_memory_with_open_threads(
-                project=project,
-                project_materials=project_materials,
-                existing_project_memory=existing_project_memory,
-                open_threads=next_open_threads,
-                now_value=now_value,
-            )
-
-        with self._connect() as connection:
-            self._upsert_session(connection, next_session, entry_mode, now_value)
-            if request.project_material_ids is not None:
-                self._replace_session_attachments(connection, session_id, next_session_attachments)
-                self._upsert_thread_context(
-                    connection,
-                    session_id,
-                    entry_mode,
-                    project_material_ids,
-                    now_value,
-                )
-            if next_project_memory is not None:
-                self._upsert_project_memory(connection, next_project_memory, now_value)
-
-        detail = self.get_session_detail(project_id, session_id)
-        if detail is None:
-            raise RuntimeError(f"Session detail not found after update: {session_id}")
-        return detail
-
-    def get_session(self, project_id: str, session_id: str) -> Session | None:
-        with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT *
-                FROM threads
-                WHERE project_id = ? AND thread_id = ?
-                """,
-                (project_id, session_id),
-            ).fetchone()
-
-        return self._row_to_session(row) if row is not None else None
-
-    def get_session_detail(
-        self,
-        project_id: str,
-        session_id: str,
-        *,
-        recent_message_limit: int = 8,
-    ) -> SessionDetail | None:
-        session = self.get_session(project_id, session_id)
-        if session is None:
-            return None
-
-        thread_context = self.get_thread_context(session_id)
-        return SessionDetail(
-            session=session,
-            thread_context=(
-                ThreadContextRecord(**thread_context)
-                if thread_context is not None
-                else None
-            ),
-            session_attachments=self.list_session_attachments(session_id),
-            recent_messages=self.list_recent_messages(session_id, limit=recent_message_limit),
-        )
-
-    def list_project_sessions(self, project_id: str) -> list[Session]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT *
-                FROM threads
-                WHERE project_id = ?
-                ORDER BY updated_at DESC, created_at DESC, thread_id ASC
-                """,
-                (project_id,),
-            ).fetchall()
-
-        return [self._row_to_session(row) for row in rows]
-
-    def list_project_materials(self, project_id: str) -> list[ProjectMaterial]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT *
-                FROM project_materials
-                WHERE project_id = ?
-                ORDER BY created_at ASC, project_material_id ASC
-                """,
-                (project_id,),
-            ).fetchall()
-
-        return [self._row_to_project_material(row) for row in rows]
-
-    def list_session_attachments(self, session_id: str) -> list[SessionAttachment]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT *
-                FROM session_attachments
-                WHERE session_id = ?
-                ORDER BY attached_at ASC, attachment_id ASC
-                """,
-                (session_id,),
-            ).fetchall()
-
-        return [self._row_to_session_attachment(row) for row in rows]
-
     def get_project_context(
         self,
         project_id: str,
@@ -998,40 +632,58 @@ class SQLiteRepository:
         *,
         recent_message_limit: int = 5,
     ) -> dict[str, object] | None:
-        project = self.get_project(project_id)
-        project_memory = self.get_project_memory(project_id)
-        project_learning_profile = self.get_project_learning_profile(project_id)
-        project_materials = self.list_project_materials(project_id)
-        session_attachments = self.list_session_attachments(thread_id)
-        knowledge_points = self.list_project_knowledge_points(project_id)
+        with self._connect() as connection:
+            project_row = connection.execute(
+                """
+                SELECT project_id, topic, updated_at
+                FROM projects
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+            project_memory_row = connection.execute(
+                """
+                SELECT *
+                FROM project_memories
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+            project_learning_profile_row = connection.execute(
+                """
+                SELECT *
+                FROM project_learning_profiles
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+
         thread_context = self.get_thread_context(thread_id)
         recent_messages = self.list_recent_messages(thread_id, limit=recent_message_limit)
 
         if (
-            project is None
+            project_row is None
             and thread_context is None
             and not recent_messages
-            and project_memory is None
-            and project_learning_profile is None
-            and not project_materials
-            and not session_attachments
-            and not knowledge_points
+            and project_memory_row is None
+            and project_learning_profile_row is None
         ):
             return None
 
         return {
-            "project": project,
-            "project_id": project.id if project is not None else project_id,
-            "project_title": project.title if project is not None else None,
-            "project_topic": project.topic if project is not None else None,
-            "project_description": project.description if project is not None else None,
-            "project_special_rules": project.special_rules if project is not None else [],
-            "project_updated_at": project.updated_at if project is not None else None,
-            "project_memory": project_memory,
-            "project_learning_profile": project_learning_profile,
-            "project_materials": project_materials,
-            "session_attachments": session_attachments,
-            "knowledge_points": knowledge_points,
+            "project_id": project_row["project_id"] if project_row is not None else project_id,
+            "project_topic": project_row["topic"] if project_row is not None else None,
+            "project_updated_at": project_row["updated_at"] if project_row is not None else None,
+            "project_memory": (
+                self._row_to_project_memory(project_memory_row)
+                if project_memory_row is not None
+                else None
+            ),
+            "project_learning_profile": (
+                self._row_to_project_learning_profile(project_learning_profile_row)
+                if project_learning_profile_row is not None
+                else None
+            ),
             "thread_context": thread_context,
             "recent_messages": recent_messages,
         }
@@ -1098,23 +750,6 @@ class SQLiteRepository:
 
         return [self._row_to_knowledge_point(row) for row in rows]
 
-    def list_project_knowledge_point_records(self, project_id: str) -> list[KnowledgePointRecord]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT *
-                FROM knowledge_points
-                WHERE project_id = ?
-                ORDER BY created_at ASC, knowledge_point_id ASC
-                """,
-                (project_id,),
-            ).fetchall()
-
-            return [
-                self._build_knowledge_point_record(connection, self._row_to_knowledge_point(row))
-                for row in rows
-            ]
-
     def get_knowledge_point(
         self,
         project_id: str,
@@ -1132,26 +767,6 @@ class SQLiteRepository:
 
         return self._row_to_knowledge_point(row) if row is not None else None
 
-    def get_project_knowledge_point_record(
-        self,
-        project_id: str,
-        knowledge_point_id: str,
-    ) -> KnowledgePointRecord | None:
-        with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT *
-                FROM knowledge_points
-                WHERE project_id = ? AND knowledge_point_id = ?
-                """,
-                (project_id, knowledge_point_id),
-            ).fetchone()
-
-            if row is None:
-                return None
-
-            return self._build_knowledge_point_record(connection, self._row_to_knowledge_point(row))
-
     def get_knowledge_point_state(self, knowledge_point_id: str) -> KnowledgePointState | None:
         with self._connect() as connection:
             row = connection.execute(
@@ -1165,65 +780,99 @@ class SQLiteRepository:
 
         return self._row_to_knowledge_point_state(row) if row is not None else None
 
-    def update_knowledge_point(
-        self,
-        project_id: str,
-        knowledge_point_id: str,
-        request: UpdateKnowledgePointRequest,
-    ) -> KnowledgePointRecord | None:
+    def delete_knowledge_point(self, project_id: str, knowledge_point_id: str) -> bool:
         self.initialize()
+        now_value = _utc_now()
         with self._connect() as connection:
-            row = connection.execute(
+            point_row = connection.execute(
                 """
-                SELECT *
+                SELECT knowledge_point_id
                 FROM knowledge_points
                 WHERE project_id = ? AND knowledge_point_id = ?
                 """,
                 (project_id, knowledge_point_id),
             ).fetchone()
-            if row is None:
-                return None
+            if point_row is None:
+                return False
 
-            knowledge_point = self._row_to_knowledge_point(row)
-            next_source_material_refs = (
-                request.source_material_refs
-                if request.source_material_refs is not None
-                else knowledge_point.source_material_refs
-            )
-            if request.source_material_refs is not None:
-                project_material_rows = connection.execute(
+            project_thread_ids = [
+                row["thread_id"]
+                for row in connection.execute(
                     """
-                    SELECT project_material_id
-                    FROM project_materials
+                    SELECT thread_id
+                    FROM threads
                     WHERE project_id = ?
                     """,
                     (project_id,),
                 ).fetchall()
-                valid_material_ids = {material_row["project_material_id"] for material_row in project_material_rows}
-                missing_material_refs = [
-                    material_id
-                    for material_id in request.source_material_refs
-                    if material_id not in valid_material_ids
-                ]
-                if missing_material_refs:
-                    missing_refs = ", ".join(sorted(missing_material_refs))
-                    raise ValueError(f"Unknown project material refs: {missing_refs}")
+            ]
 
-            now_value = _utc_now()
-            next_knowledge_point = KnowledgePoint(
-                id=knowledge_point.id,
-                project_id=knowledge_point.project_id,
-                title=request.title or knowledge_point.title,
-                description=request.description or knowledge_point.description,
-                status=knowledge_point.status,
-                origin_type=knowledge_point.origin_type,
-                origin_session_id=knowledge_point.origin_session_id,
-                source_material_refs=next_source_material_refs,
-                created_at=knowledge_point.created_at,
-                updated_at=now_value,
+            if project_thread_ids:
+                placeholders = ", ".join("?" for _ in project_thread_ids)
+                connection.execute(
+                    f"""
+                    DELETE FROM learner_unit_state
+                    WHERE unit_id = ? AND thread_id IN ({placeholders})
+                    """,
+                    [knowledge_point_id, *project_thread_ids],
+                )
+                connection.execute(
+                    f"""
+                    DELETE FROM review_state
+                    WHERE unit_id = ? AND thread_id IN ({placeholders})
+                    """,
+                    [knowledge_point_id, *project_thread_ids],
+                )
+                connection.execute(
+                    f"""
+                    DELETE FROM review_events
+                    WHERE unit_id = ? AND thread_id IN ({placeholders})
+                    """,
+                    [knowledge_point_id, *project_thread_ids],
+                )
+
+            connection.execute(
+                """
+                UPDATE threads
+                SET knowledge_point_id = NULL, updated_at = ?
+                WHERE project_id = ? AND knowledge_point_id = ?
+                """,
+                (now_value, project_id, knowledge_point_id),
             )
-            self._upsert_knowledge_point(connection, next_knowledge_point, now_value)
-            return self._build_knowledge_point_record(connection, next_knowledge_point)
+            connection.execute(
+                """
+                UPDATE thread_activity_decks
+                SET knowledge_point_id = NULL
+                WHERE knowledge_point_id = ? AND thread_id IN (
+                  SELECT thread_id
+                  FROM threads
+                  WHERE project_id = ?
+                )
+                """,
+                (knowledge_point_id, project_id),
+            )
+            connection.execute(
+                """
+                DELETE FROM knowledge_point_state
+                WHERE knowledge_point_id = ?
+                """,
+                (knowledge_point_id,),
+            )
+            connection.execute(
+                """
+                DELETE FROM knowledge_point_suggestions
+                WHERE project_id = ? AND knowledge_point_id = ?
+                """,
+                (project_id, knowledge_point_id),
+            )
+            connection.execute(
+                """
+                DELETE FROM knowledge_points
+                WHERE project_id = ? AND knowledge_point_id = ?
+                """,
+                (project_id, knowledge_point_id),
+            )
+        return True
 
     def list_knowledge_point_suggestions(
         self,
@@ -1306,6 +955,53 @@ class SQLiteRepository:
         now_value = _utc_now()
         with self._connect() as connection:
             self._upsert_project_learning_profile(connection, project_learning_profile, now_value)
+
+    def save_project_material(self, material: SourceAsset, *, project_id: str) -> None:
+        self.initialize()
+        now_value = _utc_now()
+        with self._connect() as connection:
+            self._ensure_project(connection, project_id, material.topic, now_value)
+            self._upsert_project_material(connection, project_id, material, now_value)
+
+    def list_project_materials(self, project_id: str) -> list[SourceAsset]:
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM project_materials
+                WHERE project_id = ?
+                ORDER BY created_at DESC, material_id DESC
+                """,
+                (project_id,),
+            ).fetchall()
+
+        return [self._row_to_project_material(row) for row in rows]
+
+    def get_project_materials_by_ids(
+        self,
+        project_id: str,
+        material_ids: list[str],
+    ) -> list[SourceAsset]:
+        if not material_ids:
+            return []
+
+        self.initialize()
+        placeholders = ", ".join("?" for _ in material_ids)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT *
+                FROM project_materials
+                WHERE project_id = ? AND material_id IN ({placeholders})
+                """,
+                [project_id, *material_ids],
+            ).fetchall()
+
+        materials_by_id = {
+            material.id: material for material in (self._row_to_project_material(row) for row in rows)
+        }
+        return [materials_by_id[material_id] for material_id in material_ids if material_id in materials_by_id]
 
     def resolve_knowledge_point_suggestion(
         self,
@@ -1487,89 +1183,31 @@ class SQLiteRepository:
             for row in reversed(rows)
         ]
 
-    def _migrate_schema(self, connection: sqlite3.Connection) -> None:
-        self._ensure_column(connection, "projects", "title", "TEXT")
-        self._ensure_column(connection, "projects", "description", "TEXT")
-        self._ensure_column(connection, "projects", "special_rules", "TEXT NOT NULL DEFAULT '[]'")
-        self._ensure_column(connection, "projects", "status", "TEXT NOT NULL DEFAULT 'active'")
-
-        self._ensure_column(connection, "threads", "session_type", "TEXT NOT NULL DEFAULT 'project'")
-        self._ensure_column(connection, "threads", "title", "TEXT")
-        self._ensure_column(connection, "threads", "status", "TEXT NOT NULL DEFAULT 'active'")
-        self._ensure_column(
-            connection,
-            "threads",
-            "focus_knowledge_point_ids",
-            "TEXT NOT NULL DEFAULT '[]'",
-        )
-        self._ensure_column(connection, "threads", "current_activity_id", "TEXT")
-
-        self._ensure_column(connection, "project_memories", "memory_id", "TEXT")
-        self._ensure_column(
-            connection,
-            "project_memories",
-            "key_facts",
-            "TEXT NOT NULL DEFAULT '[]'",
-        )
-        self._ensure_column(
-            connection,
-            "project_memories",
-            "open_threads",
-            "TEXT NOT NULL DEFAULT '[]'",
-        )
-
-        self._ensure_column(connection, "project_learning_profiles", "profile_id", "TEXT")
-
-        connection.execute(
-            """
-            UPDATE projects
-            SET title = COALESCE(NULLIF(title, ''), topic),
-                description = COALESCE(NULLIF(description, ''), topic),
-                special_rules = COALESCE(NULLIF(special_rules, ''), '[]'),
-                status = COALESCE(NULLIF(status, ''), 'active')
-            """
-        )
-        connection.execute(
-            """
-            UPDATE threads
-            SET session_type = COALESCE(NULLIF(session_type, ''), 'project'),
-                title = COALESCE(NULLIF(title, ''), topic),
-                status = COALESCE(NULLIF(status, ''), 'active'),
-                focus_knowledge_point_ids = COALESCE(NULLIF(focus_knowledge_point_ids, ''), '[]')
-            """
-        )
-        connection.execute(
-            """
-            UPDATE project_memories
-            SET memory_id = COALESCE(NULLIF(memory_id, ''), 'pmem-' || project_id),
-                key_facts = COALESCE(NULLIF(key_facts, ''), '[]'),
-                open_threads = COALESCE(NULLIF(open_threads, ''), '[]')
-            """
-        )
-        connection.execute(
-            """
-            UPDATE project_learning_profiles
-            SET profile_id = COALESCE(NULLIF(profile_id, ''), 'plp-' || project_id)
-            """
-        )
-
-    def _ensure_column(
-        self,
-        connection: sqlite3.Connection,
-        table_name: str,
-        column_name: str,
-        column_sql: str,
-    ) -> None:
-        rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
-        existing_columns = {row["name"] for row in rows}
-        if column_name in existing_columns:
-            return
-        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
-
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
         return connection
+
+    def _apply_schema_migrations(self, connection: sqlite3.Connection) -> None:
+        existing_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(threads)").fetchall()
+        }
+        for column_name, statement in THREAD_COLUMN_MIGRATIONS.items():
+            if column_name not in existing_columns:
+                connection.execute(statement)
+                existing_columns.add(column_name)
+
+        suggestion_columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(knowledge_point_suggestions)"
+            ).fetchall()
+        }
+        for column_name, statement in KNOWLEDGE_POINT_SUGGESTION_COLUMN_MIGRATIONS.items():
+            if column_name not in suggestion_columns:
+                connection.execute(statement)
+                suggestion_columns.add(column_name)
 
     def _append_messages(
         self,
@@ -1577,230 +1215,38 @@ class SQLiteRepository:
         thread_id: str,
         messages: list[Message],
         created_at: str,
+    ) -> list[int]:
+        inserted_ids: list[int] = []
+        for message in messages:
+            cursor = connection.execute(
+                """
+                INSERT INTO thread_messages(thread_id, role, content, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (thread_id, message.role, message.content, created_at),
+            )
+            inserted_ids.append(int(cursor.lastrowid))
+        return inserted_ids
+
+    def _ensure_project(
+        self,
+        connection: sqlite3.Connection,
+        project_id: str,
+        topic: str,
+        now_value: str,
     ) -> None:
-        connection.executemany(
+        connection.execute(
             """
-            INSERT INTO thread_messages(thread_id, role, content, created_at)
+            INSERT INTO projects(project_id, topic, created_at, updated_at)
             VALUES (?, ?, ?, ?)
-            """,
-            [(thread_id, message.role, message.content, created_at) for message in messages],
-        )
-
-    def _build_next_session_id(
-        self,
-        project_id: str,
-        session_type: str,
-        existing_session_ids: set[str],
-    ) -> str:
-        base_id = build_session_id(project_id, session_type)
-        if session_type == "project" and base_id not in existing_session_ids:
-            return base_id
-
-        next_sequence = 2 if session_type == "project" else 1
-        while True:
-            candidate = build_session_id(project_id, session_type, next_sequence)
-            if candidate not in existing_session_ids:
-                return candidate
-            next_sequence += 1
-
-    def _upsert_project(
-        self,
-        connection: sqlite3.Connection,
-        project: Project,
-        now_value: str,
-    ) -> None:
-        created_value = (
-            project.created_at.isoformat()
-            if hasattr(project.created_at, "isoformat")
-            else project.created_at
-            or now_value
-        )
-        updated_value = (
-            project.updated_at.isoformat()
-            if hasattr(project.updated_at, "isoformat")
-            else project.updated_at
-            or now_value
-        )
-        connection.execute(
-            """
-            INSERT INTO projects(
-              project_id, title, topic, description, special_rules, status, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(project_id) DO UPDATE SET
-              title = excluded.title,
-              topic = excluded.topic,
-              description = excluded.description,
-              special_rules = excluded.special_rules,
-              status = excluded.status,
+              topic = CASE
+                WHEN excluded.topic != '' THEN excluded.topic
+                ELSE projects.topic
+              END,
               updated_at = excluded.updated_at
             """,
-            (
-                project.id,
-                project.title,
-                project.topic,
-                project.description,
-                json.dumps(project.special_rules, ensure_ascii=False),
-                project.status,
-                created_value,
-                updated_value,
-            ),
-        )
-
-    def _upsert_session(
-        self,
-        connection: sqlite3.Connection,
-        session: Session,
-        entry_mode: str,
-        now_value: str,
-    ) -> None:
-        created_value = (
-            session.created_at.isoformat()
-            if hasattr(session.created_at, "isoformat")
-            else session.created_at
-            or now_value
-        )
-        updated_value = (
-            session.updated_at.isoformat()
-            if hasattr(session.updated_at, "isoformat")
-            else session.updated_at
-            or now_value
-        )
-        connection.execute(
-            """
-            INSERT INTO threads(
-              thread_id, project_id, session_type, title, topic, entry_mode, status,
-              focus_knowledge_point_ids, current_activity_id, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(thread_id) DO UPDATE SET
-              project_id = excluded.project_id,
-              session_type = excluded.session_type,
-              title = excluded.title,
-              topic = excluded.topic,
-              entry_mode = excluded.entry_mode,
-              status = excluded.status,
-              focus_knowledge_point_ids = excluded.focus_knowledge_point_ids,
-              current_activity_id = excluded.current_activity_id,
-              updated_at = excluded.updated_at
-            """,
-            (
-                session.id,
-                session.project_id,
-                session.type,
-                session.title,
-                session.title,
-                entry_mode,
-                session.status,
-                json.dumps(session.focus_knowledge_point_ids, ensure_ascii=False),
-                session.current_activity_id,
-                created_value,
-                updated_value,
-            ),
-        )
-
-    def _build_project_material(
-        self,
-        project_id: str,
-        material: ProjectMaterialInput,
-        now_value: str,
-    ) -> ProjectMaterial:
-        material_id = material.id or build_project_material_id(project_id, material.title)
-        return ProjectMaterial(
-            id=material_id,
-            project_id=project_id,
-            kind=material.kind,
-            title=material.title,
-            source_uri=material.source_uri,
-            content_ref=material.content_ref,
-            summary=material.summary,
-            status="active",
-            created_at=now_value,
-            updated_at=now_value,
-        )
-
-    def _upsert_project_material(
-        self,
-        connection: sqlite3.Connection,
-        project_material: ProjectMaterial,
-        now_value: str,
-    ) -> None:
-        created_value = (
-            project_material.created_at.isoformat()
-            if hasattr(project_material.created_at, "isoformat")
-            else project_material.created_at
-            or now_value
-        )
-        updated_value = (
-            project_material.updated_at.isoformat()
-            if hasattr(project_material.updated_at, "isoformat")
-            else project_material.updated_at
-            or now_value
-        )
-        connection.execute(
-            """
-            INSERT INTO project_materials(
-              project_material_id, project_id, kind, title, source_uri,
-              content_ref, summary, status, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(project_material_id) DO UPDATE SET
-              kind = excluded.kind,
-              title = excluded.title,
-              source_uri = excluded.source_uri,
-              content_ref = excluded.content_ref,
-              summary = excluded.summary,
-              status = excluded.status,
-              updated_at = excluded.updated_at
-            """,
-            (
-                project_material.id,
-                project_material.project_id,
-                project_material.kind,
-                project_material.title,
-                project_material.source_uri,
-                project_material.content_ref,
-                project_material.summary,
-                project_material.status,
-                created_value,
-                updated_value,
-            ),
-        )
-
-    def _replace_session_attachments(
-        self,
-        connection: sqlite3.Connection,
-        session_id: str,
-        attachments: list[SessionAttachment],
-    ) -> None:
-        connection.execute(
-            """
-            DELETE FROM session_attachments
-            WHERE session_id = ?
-            """,
-            (session_id,),
-        )
-        if not attachments:
-            return
-        connection.executemany(
-            """
-            INSERT INTO session_attachments(
-              attachment_id, session_id, project_material_id, role, attached_at
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    attachment.id,
-                    attachment.session_id,
-                    attachment.project_material_id,
-                    attachment.role,
-                    attachment.attached_at.isoformat()
-                    if hasattr(attachment.attached_at, "isoformat")
-                    else attachment.attached_at,
-                )
-                for attachment in attachments
-            ],
+            (project_id, topic, now_value, now_value),
         )
 
     def _upsert_thread_context(
@@ -1825,6 +1271,42 @@ class SQLiteRepository:
                 entry_mode,
                 json.dumps(source_asset_ids, ensure_ascii=False),
                 updated_at,
+            ),
+        )
+
+    def _upsert_thread_activity_deck(
+        self,
+        connection: sqlite3.Connection,
+        request: AgentRequest,
+        completed_at: str,
+    ) -> None:
+        result = request.activity_result
+        if result is None:
+            return
+
+        cards = result.meta.get("items")
+        if not isinstance(cards, list) or len(cards) == 0:
+            return
+
+        connection.execute(
+            """
+            INSERT INTO thread_activity_decks(
+              deck_id, thread_id, session_type, knowledge_point_id, completed_at, payload
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(deck_id) DO UPDATE SET
+              session_type = excluded.session_type,
+              knowledge_point_id = excluded.knowledge_point_id,
+              completed_at = excluded.completed_at,
+              payload = excluded.payload
+            """,
+            (
+                result.run_id,
+                request.thread_id,
+                request.session_type,
+                result.knowledge_point_id,
+                completed_at,
+                json.dumps({"cards": cards}, ensure_ascii=False),
             ),
         )
 
@@ -1949,6 +1431,7 @@ class SQLiteRepository:
                     suggestion.id,
                     suggestion.project_id,
                     suggestion.session_id,
+                    suggestion.origin_message_id,
                     suggestion.kind,
                     suggestion.knowledge_point_id,
                     suggestion.title,
@@ -1965,12 +1448,13 @@ class SQLiteRepository:
         connection.executemany(
             """
             INSERT INTO knowledge_point_suggestions(
-              suggestion_id, project_id, session_id, kind, knowledge_point_id,
+              suggestion_id, project_id, session_id, origin_message_id, kind, knowledge_point_id,
               title, description, reason, source_material_refs, status,
               created_at, resolved_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(suggestion_id) DO UPDATE SET
+              origin_message_id = COALESCE(knowledge_point_suggestions.origin_message_id, excluded.origin_message_id),
               knowledge_point_id = excluded.knowledge_point_id,
               title = excluded.title,
               description = excluded.description,
@@ -2111,83 +1595,16 @@ class SQLiteRepository:
         )
         connection.execute(
             """
-            INSERT INTO project_memories(
-              project_id, memory_id, summary, key_facts, open_threads, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO project_memories(project_id, summary, updated_at)
+            VALUES (?, ?, ?)
             ON CONFLICT(project_id) DO UPDATE SET
-              memory_id = excluded.memory_id,
               summary = excluded.summary,
-              key_facts = excluded.key_facts,
-              open_threads = excluded.open_threads,
               updated_at = excluded.updated_at
             """,
             (
                 project_memory.project_id,
-                project_memory.id or build_project_memory_id(project_memory.project_id),
                 project_memory.summary,
-                json.dumps(project_memory.key_facts, ensure_ascii=False),
-                json.dumps(project_memory.open_threads, ensure_ascii=False),
                 updated_value,
-            ),
-        )
-
-    def _merge_project_memory(
-        self,
-        existing_project_memory: ProjectMemory | None,
-        incoming_project_memory: ProjectMemory,
-    ) -> ProjectMemory:
-        return ProjectMemory(
-            id=(
-                incoming_project_memory.id
-                or (existing_project_memory.id if existing_project_memory is not None else None)
-            ),
-            project_id=incoming_project_memory.project_id,
-            summary=incoming_project_memory.summary,
-            key_facts=(
-                incoming_project_memory.key_facts
-                or (
-                    existing_project_memory.key_facts
-                    if existing_project_memory is not None
-                    else []
-                )
-            ),
-            open_threads=(
-                incoming_project_memory.open_threads
-                or (
-                    existing_project_memory.open_threads
-                    if existing_project_memory is not None
-                    else []
-                )
-            ),
-            updated_at=incoming_project_memory.updated_at,
-        )
-
-    def _build_project_memory_with_open_threads(
-        self,
-        *,
-        project: Project,
-        project_materials: list[ProjectMaterial],
-        existing_project_memory: ProjectMemory | None,
-        open_threads: list[str],
-        now_value: str,
-    ) -> ProjectMemory:
-        return self._merge_project_memory(
-            existing_project_memory,
-            ProjectMemory(
-                project_id=project.id,
-                summary=(
-                    existing_project_memory.summary
-                    if existing_project_memory is not None
-                    else build_project_memory_summary(project, project_materials)
-                ),
-                key_facts=(
-                    existing_project_memory.key_facts
-                    if existing_project_memory is not None
-                    else build_project_memory_key_facts(project, project_materials)
-                ),
-                open_threads=_dedupe_preserving_order(open_threads),
-                updated_at=now_value,
             ),
         )
 
@@ -2206,12 +1623,11 @@ class SQLiteRepository:
         connection.execute(
             """
             INSERT INTO project_learning_profiles(
-              project_id, profile_id, current_stage, primary_weaknesses,
+              project_id, current_stage, primary_weaknesses,
               learning_preferences, freshness, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(project_id) DO UPDATE SET
-              profile_id = excluded.profile_id,
               current_stage = excluded.current_stage,
               primary_weaknesses = excluded.primary_weaknesses,
               learning_preferences = excluded.learning_preferences,
@@ -2220,12 +1636,61 @@ class SQLiteRepository:
             """,
             (
                 project_learning_profile.project_id,
-                project_learning_profile.id
-                or build_project_learning_profile_id(project_learning_profile.project_id),
                 project_learning_profile.current_stage,
                 json.dumps(project_learning_profile.primary_weaknesses, ensure_ascii=False),
                 json.dumps(project_learning_profile.learning_preferences, ensure_ascii=False),
                 project_learning_profile.freshness,
+                updated_value,
+            ),
+        )
+
+    def _upsert_project_material(
+        self,
+        connection: sqlite3.Connection,
+        project_id: str,
+        material: SourceAsset,
+        now_value: str,
+    ) -> None:
+        created_value = (
+            material.created_at.isoformat()
+            if hasattr(material.created_at, "isoformat")
+            else material.created_at
+            or now_value
+        )
+        updated_value = (
+            material.updated_at.isoformat()
+            if hasattr(material.updated_at, "isoformat")
+            else material.updated_at
+            or now_value
+        )
+        connection.execute(
+            """
+            INSERT INTO project_materials(
+              material_id, project_id, title, kind, topic, source_uri,
+              content_ref, summary, status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(material_id) DO UPDATE SET
+              title = excluded.title,
+              kind = excluded.kind,
+              topic = excluded.topic,
+              source_uri = excluded.source_uri,
+              content_ref = excluded.content_ref,
+              summary = excluded.summary,
+              status = excluded.status,
+              updated_at = excluded.updated_at
+            """,
+            (
+                material.id,
+                project_id,
+                material.title,
+                material.kind,
+                material.topic,
+                material.source_uri,
+                material.content_ref,
+                material.summary,
+                material.status or "ready",
+                created_value,
                 updated_value,
             ),
         )
@@ -2296,81 +1761,6 @@ class SQLiteRepository:
             updated_at=row["updated_at"],
         )
 
-    def _row_to_project(self, row: sqlite3.Row) -> Project:
-        return Project(
-            id=row["project_id"],
-            title=row["title"],
-            topic=row["topic"],
-            description=row["description"],
-            special_rules=json.loads(row["special_rules"]) if row["special_rules"] else [],
-            status=row["status"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
-
-    def _row_to_session(self, row: sqlite3.Row) -> Session:
-        return Session(
-            id=row["thread_id"],
-            project_id=row["project_id"],
-            type=row["session_type"],
-            title=row["title"],
-            status=row["status"],
-            focus_knowledge_point_ids=(
-                json.loads(row["focus_knowledge_point_ids"])
-                if row["focus_knowledge_point_ids"]
-                else []
-            ),
-            current_activity_id=row["current_activity_id"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
-
-    def _row_to_project_material(self, row: sqlite3.Row) -> ProjectMaterial:
-        return ProjectMaterial(
-            id=row["project_material_id"],
-            project_id=row["project_id"],
-            kind=row["kind"],
-            title=row["title"],
-            source_uri=row["source_uri"],
-            content_ref=row["content_ref"],
-            summary=row["summary"],
-            status=row["status"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
-
-    def _row_to_session_attachment(self, row: sqlite3.Row) -> SessionAttachment:
-        return SessionAttachment(
-            id=row["attachment_id"],
-            session_id=row["session_id"],
-            project_material_id=row["project_material_id"],
-            role=row["role"],
-            attached_at=row["attached_at"],
-        )
-
-    def _build_knowledge_point_record(
-        self,
-        connection: sqlite3.Connection,
-        knowledge_point: KnowledgePoint,
-    ) -> KnowledgePointRecord:
-        knowledge_point_state_row = connection.execute(
-            """
-            SELECT *
-            FROM knowledge_point_state
-            WHERE knowledge_point_id = ?
-            """,
-            (knowledge_point.id,),
-        ).fetchone()
-        knowledge_point_state = (
-            self._row_to_knowledge_point_state(knowledge_point_state_row)
-            if knowledge_point_state_row is not None
-            else None
-        )
-        return KnowledgePointRecord(
-            knowledge_point=knowledge_point,
-            knowledge_point_state=knowledge_point_state,
-        )
-
     def _row_to_knowledge_point_state(self, row: sqlite3.Row) -> KnowledgePointState:
         return KnowledgePointState(
             knowledge_point_id=row["knowledge_point_id"],
@@ -2388,6 +1778,7 @@ class SQLiteRepository:
             kind=row["kind"],
             project_id=row["project_id"],
             session_id=row["session_id"],
+            origin_message_id=row["origin_message_id"],
             knowledge_point_id=row["knowledge_point_id"],
             title=row["title"],
             description=row["description"],
@@ -2401,11 +1792,8 @@ class SQLiteRepository:
 
     def _row_to_project_memory(self, row: sqlite3.Row) -> ProjectMemory:
         return ProjectMemory(
-            id=row["memory_id"],
             project_id=row["project_id"],
             summary=row["summary"],
-            key_facts=json.loads(row["key_facts"]) if row["key_facts"] else [],
-            open_threads=json.loads(row["open_threads"]) if row["open_threads"] else [],
             updated_at=row["updated_at"],
         )
 
@@ -2414,12 +1802,25 @@ class SQLiteRepository:
         row: sqlite3.Row,
     ) -> ProjectLearningProfile:
         return ProjectLearningProfile(
-            id=row["profile_id"],
             project_id=row["project_id"],
             current_stage=row["current_stage"],
             primary_weaknesses=json.loads(row["primary_weaknesses"]),
             learning_preferences=json.loads(row["learning_preferences"]),
             freshness=row["freshness"],
+            updated_at=row["updated_at"],
+        )
+
+    def _row_to_project_material(self, row: sqlite3.Row) -> SourceAsset:
+        return SourceAsset(
+            id=row["material_id"],
+            title=row["title"],
+            kind=row["kind"],
+            topic=row["topic"],
+            summary=row["summary"],
+            source_uri=row["source_uri"],
+            content_ref=row["content_ref"],
+            status=row["status"],
+            created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
 
@@ -2430,6 +1831,7 @@ class SQLiteRepository:
     ) -> KnowledgePointSuggestionResolution:
         knowledge_point = None
         knowledge_point_state = None
+        linked_session_message_ids: dict[str, int] = {}
         if suggestion.knowledge_point_id is not None:
             knowledge_point_row = connection.execute(
                 """
@@ -2453,25 +1855,161 @@ class SQLiteRepository:
             if knowledge_point_state_row is not None:
                 knowledge_point_state = self._row_to_knowledge_point_state(knowledge_point_state_row)
 
+            linked_rows = connection.execute(
+                """
+                SELECT session_id, origin_message_id
+                FROM knowledge_point_suggestions
+                WHERE project_id = ?
+                  AND knowledge_point_id = ?
+                  AND kind = 'create'
+                  AND status = 'accepted'
+                  AND origin_message_id IS NOT NULL
+                ORDER BY created_at ASC, suggestion_id ASC
+                """,
+                (suggestion.project_id, suggestion.knowledge_point_id),
+            ).fetchall()
+            linked_session_message_ids = {
+                row["session_id"]: row["origin_message_id"] for row in linked_rows
+            }
+
         return KnowledgePointSuggestionResolution(
             suggestion=suggestion,
             knowledge_point=knowledge_point,
             knowledge_point_state=knowledge_point_state,
+            linked_session_message_ids=linked_session_message_ids,
         )
+
+
+def _default_thread_title(session_type: str, topic: str) -> str:
+    normalized_topic = topic.strip()
+    if session_type == "project":
+        return "当前研讨"
+    if session_type == "review":
+        return normalized_topic if normalized_topic else "复习会话"
+    return normalized_topic if normalized_topic else "学习会话"
+
+
+def _is_placeholder_thread_title(title: str, session_type: str) -> bool:
+    normalized = " ".join(title.strip().split())
+    if normalized == "":
+        return True
+    placeholders = {
+        "project": {"当前研讨", "新研讨"},
+        "study": {"学习会话", "新学习"},
+        "review": {"复习会话", "新复习"},
+    }
+    if normalized in placeholders.get(session_type, set()):
+        return True
+    if session_type == "project" and normalized.startswith("研讨 "):
+        return True
+    if session_type in {"study", "review"} and normalized.startswith("第 ") and normalized.endswith(" 轮"):
+        return True
+    return False
+
+
+def _trim_material_title(title: str) -> str:
+    normalized = title.strip()
+    if "." in normalized:
+        return normalized.rsplit(".", 1)[0]
+    return normalized
+
+
+def _build_generated_thread_title(
+    request: AgentRequest,
+    *,
+    state: GraphState,
+    connection: sqlite3.Connection,
+) -> str:
+    create_suggestion = next(
+        (
+            suggestion
+            for suggestion in state.knowledge_point_suggestions
+            if suggestion.kind == "create" and suggestion.title.strip()
+        ),
+        None,
+    )
+    if create_suggestion is not None:
+        return create_suggestion.title.strip()
+
+    target_point_id = request.knowledge_point_id or request.target_unit_id
+    if target_point_id is not None:
+        row = connection.execute(
+            """
+            SELECT title
+            FROM knowledge_points
+            WHERE project_id = ? AND knowledge_point_id = ?
+            """,
+            (request.project_id, target_point_id),
+        ).fetchone()
+        if row is not None and isinstance(row["title"], str) and row["title"].strip():
+            return row["title"].strip()
+
+    if request.session_type in {"study", "review"} and request.topic.strip():
+        return request.topic.strip()
+
+    if request.entry_mode == "material-import" and request.source_asset_ids:
+        row = connection.execute(
+            f"""
+            SELECT title
+            FROM project_materials
+            WHERE project_id = ? AND material_id IN ({", ".join("?" for _ in request.source_asset_ids)})
+            ORDER BY updated_at DESC, created_at DESC, material_id DESC
+            LIMIT 1
+            """,
+            (request.project_id, *request.source_asset_ids),
+        ).fetchone()
+        if row is not None and isinstance(row["title"], str) and row["title"].strip():
+            return _trim_material_title(row["title"])
+
+    latest_user_message = request.messages[-1].content.strip() if request.messages else ""
+    if latest_user_message:
+        compact = " ".join(latest_user_message.split())
+        return compact[:18]
+
+    return _default_thread_title(request.session_type, request.topic)
+
+
+def _resolve_thread_title(
+    request: AgentRequest,
+    *,
+    state: GraphState,
+    connection: sqlite3.Connection,
+    existing_title: str | None,
+) -> str:
+    if isinstance(existing_title, str) and existing_title.strip():
+        if not _is_placeholder_thread_title(existing_title, request.session_type):
+            return existing_title.strip()
+
+    title = (request.session_title or "").strip()
+    if title and not _is_placeholder_thread_title(title, request.session_type):
+        return title
+
+    return _build_generated_thread_title(request, state=state, connection=connection)
+
+
+def _resolve_thread_summary(
+    request: AgentRequest,
+    assistant_message: str | None,
+    *,
+    existing_summary: str | None,
+) -> str:
+    summary = (request.session_summary or "").strip()
+    if summary:
+        return summary
+    if isinstance(existing_summary, str) and existing_summary.strip():
+        return existing_summary.strip()
+    if assistant_message and assistant_message.strip():
+        return assistant_message.strip()[:140]
+    if request.messages:
+        return request.messages[-1].content.strip()[:140]
+    return ""
+
+
+def _resolve_thread_status(assistant_message: str | None) -> str:
+    return "已更新" if assistant_message and assistant_message.strip() else "活跃"
 
 
 def _utc_now() -> str:
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).isoformat()
-
-
-def _dedupe_preserving_order(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        deduped.append(value)
-    return deduped

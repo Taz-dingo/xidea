@@ -11,6 +11,12 @@ export interface SourceAsset {
   readonly title: string;
   readonly kind: "pdf" | "web" | "note" | "audio" | "video" | "image";
   readonly topic: string;
+  readonly summary?: string | null;
+  readonly sourceUri?: string | null;
+  readonly contentRef?: string | null;
+  readonly status?: string | null;
+  readonly createdAt?: string | null;
+  readonly updatedAt?: string | null;
 }
 
 export interface ProjectContext {
@@ -97,6 +103,9 @@ export interface LearningActivityChoice {
   readonly id: string;
   readonly label: string;
   readonly detail: string;
+  readonly isCorrect: boolean;
+  readonly feedbackLayers: ReadonlyArray<string>;
+  readonly analysis: string | null;
 }
 
 export type LearningActivityInput =
@@ -128,4 +137,17 @@ export interface LearningActivitySubmission {
   readonly kind: LearningActivityKind;
   readonly responseText: string;
   readonly selectedChoiceId: string | null;
+  readonly isCorrect: boolean | null;
+  readonly attempts: ReadonlyArray<LearningActivityAttempt>;
+  readonly finalFeedback: string | null;
+  readonly finalAnalysis: string | null;
+}
+
+export interface LearningActivityAttempt {
+  readonly attemptNumber: number;
+  readonly responseText: string;
+  readonly selectedChoiceId: string | null;
+  readonly isCorrect: boolean | null;
+  readonly feedback: string | null;
+  readonly analysis: string | null;
 }

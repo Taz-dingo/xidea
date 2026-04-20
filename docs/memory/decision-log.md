@@ -3,6 +3,316 @@
 只保留"当前仍生效、后续会反复影响协作或实现"的活跃决策。
 更早期、已实现、已替代或过细的历史记录见 [docs/archive/decision-log-history.md](../archive/decision-log-history.md)。
 
+## 2026-04-20 — 比赛版前端主路径不再保留 dev tutor fixture；真实 session 统一只走后端 contract
+
+### 决策
+
+- 比赛版 demo 的正常 workspace / session 页面，不再保留会劫持真实会话的 dev tutor fixture 入口
+- inspector、URL 参数、残留 runtime state 都不应再把一个真实 `project / study / review session` 切到 fixture 文案和 fixture 题卡
+- 如需本地调试伪造 session / card 情况，必须走隔离的开发工具或单独页面，而不是把 fixture 继续挂在比赛版主路径里
+
+### 原因
+
+- fixture 最大的问题不是“偶尔看起来怪”，而是它太像真实链路，误触后会直接制造“一张卡一轮对话”“本地导师追问抢管真实回复”这类假问题
+- 一旦 fixture 和真实后端 contract 混在一起，浏览器验证就失去意义，前后端联调时也很难分清到底是 agent 回了这段话，还是前端本地自己编出来的
+
+### 影响
+
+- 后续任何为了开发方便重新引入 fixture 的改动，都必须明确隔离到不影响比赛版主路径的入口；不能再回到“默认页面也能误切进去”的状态
+- 后续浏览器验收和 PR review 默认以真实后端链路为准，不接受“这是 fixture 先顶一下”的长期解释
+
+## 2026-04-20 — 材料导入生成的知识卡要先沉淀成可教学对象；`description / reason` 默认由 LLM 补全，模板文案只允许 fallback
+
+### 决策
+
+- `material-import` 产出的知识卡，不能只保留标题和模板句式描述；`description / reason` 默认要通过 LLM 结合材料摘要和候选标题做结构化补全
+- 模板文案只允许作为 LLM 失败时的 fallback，不能继续作为主路径上的知识卡描述来源
+- 后续 `study / review session` 读取用户动态创建的知识卡时，默认优先消费这份沉淀后的 `description / reason`，而不是再从“标题 + 一句硬模板”上现推
+
+### 原因
+
+- 之前材料导入虽然已经能真实落库知识卡，但 desc 质量明显像死代码拼接，无法支撑后续学习编排，也会直接拉低 demo 可信度
+- 如果知识卡本身没有足够厚的上下文，后续学习 / 复习就只能围绕标题泛化出题，很容易再次滑回模糊题干和空泛反馈
+
+### 影响
+
+- 后续 review 材料导入相关改动时，除了检查 suggestion 数量和落库结果，还要显式检查知识卡描述质量是否仍然在走 fallback
+- 后续如果继续增强知识点沉淀，应优先补“教学化 detail/context”这层 durable object，而不是继续只优化自由回复文案
+
+## 2026-04-20 — 学习/复习牌组必须以后端 thread 对象持久化；前端 runtime 只能做即时交互缓存，不能作为唯一真相
+
+### 决策
+
+- 学习 / 复习会话完成的一组题卡结果，要以后端 thread 级 `activity deck` 持久化对象保存，并提供按 `thread_id` 回读的接口
+- 前端里的 `completedActivityDecksBySession` 仍可保留，用于当前会话内的即时展示和交互反馈；但它不能再被当成唯一真相
+- 刷新页面、重新进入 session、切项目后再回来时，`题卡轨迹` 与 `已完成卡组` 的来源都必须是后端回读结果，而不是只依赖浏览器内存或 localStorage
+- 对于 deck 持久化上线之前已经发生的旧学习 / 复习会话，允许从 `已提交本组学习动作结果...` 这类 thread message 恢复出占位 deck，作为兼容过渡，但长期主路径仍是显式 deck 对象
+
+### 原因
+
+- 当前最直观的问题是：同一轮学习会话里牌组能显示，但一旦刷新或重新打开 session，牌组就会消失。这说明“已完成牌组”之前只是前端 runtime 里的临时状态，没有真正进入 durable thread history
+- 这类牌组结果不仅是 UI 装饰，还承载了学习回看、会话溯源和 demo 讲述时的关键证据，不能继续靠易丢失的前端状态兜底
+
+### 影响
+
+- 后续凡是学习 / 复习 loop 的结果回写，都默认同时检查两层：`activity_result` 是否写回了学习状态，以及 `activity deck` 是否被 thread 级持久化
+- 前端后续如果继续优化 deck rail、回看弹层或强反馈，只能在后端 deck contract 之上做表现层增强，不能再偷偷发明只存在于浏览器内存里的历史对象
+
+## 2026-04-20 — `material-import` 必须以结构化知识点 suggestion 为准；assistant 口头枚举出的多条知识点要逐条落成 durable object
+
+### 决策
+
+- `project session` 带材料的导入轮，主产物是结构化 `knowledge_point_suggestion[]`，而不是一段“我提炼出 3 条知识点”的自由回复
+- 如果 assistant 在这轮明确给出了多条知识点方向，backend 必须把这些方向逐条转成 suggestion / knowledge point 持久化对象；不能继续出现“文本里说 3 条，数据库里只落 1 条”的错位
+- 前端会话里展示的“本会话知识卡”、项目主页的知识卡列表，以及后续 `study / review session` 的起点，都默认以后端真实落库结果为准；不会再根据 assistant 文本自己脑补知识卡
+
+### 原因
+
+- 这条主链是比赛版 demo 最关键的证据链之一：上传材料 -> 产出知识点 -> 进入学习 / 复习编排
+- 如果知识点只停留在 assistant 文本里，而没有逐条落成 durable object，后面的知识卡渲染、session 联动和学习编排都会断链
+
+### 影响
+
+- 后续 review `material-import` 相关改动时，要同时检查两层：assistant 文本是否准确表达了提炼结果，以及 suggestion / knowledge point 是否与文本数量和语义对齐
+- 后续如果继续优化知识点沉淀质量，应优先增强 suggestion / knowledge point schema，而不是只优化自由回复文案
+
+## 2026-04-20 — 新建 `研讨 / 学习 / 复习` session 只进入待开始态，直到用户发出第一条消息才真正创建 thread
+
+### 决策
+
+- 点击 `研讨 / 学习 / 复习` 入口时，只进入 pending / 待开始的 session 页面，不立即创建真实 thread
+- 只有当用户真正发出第一条消息后，前端才创建真实 session id，并把它写入左侧列表和后端 thread 持久化
+- 项目切换时必须清空旧项目残留的草稿 prompt、pending intent 和知识卡选择，避免新项目沿用上一个项目的具体主题或默认问题
+
+### 原因
+
+- 如果点按钮就预先创建空 session，左侧列表会快速堆满“新研讨 / 新学习 / 新复习”空壳，会话历史也会混入大量没有真实问答的噪声
+- 这类预建空会话还会放大跨项目上下文污染：用户切项目后，新的 pending session 页面仍可能带着旧项目的 topic、知识卡或默认 prompt
+
+### 影响
+
+- 后续 review 时，所有 session 入口都必须检查是否仍在“点一下就先建空 thread”；这条规则对 project / study / review 一视同仁
+- session 标题生成、knowledge point 关联和消息持久化都应以“首条真实消息后的真实 thread”作为主对象，而不是继续兼容预建空 session 的路径
+
+## 2026-04-19 — `Project / 工作区` 只是当前比赛版的主案例承载方式，不代表产品长期边界
+
+### 决策
+
+- Xidea 的产品定位收敛为“面向持续学习任务的 AI 学习编排系统”，而不是“只服务项目场景的学习工具”
+- 当前比赛版继续使用 `Project / 工作区` 作为主案例和主界面容器，因为它最容易把主题、材料、知识点、session、画像和复习轨迹收进同一条故事线
+- 前端和讲稿都不能把“项目”讲成产品本体；更准确的说法是“当前用项目作为一个演示 case”
+
+### 原因
+
+- 当前 demo 的主链路已经跑通，如果继续把“项目”说成产品边界，会把评审对系统能力的理解收窄成一个过度具体的壳层实现
+- 产品真正要证明的是系统会持续决定“现在该学什么、怎么学、何时复习”，而不是只证明一个项目管理式工作区
+
+### 影响
+
+- 后续对外讲述时，优先强调“AI 学习编排系统”这个上位概念，再说明当前 demo 用项目工作区来承载演示
+- 前端非种子数据和非 case 必需文案里，不再继续把 RAG 或项目场景写死成默认系统语义
+
+## 2026-04-19 — UI 默认不使用解释性 CTA 文案为点击行为“补课”，优先依赖层级、hover 和弹层承接完整信息
+
+### 决策
+
+- 前端 UI 默认不再添加类似“点击查看详情”“点击查看完整信息”“悬停查看更多”这类解释性 CTA 文案，除非没有 hover、没有明显点击 affordance、且不用文字就会造成真实歧义
+- 前端 UI 在表达状态、动作入口和重点信息时，默认优先使用图形化手段，例如 hover、动画、边框/阴影强调、图标、颜色层级和空间结构，而不是先补一段说明文字
+- 可点击卡片、预览子卡和知识卡的可操作性，优先通过 hover 态、边框/阴影变化、图标、光标反馈和整体布局层级表达，而不是在卡片底部反复补一行提示字
+- 预览态组件默认只承担摘要职责，不在预览层里同时堆“详情提示 + tooltip + 完整说明”；完整信息统一放到详情页、弹层或展开态承接
+- 说明文案只保留真正承载业务语义的信息，不用来重复解释一个用户已经能从界面直观看懂的交互动作
+
+### 原因
+
+- 近期多次出现 UI 靠额外文字提示点击和 hover 的倾向，导致页面一直在“教用户怎么用”，破坏信息密度和视觉安静感
+- 比赛版 demo 需要看起来像已经收口的产品，而不是靠提示文案把交互强行讲明白的原型
+- 如果不把这条写成规范，后续在卡片、预览态和空态里很容易再次回到“交互不够稳就补一句文案”的路径依赖
+
+### 影响
+
+- 后续前端 review 需要显式检查：某段文案到底是在传业务信息，还是只是在替 hover / 点击 affordance 兜底
+- 新增卡片、子卡、缩略预览和列表项时，优先先调结构、图标、动画和反馈，再决定是否真的需要提示文案；不能把“先补一句提示”当默认解法
+
+## 2026-04-19 — `研讨 / 学习 / 复习` 默认都先进入 pending intent，只有在用户真正提交第一条消息后才创建 session
+
+### 决策
+
+- `project / study / review` 三类 session 的入口行为统一为：先进入 pending intent / 准备开始态，只有在用户真正提交第一条消息后才创建 session
+- 点击 `研讨 / 学习 / 复习` 按钮本身不再立即生成空白 session
+- 创建 Project 时也不再自动附送“初始研讨”空 session
+
+### 原因
+
+- 之前 `研讨` 与 `学习 / 复习` 的创建时机不一致，会让左侧会话列表出现还没开始问答的空 session，破坏页面信噪比
+- 既然主链路已经跑通，session 更应该代表一次真实发生的互动，而不是用户刚点过一个按钮
+
+### 影响
+
+- 后续所有 session 入口都应复用同一套 pending intent -> first prompt -> create session 规则，不能再单独为某一类会话保留“点一下就先建空会话”的旧路径
+- 相关 UI 文案和 reference docs 也要统一描述为“发送并开始”，而不是“点击按钮即创建”
+
+## 2026-04-18 — `/runs/v0/stream` 要显式区分“回复生成中”和“回复后的 follow-up / writeback”，并优先复用 `main_decision` 已带回的 reply
+
+### 决策
+
+- 当 `main_decision` 已经一次性给出稳定的 `reply + plan` 时，`/runs/v0/stream` 直接复用这份 bundled reply，不再额外再打一轮 reply LLM
+- stream status contract 补成 5 段：`loading-context -> making-decision -> composing-response -> preparing-followup -> writing-state`
+- `preparing-followup` 专门覆盖“reply 已经出现，但 activities / knowledge point suggestions / state-patch 还没到”的那段后处理空窗；前端必须把这段等待显式展示出来
+- 一组学习卡做完后，发给 agent 的 follow-up 文本只保留短摘要；详细作答轨迹继续走结构化 `activity_result.meta.items`，不再把整段卡组结果原样塞进对话气泡和 prompt
+
+### 原因
+
+- 当前最明显的卡顿感不是只有 provider 首包慢，还包括 backend 在 reply 之后继续串行整理 activities / suggestions / writeback，但 UI 完全没有解释这段等待
+- 如果 `main_decision` 已经带回可用 reply，再额外打一轮 reply LLM 只会增加时延，不会提高演示链路价值
+- 卡组完成后的长段自然语言总结既拖慢后续 prompt，又把本该是结构化结果的内容重新污染回聊天流
+
+### 影响
+
+- 后续凡是改 stream 事件顺序或前端等待态，都要保留这两段后处理 phase，不得再回退成“reply 后静默等 done”
+- activity batch 的详细学习轨迹以后默认存在 structured payload 里；聊天流只保留给用户看的短摘要，不再承载完整卡组明细
+
+## 2026-04-18 — `study / review` 的主路径学习卡优先由 LLM 实时生成；模板题卡只保留为 backend fallback，前端 mock snapshot 不再预置卡片
+
+### 决策
+
+- `study / review session` 的 activity deck 主路径改为 LLM-owned：优先从 `main_decision` / `bundled response` 直接返回 `activities`，只有模型没有稳定给出时，runtime 才回退到模板 `build_activities()`
+- `project session` 继续硬约束为不生成 activity；前端 `buildMockRuntimeSnapshot()` 也不再预置 demo 卡片，避免离线或 seed 状态继续冒出假题
+- LLM 生成的 activity 必须直接围绕当前学习主题 / 知识点本身出题，禁止继续生成“系统会怎么做 / 你应该怎么答题”这类 meta 卡
+
+### 原因
+
+- 用户当前看到的“怪题”根因不是前端渲染，而是 backend 主路径仍在用 `runtime.py` 里的模板函数拼卡；只要这条路径不切真，题干就会继续带 demo 预制感
+- 如果前端 fallback snapshot 仍自带卡片，就算 backend 已经切到真实生成，UI 首屏和异常回退里也还会继续泄漏预制题，破坏真实链路观感
+
+### 影响
+
+- 后续凡是新增 / 调整 activity prompt，都优先修改 LLM activity generation prompt 和 parser；模板卡只作为失败兜底，不再作为主链路产品语义
+- 如果后续继续优化响应速度，优先继续提高 bundled `activities` 命中率，避免 split path 额外多一次 activity LLM 调用
+
+## 2026-04-18 — `project materials` 已升成 backend 持久化对象；前端只消费真实上传结果，不再把材料上传继续做成 demo seed 选择
+
+### 决策
+
+- `project materials` 第一版正式收成 backend 持久化对象：agent repository 现在维护独立 `project_materials`，并提供 `list / upload` API
+- 前端当前允许在两个正式入口上传材料：`Edit Project Meta` 的材料池，以及 `project session` 里的材料 tray；上传成功后会立即回流到当前 project materials，并在 project session 下可直接附着到本轮上下文
+- agent 消费材料时，`source_asset_ids`、`/assets/summary` 和 runtime `retrieve_source_assets()` 都必须优先读取项目真实上传材料；只有找不到对应 project material 时，才回退到 demo catalog
+- `project session` 默认不再偷偷附加 demo 默认材料；只有项目池里的材料，或用户这轮显式挂进去的材料，才会进入 agent 上下文
+
+### 原因
+
+- 之前所谓“上传材料”本质只是前端在 demo `sourceAssets` 里做选择，既没有真实持久化，也不会在刷新后保留，更不会进入 agent 的真实材料读取链
+- 这会直接破坏比赛版要证明的那条链路：用户补材料 -> 系统基于材料讨论主题 / 提知识点更新建议 -> 后续 session 真正消费这批材料
+
+### 影响
+
+- 后续凡是涉及 project materials 的 UI，不得再直接从全局 demo `sourceAssets` 发明“上传结果”；必须消费 backend 返回的 `SourceAsset`
+- 当前第一版真实上传范围只覆盖已有 project 的材料池和 `project session` 附着；如果后续要支持“创建 Project 时直接上传本地文件”，需要单独补创建流程 contract，而不是继续在 UI 里偷偷混用 demo 资产
+
+## 2026-04-18 — 学习卡的正确性与分层提示由 backend activity contract 显式提供，前端只负责即时反馈与整组回看
+
+### 决策
+
+- `study / review session` 的 choice activity 现在由 backend 显式下发 `is_correct / feedback_layers / analysis`，前端不再自己猜哪一项是对的，也不自己拼错误分析
+- 单张卡在前端本地执行“选了就判、错了继续、对了再进下一张”的即时交互；整组卡仍然要在本地全部完成后，作为一次统一 `activity_result` 回传给 agent
+- 已完成 card deck 要保留在右侧 inspector，可回看每张卡的尝试轨迹、最终作答，以及错误选择暴露出的分析
+
+### 原因
+
+- 这类 pedagogical judgment 属于 learning engine 语义，长期不能继续放在前端 heuristic 里，否则不同入口和 mock/fallback 很容易再次漂移
+- 用户要的是强反馈学习体验，而不是“做完再等 agent 才知道对不对”；但与此同时，agent loop 仍应保持“一组卡完成后再统一进入下一轮”
+
+### 影响
+
+- 后续新增或调整 activity 时，默认一起维护 choice feedback contract，而不是只给 label / detail
+- 前端后续如果继续打磨互动反馈，只能消费这份 contract 做表现层增强，不能反向发明新的 correctness / hint 语义
+
+## 2026-04-18 — `study / review session` 遇到 capability / meta 提问时先说明 session 能力，不直接出卡
+
+### 决策
+
+- 当用户在 `study / review session` 里问的是 “你可以做什么 / 你能怎么帮我 / 你是谁” 这类 capability / meta 问题时，agent 先返回 session 说明，不直接进入学习卡或复习卡
+- 这类 turn 的主目标是把当前 session 的职责边界讲清楚，并把下一条消息收成具体的学习切入点，而不是把 meta 提问误当成知识点作答
+- 当前 UI 也不再把“最新 assistant 文本提问”和“pending activity 卡组”同时摊在中栏；有待完成卡组时，assistant 区只保留一条简短引导
+
+### 原因
+
+- 当前实现会把 `hi，你可以做什么` 这类消息直接丢进 study/review 编排链，导致 assistant 一边发卡一边继续提问，体验上像两套交互同时抢主导权
+- 一部分 fallback activity 文案也过于 demo 内部化，容易让题干看起来像在问系统自己，而不是围绕用户当前主题学习
+
+### 影响
+
+- 后续 review 要显式检查：meta / capability turn 是否被错误编排成正式学习动作
+- study / review 的 activity 文案默认继续朝“围绕当前知识点和用户主题”收敛，避免出现“为什么系统这样安排你”这类自指题干
+
+## 2026-04-18 — `project session` 的默认语义收敛为“学习方向 / 材料 / 主题讨论 / 知识点更新”
+
+### 决策
+
+- `project session` 的默认目标不再表述为泛化的 “project chat / project orchestration”，而是明确收敛为四类推进动作：对齐学习方向、围绕学习主题讨论、补充相关材料、提出 knowledge point 更新建议
+- `project session` 的 prompt、template fallback、low-info 澄清文案和 session guidance 摘要都要使用同一套语义，不允许 prompt 说一套、runtime fallback 又退回“继续 project 讨论 / 设计判断”
+- 如果用户在 `project session` 里问的是系统 / 操作层面的 meta 问题，可以简短回答，但回答后仍要自然拉回当前学习主题、材料或知识点推进
+
+### 原因
+
+- 当前实现虽然已经阻断了 `project session` 发题，但 reply / fallback 文案仍然偏“泛 project 对话”，导致实际回复经常不贴用户的学习意图，也不符合 spec 对 `project session` 的定义
+- 用户从 UI 视角看到的结果是：文本没有跑偏到 study/review，但仍然像在做空泛的 project 管理对话，缺少“你现在要学什么 / 缺什么材料 / 哪个知识点该更新”的明确推进感
+
+### 影响
+
+- 后续 review 不只要检查 `project session` 会不会发题，还要检查回复是否真正落到这四类推进目标之一
+- 后续如果继续优化 `project session` 的 LLM 质量，few-shot 和 fallback reply 也要围绕这四类目标组织，不能再回到抽象的 “继续 project 讨论”
+
+## 2026-04-18 — `project / study / review` 的边界按 session 类型硬收口，学习动作改成整组 `activities[]`
+
+### 决策
+
+当前 session 语义固定为：
+
+- `project session` 只负责 project 对话、材料挂载、topic / rules 调整和 knowledge point suggestion / archive suggestion，不直接下发学习题卡
+- `study session` 和 `review session` 才允许下发学习动作；这两类 session 不再支持挂 project materials，也不再把右栏渲染成 project 级材料 / 知识点治理面板
+- learning activity contract 正式收成一组 `activities[]`，而不是单张 `activity`
+- 前端必须先在本地完成整组 card，再把整组结果作为一次统一输入回传给 agent，进入下一轮 agent loop
+- 第一版 study / review activity 统一收成 choice-based 卡片，不再混用文本作答卡
+
+### 原因
+
+- 之前虽然 request 已显式带 `session_type`，但 UI、inspector 和 activity loop 仍保留了大量跨 session 泄漏：project session 会提前看到学习卡，study / review 也还能挂材料
+- 单张 `activity` + 一卡一轮回复会把学习动作打散成很多碎 agent turn，既不符合 spec，也会让 session 节奏变成“做一题就等一次长回复”
+- 如果不把这些边界收死，后面前端很容易再次靠 fallback / heuristic 把 session 语义补乱
+
+### 影响
+
+- 后续 backend / frontend 联调默认按 `activities[]` 检查 contract，不再以单张 `activity` 为主路径
+- `project session` 的 inspector、材料入口和 backend preload 默认继续按 project orchestration 语义收敛；study / review 则默认围绕当前 knowledge point 和回忆 / 学习编排展开
+- 后续若要支持更开放的学习形式，需要先在 spec 里显式放开 choice-only 约束，而不是在前端直接混入文本题
+- 后续 review 要显式检查：是否又出现 project session 发题、study / review 挂材料、或 activity 完一张就立刻进新一轮 agent 的回归
+
+## 2026-04-18 — `AgentRequest` 显式携带 `session_type`，`project session` 不再默认伪装成 unit session
+
+### 决策
+
+当前 web -> agent contract 固定为：
+
+- `AgentRequest` 显式携带 `session_type = project | study | review`
+- `project session` 默认不再为了复用旧链路而塞一个 fallback `target_unit_id`
+- `project session` 不直接下发学习 / 复习 `activity`；这一类 session 只负责围绕 project topic 推进对话、补材料、输出知识点 suggestion 等 project-level 编排结果
+- knowledge point create / archive suggestion 只在 `project session` 下产出
+- `review session` 默认优先保持“回忆校准 / 短反馈”语义；除非混淆非常明显，否则不回退成普通 teach / apply 问答
+- `/runs/v0/stream` 在第一条 diagnosis 前先发 typed `status` 事件，前端据此渲染等待态和阶段提示
+
+### 原因
+
+- 之前前端会把 `project session` 连同一个默认 unit 一起发给 agent，导致 project chat 被误判成“围绕固定知识点的 session”
+- 这会直接压缩 project 级 suggestion、session 差异化 prompt 和 lifecycle judgment 的空间，让 `project / study / review` 只剩 UI 标签区别
+- 流式链路虽然会很快打开 SSE 连接，但在 diagnosis 前长期没有 typed event，前端只能靠本地 running state 硬撑等待区，无法表达真实阶段
+
+### 影响
+
+- 前端后续创建 request 时，必须显式传 `session_type`，并仅在有真实知识点焦点时传 `target_unit_id`
+- 前端后续消费 `project session` 结果时，不得继续沿用 fallback / mock `activity` 把 project chat 渲染成“待做题”状态
+- 学习引擎后续关于 session 差异、activity 节奏和 suggestion 边界的讨论，都以这条 contract 为前提，不再默认从 thread id 或 fallback unit 猜 session 语义
+- 流式 UI 后续要优先消费 `status -> diagnosis -> text-delta -> ...` 这一顺序，而不是假设首个 typed event 一定是 diagnosis
+
 ## 2026-04-18 — 确定性 tool context 默认前置到主决策前，后置 tool loop 只保留给少数动态缺口
 
 ### 决策

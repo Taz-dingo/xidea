@@ -1,4 +1,5 @@
 import { MODE_LABELS, buildStudyPlan } from "./planner";
+import type { SessionType } from "./project-workspace";
 import type {
   LearningActivity,
   LearningActivitySubmission,
@@ -28,20 +29,42 @@ export type AgentSignalKind =
   | "project-relevance";
 
 export interface AgentMessage {
+  readonly message_id?: number;
   readonly role: "system" | "user" | "assistant";
   readonly content: string;
+  readonly created_at?: string;
 }
 
 export interface AgentRequest {
   readonly project_id: string;
   readonly thread_id: string;
+  readonly session_type: SessionType;
+  readonly session_title: string | null;
+  readonly session_summary: string | null;
+  readonly knowledge_point_id: string | null;
   readonly entry_mode: AgentEntryMode;
   readonly topic: string;
   readonly messages: ReadonlyArray<AgentMessage>;
   readonly source_asset_ids: ReadonlyArray<string>;
   readonly target_unit_id: string | null;
   readonly context_hint: string | null;
+  readonly activity_result: AgentActivityResult | null;
   readonly response_mode: "sync" | "stream";
+}
+
+export type AgentActivityResultType = "exercise" | "review";
+export type AgentActivityResultAction = "submit" | "skip";
+
+export interface AgentActivityResult {
+  readonly run_id: string;
+  readonly project_id: string;
+  readonly session_id: string;
+  readonly activity_id: string;
+  readonly knowledge_point_id: string;
+  readonly result_type: AgentActivityResultType;
+  readonly action: AgentActivityResultAction;
+  readonly answer: string | null;
+  readonly meta: Record<string, unknown>;
 }
 
 interface AgentExplanation {
@@ -88,6 +111,9 @@ interface AgentActivityChoice {
   readonly id: string;
   readonly label: string;
   readonly detail: string;
+  readonly is_correct?: boolean;
+  readonly feedback_layers?: ReadonlyArray<string>;
+  readonly analysis?: string | null;
 }
 
 type AgentActivityInput =
@@ -127,6 +153,60 @@ export interface AgentLearnerUnitState {
   readonly based_on: ReadonlyArray<string>;
 }
 
+export interface AgentKnowledgePoint {
+  readonly id: string;
+  readonly project_id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly status: "active" | "archived";
+  readonly origin_type: string;
+  readonly origin_session_id: string | null;
+  readonly source_material_refs: ReadonlyArray<string>;
+  readonly created_at: string | null;
+  readonly updated_at: string | null;
+}
+
+export interface AgentKnowledgePointState {
+  readonly knowledge_point_id: string;
+  readonly mastery: number;
+  readonly learning_status: string;
+  readonly review_status: string;
+  readonly next_review_at: string | null;
+  readonly archive_suggested: boolean;
+  readonly updated_at: string | null;
+}
+
+export interface AgentKnowledgePointSuggestion {
+  readonly id: string;
+  readonly kind: "create" | "archive";
+  readonly project_id: string;
+  readonly session_id: string;
+  readonly origin_message_id?: number | null;
+  readonly knowledge_point_id: string | null;
+  readonly title: string;
+  readonly description: string;
+  readonly reason: string;
+  readonly source_material_refs: ReadonlyArray<string>;
+  readonly status: "pending" | "accepted" | "dismissed";
+  readonly created_at: string | null;
+  readonly resolved_at: string | null;
+  readonly updated_at: string | null;
+}
+
+export interface AgentKnowledgePointSuggestionResolution {
+  readonly suggestion: AgentKnowledgePointSuggestion;
+  readonly knowledge_point: AgentKnowledgePoint | null;
+  readonly knowledge_point_state: AgentKnowledgePointState | null;
+  readonly linked_session_message_ids: Readonly<Record<string, number>>;
+}
+
+export interface AgentKnowledgePointRecord {
+  readonly knowledge_point: AgentKnowledgePoint;
+  readonly knowledge_point_state: AgentKnowledgePointState | null;
+  readonly linked_session_ids: ReadonlyArray<string>;
+  readonly linked_session_message_ids: Readonly<Record<string, number>>;
+}
+
 interface AgentLearnerStatePatch {
   readonly mastery: number | null;
   readonly understanding_level: number | null;
@@ -158,9 +238,25 @@ export interface AgentStatePatch {
 }
 
 export type AgentStreamEvent =
+  | {
+      readonly event: "status";
+      readonly phase:
+        | "loading-context"
+        | "making-decision"
+        | "retrieving-context"
+        | "composing-response"
+        | "preparing-followup"
+        | "writing-state";
+      readonly message: string;
+    }
   | { readonly event: "text-delta"; readonly delta: string }
   | { readonly event: "diagnosis"; readonly diagnosis: AgentDiagnosis }
   | { readonly event: "activity"; readonly activity: AgentActivity }
+  | { readonly event: "activities"; readonly activities: ReadonlyArray<AgentActivity> }
+  | {
+      readonly event: "knowledge-point-suggestion";
+      readonly suggestions: ReadonlyArray<AgentKnowledgePointSuggestion>;
+    }
   | { readonly event: "plan"; readonly plan: AgentPlan }
   | { readonly event: "state-patch"; readonly state_patch: AgentStatePatch }
   | { readonly event: "done"; readonly final_message: string | null };
@@ -172,6 +268,7 @@ export interface AgentRunResult {
     readonly diagnosis: AgentDiagnosis | null;
     readonly plan: AgentPlan | null;
     readonly activity: AgentActivity | null;
+    readonly activities: ReadonlyArray<AgentActivity>;
     readonly assistant_message: string | null;
     readonly state_patch: AgentStatePatch | null;
     readonly rationale: ReadonlyArray<string>;
@@ -183,6 +280,21 @@ export interface AgentThreadContext {
   readonly thread_id: string;
   readonly entry_mode: AgentEntryMode;
   readonly source_asset_ids: ReadonlyArray<string>;
+  readonly updated_at: string;
+}
+
+export interface AgentProjectThreadRecord {
+  readonly thread_id: string;
+  readonly project_id: string;
+  readonly topic: string;
+  readonly session_type: SessionType;
+  readonly knowledge_point_id: string | null;
+  readonly title: string;
+  readonly summary: string;
+  readonly status: string;
+  readonly entry_mode: AgentEntryMode;
+  readonly source_asset_ids: ReadonlyArray<string>;
+  readonly created_at: string;
   readonly updated_at: string;
 }
 
@@ -279,6 +391,15 @@ export interface RuntimeSnapshot {
   readonly activity: LearningActivity | null;
   readonly activities: ReadonlyArray<LearningActivity>;
   readonly assistantMessage: string;
+  readonly streamStatusPhase:
+    | "loading-context"
+    | "making-decision"
+    | "retrieving-context"
+    | "composing-response"
+    | "preparing-followup"
+    | "writing-state"
+    | null;
+  readonly streamStatusLabel: string | null;
   readonly rationale: ReadonlyArray<string>;
 }
 
@@ -375,115 +496,6 @@ function buildSignalCardsFromStream(
   return cards;
 }
 
-function buildActivityChoiceSet(mode: LearningMode): LearningActivity["input"] {
-  if (mode === "contrast-drill") {
-    return {
-      type: "choice",
-      choices: [
-        {
-          id: "trace-boundary",
-          label: "先区分是召回、重排还是上下文构造出了问题。",
-          detail: "先定位失真环节，再决定该改检索、重排还是上下文拼装。",
-        },
-        {
-          id: "increase-chunks",
-          label: "先把 chunk 数量继续加大，尽量把更多信息塞给模型。",
-          detail: "这是常见直觉，但会跳过问题定位，容易继续放大噪音。",
-        },
-        {
-          id: "skip-diagnosis",
-          label: "暂时不定位，直接让模型自由生成一版回答再说。",
-          detail: "会把检索链路问题掩盖成生成问题，不利于后续设计取舍。",
-        },
-      ],
-    };
-  }
-
-  return {
-    type: "text",
-    placeholder: "先用你自己的话作答，系统会基于这次作答继续追问或改排下一步。",
-    minLength: 24,
-  };
-}
-
-function buildActivityTitle(mode: LearningMode, action: AgentAction): string {
-  if (mode === "contrast-drill") {
-    return "先做一个边界辨析";
-  }
-
-  if (mode === "scenario-sim" || action === "apply") {
-    return "先做一轮项目情境作答";
-  }
-
-  if (action === "review" || mode === "image-recall" || mode === "audio-recall") {
-    return "先做一次主动回忆";
-  }
-
-  return "先接住导师追问";
-}
-
-function buildActivityPrompt(input: {
-  readonly action: AgentAction;
-  readonly mode: LearningMode;
-  readonly unitTitle: string;
-}): string {
-  if (input.mode === "contrast-drill") {
-    return `围绕「${input.unitTitle}」，如果线上 bad case 出现“召回看起来命中了，但回答仍然不准”，你会先把问题定位到哪一层？`;
-  }
-
-  if (input.mode === "scenario-sim" || input.action === "apply") {
-    return `假设你正在向评审解释「${input.unitTitle}」，请用 3 到 5 句说明为什么不能只做“检索后直接拼接给模型”。`;
-  }
-
-  if (input.action === "review" || input.mode === "image-recall" || input.mode === "audio-recall") {
-    return `不要看材料，回忆一下「${input.unitTitle}」里最关键的判断标准：什么情况下应该先怀疑记忆走弱，什么情况下应该先怀疑概念混淆？`;
-  }
-
-  return `先用你自己的话解释「${input.unitTitle}」：为什么这轮系统没有直接让你进入自由练习，而是先安排一个更受约束的学习动作？`;
-}
-
-function buildLearningActivity(input: {
-  readonly action: AgentAction;
-  readonly mode: LearningMode | null;
-  readonly unit: {
-    readonly id: string;
-    readonly title: string;
-  };
-  readonly objective: string;
-  readonly reason: string;
-  readonly evidence: ReadonlyArray<string>;
-}): LearningActivity | null {
-  const mode = input.mode;
-  if (mode === null) {
-    return null;
-  }
-
-  const kind =
-    mode === "contrast-drill"
-      ? "quiz"
-      : input.action === "review" || mode === "image-recall" || mode === "audio-recall"
-        ? "recall"
-        : "coach-followup";
-
-  return {
-    id: `activity-${input.unit.id}-${mode}`,
-    kind,
-    title: buildActivityTitle(mode, input.action),
-    objective: input.objective,
-    prompt: buildActivityPrompt({
-      action: input.action,
-      mode,
-      unitTitle: input.unit.title,
-    }),
-    support: input.reason,
-    mode,
-    evidence: input.evidence.slice(0, 3),
-    submitLabel:
-      kind === "quiz" ? "提交判断" : kind === "recall" ? "提交回忆" : "提交作答",
-    input: buildActivityChoiceSet(mode),
-  };
-}
-
 function normalizeAgentActivity(activity: AgentActivity): LearningActivity {
   return {
     id: activity.id,
@@ -499,7 +511,14 @@ function normalizeAgentActivity(activity: AgentActivity): LearningActivity {
       activity.input.type === "choice"
         ? {
             type: "choice",
-            choices: activity.input.choices,
+            choices: activity.input.choices.map((choice) => ({
+              id: choice.id,
+              label: choice.label,
+              detail: choice.detail,
+              isCorrect: choice.is_correct ?? false,
+              feedbackLayers: choice.feedback_layers ?? [],
+              analysis: choice.analysis ?? null,
+            })),
           }
         : {
             type: "text",
@@ -507,6 +526,12 @@ function normalizeAgentActivity(activity: AgentActivity): LearningActivity {
             minLength: activity.input.min_length,
           },
   };
+}
+
+function normalizeAgentActivities(
+  activities: ReadonlyArray<AgentActivity>,
+): ReadonlyArray<LearningActivity> {
+  return activities.map(normalizeAgentActivity);
 }
 
 function buildActivityList(
@@ -624,14 +649,25 @@ function buildAssistantMessageFromStreamEvents(events: ReadonlyArray<AgentStream
     return doneEvent.final_message;
   }
 
+  return events
+    .filter(
+      (event): event is Extract<AgentStreamEvent, { event: "text-delta" }> =>
+        event.event === "text-delta",
+    )
+    .map((event) => event.delta)
+    .join("");
+}
+
+function getLatestStreamStatus(
+  events: ReadonlyArray<AgentStreamEvent>,
+): Extract<AgentStreamEvent, { event: "status" }> | null {
   return (
-    events
-      .filter(
-        (event): event is Extract<AgentStreamEvent, { event: "text-delta" }> =>
-          event.event === "text-delta",
-      )
-      .map((event) => event.delta)
-      .join("") || "Agent 已返回结构化结果。"
+    [...events]
+      .reverse()
+      .find(
+        (event): event is Extract<AgentStreamEvent, { event: "status" }> =>
+          event.event === "status",
+      ) ?? null
   );
 }
 
@@ -642,6 +678,43 @@ export function buildDefaultAgentPrompt(
   return `我正在推进「${project.name}」，当前目标是${project.goal}。请围绕「${unit.title}」判断我这轮更适合先学什么，并解释为什么。`;
 }
 
+function buildAttachedMaterialPromptContext(
+  sourceAssets: ReadonlyArray<SourceAsset>,
+): string | null {
+  if (sourceAssets.length === 0) {
+    return null;
+  }
+
+  const materialLines = sourceAssets.slice(0, 3).map((asset, index) => {
+    return [
+      `${index + 1}. ${asset.title}`,
+      asset.topic.trim() ? `主题：${asset.topic.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join("；");
+  });
+
+  return [
+    "当前已附材料，请优先读取这些材料的正文，再判断学习主题、关键概念和知识点建议。",
+    materialLines.join("\n"),
+  ].join("\n");
+}
+
+function shouldInjectMaterialTargeting(prompt: string): boolean {
+  const normalizedPrompt = prompt.trim();
+  if (normalizedPrompt === "") {
+    return true;
+  }
+
+  if (normalizedPrompt.length <= 12) {
+    return true;
+  }
+
+  return /这个|这些|这份|这篇|这几个|这组|上面这|刚上传|附件|材料/.test(
+    normalizedPrompt,
+  );
+}
+
 export function getRequestSourceAssetIds(
   _entryMode: AgentEntryMode,
   sourceAssets: ReadonlyArray<SourceAsset>,
@@ -650,27 +723,52 @@ export function getRequestSourceAssetIds(
 }
 
 export function buildAgentRequest(input: {
+  readonly activityResult: AgentActivityResult | null;
   readonly projectId: string;
   readonly sessionId: string;
+  readonly sessionType: SessionType;
+  readonly sessionTitle: string | null;
+  readonly sessionSummary: string | null;
+  readonly knowledgePointId: string | null;
   readonly entryMode: AgentEntryMode;
   readonly prompt: string;
   readonly project: ProjectContext;
   readonly sourceAssets: ReadonlyArray<SourceAsset>;
   readonly unit: LearningUnit;
+  readonly targetUnitId: string | null;
 }): AgentRequest {
   const normalizedPrompt = input.prompt.trim();
-  const fallbackPrompt = normalizedPrompt || buildDefaultAgentPrompt(input.unit, input.project);
   const sourceAssetIds = getRequestSourceAssetIds(input.entryMode, input.sourceAssets);
+  const materialContext = buildAttachedMaterialPromptContext(input.sourceAssets);
+  const fallbackPrompt = normalizedPrompt || buildDefaultAgentPrompt(input.unit, input.project);
+  const materialFocusHint =
+    materialContext === null
+      ? null
+      : shouldInjectMaterialTargeting(normalizedPrompt)
+        ? materialContext
+        : materialContext;
+  const contextHint =
+    materialFocusHint === null
+      ? input.project.currentThread
+      : [input.project.currentThread, materialFocusHint].filter(Boolean).join("\n\n");
 
   return {
     project_id: input.projectId,
     thread_id: input.sessionId,
+    session_type: input.sessionType,
+    session_title: input.sessionTitle,
+    session_summary: input.sessionSummary,
+    knowledge_point_id: input.knowledgePointId,
     entry_mode: input.entryMode,
-    topic: input.unit.title,
+    topic:
+      input.targetUnitId === null
+        ? input.project.goal.trim() || input.project.name
+        : input.unit.title,
     messages: [{ role: "user", content: fallbackPrompt }],
     source_asset_ids: sourceAssetIds,
-    target_unit_id: input.unit.id,
-    context_hint: input.project.currentThread,
+    target_unit_id: input.targetUnitId,
+    context_hint: contextHint,
+    activity_result: input.activityResult,
     response_mode: "stream",
   };
 }
@@ -678,16 +776,11 @@ export function buildAgentRequest(input: {
 export function buildMockRuntimeSnapshot(
   profile: LearnerProfile,
   unit: LearningUnit,
+  sessionType: SessionType = "study",
 ): RuntimeSnapshot {
   const plan = buildStudyPlan(unit, profile.state);
-  const activity = buildLearningActivity({
-    action: profile.state.recommendedAction,
-    mode: plan.steps[0]?.mode ?? null,
-    unit,
-    objective: plan.decision.objective,
-    reason: plan.decision.reason,
-    evidence: profile.state.weakSignals,
-  });
+  const activities: ReadonlyArray<LearningActivity> = [];
+  const activity: LearningActivity | null = null;
 
   return withActivities({
     source: "mock",
@@ -719,8 +812,10 @@ export function buildMockRuntimeSnapshot(
     },
     writeback: plan.writeback,
     activity,
-    activities: buildActivityList(activity),
+    activities,
     assistantMessage: `${plan.decision.reason} 这轮我会先用「${plan.decision.title}」推进，目标是${plan.decision.objective}。`,
+    streamStatusPhase: null,
+    streamStatusLabel: null,
     rationale: [],
   });
 }
@@ -759,6 +854,8 @@ export function hydrateRuntimeSnapshotFromLearnerState(
     signalCards,
     activity: fallbackSnapshot.activity,
     activities: fallbackSnapshot.activities,
+    streamStatusPhase: null,
+    streamStatusLabel: null,
   });
 }
 
@@ -779,10 +876,13 @@ export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot
     learnerState.based_on.length > 0 ? `判断依据：${learnerState.based_on.join(" / ")}` : null,
   ].filter((item): item is string => item !== null);
 
-  const activity =
-    result.graph_state.activity !== null
-      ? normalizeAgentActivity(result.graph_state.activity)
-      : null;
+  const activities =
+    result.graph_state.activities.length > 0
+      ? normalizeAgentActivities(result.graph_state.activities)
+      : result.graph_state.activity !== null
+        ? [normalizeAgentActivity(result.graph_state.activity)]
+        : [];
+  const activity = activities[0] ?? null;
 
   return {
     source: "live-agent",
@@ -816,8 +916,10 @@ export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot
     },
     writeback: buildWritebackFromAgent(result.graph_state.state_patch),
     activity,
-    activities: buildActivityList(activity),
+    activities,
     assistantMessage: buildAssistantMessageFromEvents(result),
+    streamStatusPhase: null,
+    streamStatusLabel: null,
     rationale: result.graph_state.rationale,
   };
 }
@@ -838,10 +940,15 @@ export function normalizeAgentStreamResult(input: {
     (event): event is Extract<AgentStreamEvent, { event: "activity" }> =>
       event.event === "activity",
   );
+  const activitiesEvent = input.events.find(
+    (event): event is Extract<AgentStreamEvent, { event: "activities" }> =>
+      event.event === "activities",
+  );
   const statePatchEvent = input.events.find(
     (event): event is Extract<AgentStreamEvent, { event: "state-patch" }> =>
       event.event === "state-patch",
   );
+  const streamStatus = getLatestStreamStatus(input.events);
 
   const diagnosis = diagnosisEvent?.diagnosis;
   const plan = planEvent?.plan;
@@ -859,8 +966,13 @@ export function normalizeAgentStreamResult(input: {
     learnerState.based_on.length > 0 ? `判断依据：${learnerState.based_on.join(" / ")}` : null,
   ].filter((item): item is string => item !== null);
 
-  const activity =
-    activityEvent !== undefined ? normalizeAgentActivity(activityEvent.activity) : null;
+  const activities =
+    activitiesEvent !== undefined
+      ? normalizeAgentActivities(activitiesEvent.activities)
+      : activityEvent !== undefined
+        ? [normalizeAgentActivity(activityEvent.activity)]
+        : [];
+  const activity = activities[0] ?? null;
 
   return withActivities({
     source: "live-agent",
@@ -896,8 +1008,10 @@ export function normalizeAgentStreamResult(input: {
     },
     writeback: buildWritebackFromAgent(statePatchEvent?.state_patch ?? null),
     activity,
-    activities: buildActivityList(activity),
+    activities,
     assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
+    streamStatusPhase: streamStatus?.phase ?? null,
+    streamStatusLabel: streamStatus?.message ?? null,
     rationale: diagnosis.explanation?.evidence ?? [],
   });
 }
@@ -917,10 +1031,15 @@ export function normalizePartialAgentStreamResult(input: {
     (event): event is Extract<AgentStreamEvent, { event: "activity" }> =>
       event.event === "activity",
   );
+  const activitiesEvent = input.events.find(
+    (event): event is Extract<AgentStreamEvent, { event: "activities" }> =>
+      event.event === "activities",
+  );
   const statePatchEvent = input.events.find(
     (event): event is Extract<AgentStreamEvent, { event: "state-patch" }> =>
       event.event === "state-patch",
   );
+  const streamStatus = getLatestStreamStatus(input.events);
 
   const diagnosis = diagnosisEvent?.diagnosis;
   const plan = planEvent?.plan;
@@ -930,14 +1049,20 @@ export function normalizePartialAgentStreamResult(input: {
   if (diagnosis === undefined && plan === undefined && statePatchEvent === undefined) {
     return {
       ...input.fallbackSnapshot,
+      source: streamStatus === null ? input.fallbackSnapshot.source : "live-agent",
       assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
+      streamStatusPhase: streamStatus?.phase ?? null,
+      streamStatusLabel: streamStatus?.message ?? null,
     };
   }
 
-  const activity =
-    activityEvent !== undefined
-      ? normalizeAgentActivity(activityEvent.activity)
-      : input.fallbackSnapshot.activity;
+  const activities =
+    activitiesEvent !== undefined
+      ? normalizeAgentActivities(activitiesEvent.activities)
+      : activityEvent !== undefined
+        ? [normalizeAgentActivity(activityEvent.activity)]
+        : [];
+  const activity = activities[0] ?? null;
 
   return withActivities({
     source: "live-agent",
@@ -1005,12 +1130,10 @@ export function normalizePartialAgentStreamResult(input: {
     },
     writeback: buildWritebackFromAgent(statePatchEvent?.state_patch ?? null),
     activity,
-    activities:
-      input.fallbackSnapshot.activities.length > 1 &&
-      input.fallbackSnapshot.activity?.id === activity?.id
-        ? input.fallbackSnapshot.activities
-        : buildActivityList(activity),
+    activities,
     assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
+    streamStatusPhase: streamStatus?.phase ?? null,
+    streamStatusLabel: streamStatus?.message ?? null,
     rationale: diagnosis?.explanation?.evidence ?? input.fallbackSnapshot.rationale,
   });
 }

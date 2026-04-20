@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import {
   getAssetSummary,
+  getThreadActivityDecks,
   getInspectorBootstrap,
   getReviewInspector,
   getThreadContext,
@@ -12,31 +13,28 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-function hasSameIds(
-  left: ReadonlyArray<string>,
-  right: ReadonlyArray<string>,
-): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
 export function useSessionDataSync({
   assetSummaryKey,
   data,
   isAgentRunning,
   messagesLength,
+  projectId,
   requestSourceAssetIds,
   seedRuntime,
   selectedSessionKey,
   selectedSessionKnowledgePointId,
+  selectedSessionType,
 }: {
   assetSummaryKey: string;
   data: WorkspaceData;
   isAgentRunning: boolean;
   messagesLength: number;
+  projectId: string;
   requestSourceAssetIds: ReadonlyArray<string>;
   seedRuntime: ReturnType<typeof hydrateRuntimeSnapshotFromLearnerState>;
   selectedSessionKey: string | null;
   selectedSessionKnowledgePointId: string | null;
+  selectedSessionType: "project" | "study" | "review";
 }): void {
   const {
     agentConnectionState,
@@ -46,11 +44,10 @@ export function useSessionDataSync({
     markBootstrapLoaded,
     sessionEntryModes,
     sessionEntryModesSetter,
-    sessionSourceAssetIds,
     setAssetSummaryByKey,
+    setCompletedActivityDecksBySession,
     setSessionReviewInspectors,
     setSessionSnapshots,
-    setSessionSourceAssetIds,
   } = data;
 
   useEffect(() => {
@@ -88,12 +85,6 @@ export function useSessionDataSync({
               [selectedSessionKey]: thread_context.entry_mode,
             }));
           }
-          if (!hasSameIds(sessionSourceAssetIds[selectedSessionKey] ?? [], thread_context.source_asset_ids)) {
-            setSessionSourceAssetIds((current) => ({
-              ...current,
-              [selectedSessionKey]: thread_context.source_asset_ids,
-            }));
-          }
         }
       })
       .catch((error) => {
@@ -110,20 +101,27 @@ export function useSessionDataSync({
     seedRuntime,
     selectedSessionKey,
     selectedSessionKnowledgePointId,
+    selectedSessionType,
     sessionEntryModes,
-    sessionSourceAssetIds,
     sessionEntryModesSetter,
     setSessionReviewInspectors,
     setSessionSnapshots,
-    setSessionSourceAssetIds,
   ]);
 
   useEffect(() => {
-    if (agentConnectionState !== "ready" || assetSummaryKey === "" || assetSummaryByKey[assetSummaryKey] !== undefined) {
+    if (
+      agentConnectionState !== "ready" ||
+      selectedSessionType !== "project" ||
+      assetSummaryKey === "" ||
+      assetSummaryByKey[assetSummaryKey] !== undefined
+    ) {
       return;
     }
     const abortController = new AbortController();
-    void getAssetSummary(requestSourceAssetIds, { signal: abortController.signal })
+    void getAssetSummary(requestSourceAssetIds, {
+      signal: abortController.signal,
+      projectId,
+    })
       .then((summary) => {
         if (!abortController.signal.aborted) {
           setAssetSummaryByKey((current) =>
@@ -133,7 +131,61 @@ export function useSessionDataSync({
       })
       .catch(() => undefined);
     return () => abortController.abort();
-  }, [agentConnectionState, assetSummaryByKey, assetSummaryKey, requestSourceAssetIds, setAssetSummaryByKey]);
+  }, [
+    agentConnectionState,
+    assetSummaryByKey,
+    assetSummaryKey,
+    projectId,
+    requestSourceAssetIds,
+    selectedSessionType,
+    setAssetSummaryByKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      agentConnectionState !== "ready" ||
+      selectedSessionKey === null ||
+      selectedSessionType === "project" ||
+      isAgentRunning ||
+      messagesLength === 0
+    ) {
+      return;
+    }
+    const abortController = new AbortController();
+    void getThreadActivityDecks(selectedSessionKey, { signal: abortController.signal })
+      .then((decks) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        setCompletedActivityDecksBySession((current) => {
+          const currentDecks = current[selectedSessionKey] ?? [];
+          const same =
+            currentDecks.length === decks.length &&
+            currentDecks.every((deck, index) => {
+              const nextDeck = decks[index];
+              return (
+                nextDeck !== undefined &&
+                deck.deckKey === nextDeck.deckKey &&
+                deck.completedAt === nextDeck.completedAt &&
+                deck.cards.length === nextDeck.cards.length
+              );
+            });
+          if (same) {
+            return current;
+          }
+          return { ...current, [selectedSessionKey]: decks };
+        });
+      })
+      .catch(() => undefined);
+    return () => abortController.abort();
+  }, [
+    agentConnectionState,
+    isAgentRunning,
+    messagesLength,
+    selectedSessionKey,
+    selectedSessionType,
+    setCompletedActivityDecksBySession,
+  ]);
 
   useEffect(() => {
     if (
@@ -166,12 +218,6 @@ export function useSessionDataSync({
               [selectedSessionKey]: threadContext.entry_mode,
             }));
           }
-          if (!hasSameIds(sessionSourceAssetIds[selectedSessionKey] ?? [], threadContext.source_asset_ids)) {
-            setSessionSourceAssetIds((current) => ({
-              ...current,
-              [selectedSessionKey]: threadContext.source_asset_ids,
-            }));
-          }
         }
       })
       .catch(() => undefined);
@@ -183,9 +229,8 @@ export function useSessionDataSync({
     selectedSessionKey,
     selectedSessionKnowledgePointId,
     sessionEntryModes,
-    sessionSourceAssetIds,
     sessionEntryModesSetter,
+    setCompletedActivityDecksBySession,
     setSessionReviewInspectors,
-    setSessionSourceAssetIds,
   ]);
 }

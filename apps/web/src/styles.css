@@ -29,6 +29,7 @@ html {
   --xidea-coral: #d97757;
   --xidea-focus: #3898ec;
   --xidea-serif: "Instrument Serif", "Georgia", serif;
+  --xidea-kaiti: "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif;
 }
 
 body {
@@ -45,10 +46,21 @@ body {
 button {
   font: inherit;
   cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
 }
 
 button:disabled {
   cursor: not-allowed;
+}
+
+button:not(:disabled):active {
+  transform: scale(0.985);
 }
 
 ::selection {
@@ -90,6 +102,12 @@ button:disabled {
   font-family: var(--xidea-serif);
   font-weight: 400;
   letter-spacing: normal;
+}
+
+.xidea-kaiti {
+  font-family: var(--xidea-kaiti);
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .xidea-kicker {
@@ -155,6 +173,176 @@ button:disabled {
 .xidea-sidebar-reveal {
   transition:
     grid-template-rows 180ms ease,
-    opacity 180ms ease,
-    margin-top 180ms ease;
+    margin-top 180ms ease,
+    max-height 180ms ease;
+}
+
+@keyframes xidea-dot-wave {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@keyframes xidea-orb-drift {
+  0%,
+  100% {
+    transform: translate3d(
+        calc(var(--xidea-orb-scroll-x, 0px) * var(--xidea-orb-parallax-x, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-x, 0.3)),
+        calc(var(--xidea-orb-scroll-y, 0px) * var(--xidea-orb-parallax-y, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-y, 0.4)),
+        0
+      )
+      scale(1);
+  }
+  35% {
+    transform: translate3d(
+        calc(var(--xidea-orb-scroll-x, 0px) * var(--xidea-orb-parallax-x, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-x, 0.3) + var(--xidea-orb-x-1, 6px)),
+        calc(var(--xidea-orb-scroll-y, 0px) * var(--xidea-orb-parallax-y, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-y, 0.4) + var(--xidea-orb-y-1, -6px)),
+        0
+      )
+      scale(1.08);
+  }
+  68% {
+    transform: translate3d(
+        calc(var(--xidea-orb-scroll-x, 0px) * var(--xidea-orb-parallax-x, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-x, 0.3) + var(--xidea-orb-x-2, -4px)),
+        calc(var(--xidea-orb-scroll-y, 0px) * var(--xidea-orb-parallax-y, 1) + var(--xidea-orb-inertia, 0px) * var(--xidea-orb-inertia-y, 0.4) + var(--xidea-orb-y-2, 4px)),
+        0
+      )
+      scale(0.94);
+  }
+}
+
+@keyframes xidea-modal-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.xidea-card-motion {
+  transition:
+    width 220ms ease,
+    min-width 220ms ease,
+    max-width 220ms ease,
+    flex-basis 220ms ease,
+    grid-template-columns 220ms ease,
+    grid-template-rows 220ms ease,
+    max-height 220ms ease,
+    padding 220ms ease,
+    gap 220ms ease,
+    margin 220ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.xidea-dot-wave {
+  animation: xidea-dot-wave 1s ease-in-out infinite;
+  animation-delay: var(--xidea-dot-delay, 0s);
+}
+
+.xidea-orb-drift {
+  animation: xidea-orb-drift var(--xidea-orb-duration, 6s) ease-in-out infinite;
+  animation-delay: var(--xidea-orb-delay, 0s);
+  will-change: transform;
+}
+
+.xidea-portrait-field {
+  transform: translate3d(0, var(--xidea-portrait-lift, 0px), 0)
+    rotate(var(--xidea-portrait-tilt, 0deg));
+  transform-origin: center;
+  transition: box-shadow 220ms ease;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xidea-orb-drift {
+    animation: none;
+  }
+
+  .xidea-portrait-field {
+    transform: none;
+  }
+}
+
+.xidea-modal-pop {
+  transform-origin: top center;
+  animation: xidea-modal-pop 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes xidea-feedback-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  18% {
+    transform: translateX(-7px);
+  }
+  36% {
+    transform: translateX(6px);
+  }
+  54% {
+    transform: translateX(-4px);
+  }
+  72% {
+    transform: translateX(3px);
+  }
+}
+
+@keyframes xidea-feedback-success {
+  0% {
+    transform: scale(0.985);
+    box-shadow:
+      0 18px 40px rgba(111, 74, 53, 0.08),
+      0 0 0 rgba(157, 198, 126, 0);
+  }
+  45% {
+    transform: scale(1.015);
+    box-shadow:
+      0 24px 48px rgba(90, 140, 52, 0.16),
+      0 0 0 8px rgba(157, 198, 126, 0.14);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 18px 40px rgba(111, 74, 53, 0.08),
+      0 0 0 rgba(157, 198, 126, 0);
+  }
+}
+
+.xidea-feedback-shake {
+  animation: xidea-feedback-shake 360ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.xidea-feedback-success {
+  animation: xidea-feedback-success 460ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xidea-feedback-shake,
+  .xidea-feedback-success,
+  .xidea-dot-wave,
+  .xidea-orb-drift,
+  .xidea-modal-pop {
+    animation: none;
+  }
+
+  .xidea-card-motion,
+  .xidea-sidebar-reveal {
+    transition: none;
+  }
+
+  button:not(:disabled):active {
+    transform: none;
+  }
 }

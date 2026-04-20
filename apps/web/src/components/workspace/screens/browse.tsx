@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { GraduationCap, MessageSquareText, RefreshCcw } from "lucide-react";
 import type {
   KnowledgePointItem,
   ProjectStats,
@@ -6,213 +7,179 @@ import type {
   SessionType,
   WorkspaceSection,
 } from "@/domain/project-workspace";
-import type { SourceAsset } from "@/domain/types";
+import { getSessionTypeDescription } from "@/domain/project-workspace";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  MetricTile,
   KnowledgePointCard,
-  SessionCard,
   SessionTypeBadge,
-  getAssetKindLabel,
 } from "@/components/workspace/core";
+import { SessionListSection } from "@/components/workspace/session-list";
 import { WorkspaceNavButton } from "@/components/workspace/monitor";
 
 export function WorkspaceBrowseScreen({
   filteredKnowledgePoints,
+  isEditingProjectMeta,
   normalizedSearchQuery,
   onCancelPendingSession,
   onChangePendingPrompt,
   onOpenKnowledgePoint,
   onOpenSession,
+  onStartProjectSession,
+  onStartReview,
+  onStartStudy,
   onSubmitPendingPrompt,
-  onTogglePendingMaterial,
   pendingPrompt,
   pendingSessionIntent,
-  projectMaterialCount,
-  projectMaterials,
-  profileSummary,
   projectStats,
+  reviewDisabled,
   selectedProjectSessions,
+  studyDisabled,
   workspaceSection,
   onWorkspaceSectionChange,
 }: {
   filteredKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
+  isEditingProjectMeta: boolean;
   normalizedSearchQuery: string;
   onCancelPendingSession: () => void;
   onChangePendingPrompt: (value: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
   onOpenSession: (sessionId: string) => void;
+  onStartProjectSession: () => void;
+  onStartReview: () => void;
+  onStartStudy: () => void;
   onSubmitPendingPrompt: () => void;
-  onTogglePendingMaterial: (assetId: string) => void;
   pendingPrompt: string;
   pendingSessionIntent: {
-    readonly type: Extract<SessionType, "review" | "study">;
+    readonly type: SessionType;
     readonly knowledgePointTitle: string | null;
-    readonly sourceAssetIds: ReadonlyArray<string>;
   } | null;
-  projectMaterialCount: number;
-  projectMaterials: ReadonlyArray<SourceAsset>;
-  profileSummary: {
-    readonly title: string;
-    readonly evidence: string;
-  };
   projectStats: ProjectStats;
+  reviewDisabled: boolean;
   selectedProjectSessions: ReadonlyArray<SessionItem>;
+  studyDisabled: boolean;
   workspaceSection: WorkspaceSection;
   onWorkspaceSectionChange: (section: WorkspaceSection) => void;
 }): ReactElement {
+  const projectSessions = selectedProjectSessions.filter((session) => session.type === "project");
+  const learningSessions = selectedProjectSessions.filter((session) => session.type !== "project");
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[292px_minmax(0,1fr)]">
+    <div className="grid gap-4 lg:grid-cols-[312px_minmax(0,1fr)]">
       <Card className="rounded-[1.4rem] border-[var(--xidea-border)] bg-[#f1f0ea] shadow-none">
         <CardContent className="space-y-4 p-3">
           <div className="space-y-2">
             <WorkspaceNavButton
               active={workspaceSection === "overview"}
               count={projectStats.total - projectStats.archived}
-              label="Overview"
+              label="总览"
               onClick={() => onWorkspaceSectionChange("overview")}
             />
             <WorkspaceNavButton
               active={workspaceSection === "due-review"}
               count={projectStats.dueReview}
-              label="Due Review"
+              label="待复习"
               onClick={() => onWorkspaceSectionChange("due-review")}
             />
             <WorkspaceNavButton
               active={workspaceSection === "archived"}
               count={projectStats.archived}
-              label="Archived"
+              label="已归档"
               onClick={() => onWorkspaceSectionChange("archived")}
             />
           </div>
 
-          <div className="space-y-2 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3">
-            <p className="xidea-kicker text-[var(--xidea-stone)]">Recent Sessions</p>
-            {selectedProjectSessions.length > 0 ? (
-              selectedProjectSessions.slice(0, 4).map((session) => (
-                <SessionCard
-                  active={false}
-                  key={session.id}
-                  onClick={() => onOpenSession(session.id)}
-                  title={session.title}
-                  type={session.type}
-                  updatedAt={session.updatedAt}
-                />
-              ))
-            ) : (
-              <p className="text-sm text-[var(--xidea-stone)]">这个 project 还没有 session。</p>
-            )}
-          </div>
+          <SessionListSection
+            actions={
+              <Button
+                className="h-10 w-full rounded-[0.9rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] text-[var(--xidea-near-black)] hover:bg-[var(--xidea-selection)]"
+                onClick={onStartProjectSession}
+                type="button"
+                variant="outline"
+              >
+                <MessageSquareText className="h-4 w-4" />
+                研讨
+              </Button>
+            }
+            description={getSessionTypeDescription("project")}
+            emptyText="当前还没有研讨会话。"
+            onOpenSession={onOpenSession}
+            sessions={projectSessions}
+            showTypeBadge={false}
+            title="研讨会话"
+          />
+
+          <SessionListSection
+            actions={
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  className="h-10 min-w-0 rounded-[0.9rem] bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                  disabled={studyDisabled}
+                  onClick={onStartStudy}
+                  type="button"
+                >
+                  <GraduationCap className="h-4 w-4" />
+                  学习
+                </Button>
+                <Button
+                  className="h-10 min-w-0 rounded-[0.9rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] hover:bg-[var(--xidea-selection)]"
+                  disabled={reviewDisabled}
+                  onClick={onStartReview}
+                  type="button"
+                  variant="outline"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  复习
+                </Button>
+              </div>
+            }
+            description="学习负责推进新知识，复习负责回拉和校准。"
+            emptyText="当前还没有学习或复习会话。"
+            onOpenSession={onOpenSession}
+            sessions={learningSessions}
+            title="学习与复习"
+          />
         </CardContent>
       </Card>
 
       <div className="space-y-4">
-        <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-          <CardContent className="grid gap-4 p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-            <div className="space-y-2">
-              <p className="xidea-kicker text-[var(--xidea-selection-text)]">Profile Summary</p>
-              <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                当前阶段：{profileSummary.title}
-              </p>
-              <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                {profileSummary.evidence}
-              </p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <MetricTile label="未学" tone="amber" value={`${projectStats.unlearned}`} />
-              <MetricTile label="待复习" tone="sky" value={`${projectStats.dueReview}`} />
-              <MetricTile label="已归档" tone="rose" value={`${projectStats.archived}`} />
-            </div>
-          </CardContent>
-        </Card>
         {pendingSessionIntent ? (
           <Card className="rounded-[1.35rem] border-[var(--xidea-selection-border)] bg-[#fcf8f4] shadow-none">
             <CardContent className="space-y-4 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-2">
-                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">Start Session</p>
+                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">准备开始</p>
                   <div className="flex flex-wrap items-center gap-2">
                     <SessionTypeBadge type={pendingSessionIntent.type} />
                     <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                      {pendingSessionIntent.knowledgePointTitle
-                        ? `围绕「${pendingSessionIntent.knowledgePointTitle}」开始一轮${pendingSessionIntent.type === "study" ? "学习" : "复习"}`
-                        : `开始一轮${pendingSessionIntent.type === "study" ? "学习" : "复习"}`}
+                      {pendingSessionIntent.type === "project"
+                        ? "开始一轮研讨"
+                        : pendingSessionIntent.knowledgePointTitle
+                          ? `围绕「${pendingSessionIntent.knowledgePointTitle}」开始一轮${pendingSessionIntent.type === "study" ? "学习" : "复习"}`
+                          : `开始一轮${pendingSessionIntent.type === "study" ? "学习" : "复习"}`}
                     </p>
                   </div>
                   <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                    先输入你真正想推进的问题；发送后才会创建 session。
+                    {pendingSessionIntent.type === "project"
+                      ? "先说清这轮想推进的方向、材料或问题，再进入会话。"
+                      : "先说清这轮真正想验证什么，再进入会话。"}
                   </p>
                 </div>
                 <Button className="rounded-full" onClick={onCancelPendingSession} type="button" variant="outline">
                   取消
                 </Button>
               </div>
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                    本轮附带材料
-                  </p>
-                  <span className="text-[12px] text-[var(--xidea-stone)]">
-                    Project 池里共 {projectMaterialCount} 份，本轮已选 {pendingSessionIntent.sourceAssetIds.length} 份
-                  </span>
-                </div>
-                {projectMaterialCount > 0 ? (
-                  projectMaterials.length > 0 ? (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {projectMaterials.map((asset) => {
-                        const selected = pendingSessionIntent.sourceAssetIds.includes(asset.id);
-
-                        return (
-                          <button
-                            className={
-                              selected
-                                ? "rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-4 py-4 text-left"
-                                : "rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-4 py-4 text-left hover:border-[var(--xidea-selection-border)]"
-                            }
-                            key={asset.id}
-                            onClick={() => onTogglePendingMaterial(asset.id)}
-                            type="button"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                                {asset.title}
-                              </p>
-                              <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
-                                {getAssetKindLabel(asset.kind)}
-                              </span>
-                            </div>
-                            <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                              {asset.topic}
-                            </p>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                      <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
-                        当前没有默认附带材料。你可以先直接发问题，或去 Project Meta 里补充项目材料。
-                      </CardContent>
-                    </Card>
-                  )
-                ) : (
-                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                    <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
-                      当前 project 还没有材料池，所以这轮会以纯对话方式开始。
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
               <div className="relative">
                 <Textarea
                   className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] pr-28 pb-12 text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
                   onChange={(event) => onChangePendingPrompt(event.target.value)}
                   placeholder={
-                    pendingSessionIntent.type === "study"
-                      ? "例如：先帮我判断这个知识点最容易混淆的边界，再决定应该怎么学。"
-                      : "例如：先帮我检查我对这个知识点的理解是否稳定，再安排复习。"
+                    pendingSessionIntent.type === "project"
+                      ? "例如：先围绕这个主题梳理材料线索，并指出还缺哪几个关键知识点。"
+                      : pendingSessionIntent.type === "study"
+                        ? "例如：先帮我找出这个知识点最容易混淆的边界。"
+                        : "例如：先检查我对这个知识点的判断是不是稳定。"
                   }
                   value={pendingPrompt}
                 />
@@ -222,28 +189,48 @@ export function WorkspaceBrowseScreen({
                   onClick={onSubmitPendingPrompt}
                   type="button"
                 >
-                  发送并创建
+                  发送并开始
                 </Button>
               </div>
             </CardContent>
           </Card>
         ) : null}
+
         {filteredKnowledgePoints.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {filteredKnowledgePoints.map((point) => (
-              <KnowledgePointCard
-                key={point.id}
-                onClick={() => onOpenKnowledgePoint(point.id)}
-                point={point}
-              />
-            ))}
-          </div>
+          <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+            <CardContent className="space-y-4 p-5">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="xidea-kicker text-[var(--xidea-selection-text)]">知识卡</p>
+                  <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                    当前共 {filteredKnowledgePoints.length} 张，展示当前工作区里的活跃知识卡。
+                  </p>
+                </div>
+                <p className="text-[12px] text-[var(--xidea-stone)]">
+                  {workspaceSection === "overview"
+                    ? "展示当前活跃知识卡"
+                    : workspaceSection === "due-review"
+                      ? "展示待复习知识卡"
+                      : "展示已归档知识卡"}
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {filteredKnowledgePoints.map((point) => (
+                  <KnowledgePointCard
+                    key={point.id}
+                    onClick={() => onOpenKnowledgePoint(point.id)}
+                    point={point}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <Card className="rounded-[1.3rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
             <CardContent className="px-5 py-6 text-sm text-[var(--xidea-stone)]">
               {normalizedSearchQuery === ""
-                ? "当前筛选下还没有知识点，可以先补材料，或从已有 session 继续推进。"
-                : "没找到匹配的 knowledge point，可以换个关键词再试。"}
+                ? "当前筛选下还没有知识卡，可以先补材料或继续研讨。"
+                : "没找到匹配的知识卡，换个关键词再试。"}
             </CardContent>
           </Card>
         )}

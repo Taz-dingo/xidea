@@ -1,4 +1,14 @@
 import type { ReactElement } from "react";
+import {
+  FileImage,
+  FileText,
+  Globe,
+  GraduationCap,
+  MessagesSquare,
+  RotateCcw,
+  Video,
+  Volume2,
+} from "lucide-react";
 import type { SourceAsset } from "@/domain/types";
 import type {
   KnowledgePointItem,
@@ -43,6 +53,23 @@ export function getAssetKindLabel(kind: SourceAsset["kind"]): string {
   }
 }
 
+function getAssetKindIcon(kind: SourceAsset["kind"]): ReactElement {
+  switch (kind) {
+    case "audio":
+      return <Volume2 className="h-4 w-4" />;
+    case "image":
+      return <FileImage className="h-4 w-4" />;
+    case "note":
+      return <FileText className="h-4 w-4" />;
+    case "pdf":
+      return <FileText className="h-4 w-4" />;
+    case "video":
+      return <Video className="h-4 w-4" />;
+    case "web":
+      return <Globe className="h-4 w-4" />;
+  }
+}
+
 export function getKnowledgePointAccent(status: KnowledgePointStatus): string {
   switch (status) {
     case "active_learning":
@@ -67,22 +94,19 @@ export function getSessionTypeAccent(type: SessionType): string {
   }
 }
 
+export function getSessionDisplayTitle(title: string, type: SessionType): string {
+  const label = getSessionTypeLabel(type);
+  const normalized = title.trim();
+  const colonPrefix = new RegExp(`^${label}[：:]\\s*`);
+  return normalized.replace(colonPrefix, "").trim() || normalized;
+}
+
 function getReviewTimingAccent(label: string): string {
   if (label.includes("今日") || label.includes("到期")) {
     return "border-[#e1c5bb] bg-[#f8ece7] text-[#9d5b43]";
   }
   if (label.includes("明天")) {
     return "border-[#e7d8a6] bg-[#fbf5df] text-[#98711c]";
-  }
-  return "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)]";
-}
-
-function getUpdatedAtAccent(label: string): string {
-  if (label.includes("刚刚") || label.includes("今天") || label.includes("1h")) {
-    return "border-[#cadecf] bg-[#eef5ef] text-[#56795e]";
-  }
-  if (label.includes("昨天") || label.includes("2d") || label.includes("天前")) {
-    return "border-[#d9d4c8] bg-[#f3f0e7] text-[#786c57]";
   }
   return "border-[var(--xidea-sand)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)]";
 }
@@ -94,6 +118,17 @@ function getMasteryFillCount(mastery: number): number {
   return 1;
 }
 
+function getSessionTypeIcon(type: SessionType): ReactElement {
+  switch (type) {
+    case "project":
+      return <MessagesSquare className="h-3.5 w-3.5" />;
+    case "study":
+      return <GraduationCap className="h-3.5 w-3.5" />;
+    case "review":
+      return <RotateCcw className="h-3.5 w-3.5" />;
+  }
+}
+
 export function SessionTypeBadge({
   type,
   compact = false,
@@ -103,9 +138,10 @@ export function SessionTypeBadge({
 }): ReactElement {
   return (
     <Badge
-      className={`border uppercase tracking-[0.12em] shadow-none ${compact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-1 text-[11px]"} ${getSessionTypeAccent(type)}`}
+      className={`border shadow-none ${compact ? "gap-1 px-1.5 py-0.5 text-[10px]" : "gap-1 px-2 py-1 text-[11px]"} ${getSessionTypeAccent(type)}`}
       variant="outline"
     >
+      {getSessionTypeIcon(type)}
       {getSessionTypeLabel(type)}
     </Badge>
   );
@@ -113,17 +149,21 @@ export function SessionTypeBadge({
 
 export function SessionCard({
   active,
+  showTypeBadge = true,
   title,
   type,
   updatedAt,
   onClick,
 }: {
   active: boolean;
+  showTypeBadge?: boolean;
   title: string;
   type: SessionType;
   updatedAt: string;
   onClick: () => void;
 }): ReactElement {
+  const visibleTitle = getSessionDisplayTitle(title, type);
+
   return (
     <button
       className={
@@ -135,19 +175,36 @@ export function SessionCard({
       type="button"
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{title}</p>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <SessionTypeBadge compact type={type} />
-          <span
-            className={
-              active
-                ? "shrink-0 text-[11px] text-[var(--xidea-selection-text)]"
-                : "shrink-0 text-[11px] text-[var(--xidea-stone)]"
-            }
-          >
-            {updatedAt}
-          </span>
-        </div>
+        {showTypeBadge ? (
+          <>
+            <p className="truncate text-sm font-medium">{visibleTitle}</p>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <SessionTypeBadge compact type={type} />
+              <span
+                className={
+                  active
+                    ? "shrink-0 text-[11px] text-[var(--xidea-selection-text)]"
+                    : "shrink-0 text-[11px] text-[var(--xidea-stone)]"
+                }
+              >
+                {updatedAt}
+              </span>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 flex-1 truncate text-sm font-medium">{visibleTitle}</p>
+            <span
+              className={
+                active
+                  ? "shrink-0 pt-0.5 text-[11px] text-[var(--xidea-selection-text)]"
+                  : "shrink-0 pt-0.5 text-[11px] text-[var(--xidea-stone)]"
+              }
+            >
+              {updatedAt}
+            </span>
+          </div>
+        )}
       </div>
     </button>
   );
@@ -166,13 +223,153 @@ export function MetricTile({
     <div className="min-w-0 overflow-hidden rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-3">
       <div className="flex min-w-0 items-center gap-2">
         <span className={`inline-block h-2 w-2 rounded-full ${getMetricDotClass(tone)}`} />
-        <span className="truncate text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">
+        <span className="truncate text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
           {label}
         </span>
       </div>
       <p className="mt-2 min-w-0 break-words text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
         {value}
       </p>
+    </div>
+  );
+}
+
+export function AssetListItem({
+  asset,
+  selected = false,
+  onClick,
+}: {
+  asset: SourceAsset;
+  selected?: boolean;
+  onClick?: () => void;
+}): ReactElement {
+  const content = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
+          {getAssetKindIcon(asset.kind)}
+        </div>
+        <span className="shrink-0 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-2 py-0.5 text-[10px] tracking-[0.08em] text-[var(--xidea-stone)]">
+          {getAssetKindLabel(asset.kind)}
+        </span>
+      </div>
+      <div className="space-y-1">
+        <p className="line-clamp-2 text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
+          {asset.title}
+        </p>
+        <p className="line-clamp-2 text-sm leading-6 text-[var(--xidea-charcoal)]">{asset.topic}</p>
+      </div>
+    </>
+  );
+
+  const className = selected
+    ? "flex h-full min-h-[132px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] p-3 text-left transition-colors"
+    : "flex h-full min-h-[132px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef]";
+
+  if (onClick) {
+    return (
+      <button className={className} onClick={onClick} type="button">
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={className}>{content}</div>
+  );
+}
+
+export function AssetListGrid({
+  assets,
+  className = "grid gap-2 sm:grid-cols-2",
+  emptyText,
+  onAssetClick,
+  selectedAssetIds = [],
+}: {
+  assets: ReadonlyArray<SourceAsset>;
+  className?: string;
+  emptyText: string;
+  onAssetClick?: (assetId: string) => void;
+  selectedAssetIds?: ReadonlyArray<string>;
+}): ReactElement {
+  if (assets.length === 0) {
+    return <p className="text-sm text-[var(--xidea-stone)]">{emptyText}</p>;
+  }
+
+  return (
+    <div className={className}>
+      {assets.map((asset) => (
+        <AssetListItem
+          asset={asset}
+          key={asset.id}
+          onClick={onAssetClick ? () => onAssetClick(asset.id) : undefined}
+          selected={selectedAssetIds.includes(asset.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+export function AssetCompactList({
+  assets,
+  emptyText,
+  maxHeightClassName = "max-h-[24rem]",
+  onAssetClick,
+  selectedAssetIds = [],
+}: {
+  assets: ReadonlyArray<SourceAsset>;
+  emptyText: string;
+  maxHeightClassName?: string;
+  onAssetClick?: (assetId: string) => void;
+  selectedAssetIds?: ReadonlyArray<string>;
+}): ReactElement {
+  if (assets.length === 0) {
+    return <p className="text-sm text-[var(--xidea-stone)]">{emptyText}</p>;
+  }
+
+  return (
+    <div className={`${maxHeightClassName} overflow-y-auto overscroll-contain pr-1`}>
+      <div className="space-y-2 pr-2">
+        {assets.map((asset) => {
+          const selected = selectedAssetIds.includes(asset.id);
+          const className = selected
+            ? "grid grid-cols-[44px_minmax(0,1fr)] gap-3 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] p-3 text-left transition-colors"
+            : "grid grid-cols-[44px_minmax(0,1fr)] gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef]";
+
+          const content = (
+            <>
+              <div className="flex h-11 w-11 items-center justify-center rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
+                {getAssetKindIcon(asset.kind)}
+              </div>
+              <div className="min-w-0 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="line-clamp-2 text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
+                    {asset.title}
+                  </p>
+                  <span className="shrink-0 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-2 py-0.5 text-[10px] tracking-[0.08em] text-[var(--xidea-stone)]">
+                    {getAssetKindLabel(asset.kind)}
+                  </span>
+                </div>
+                <p className="line-clamp-2 text-sm leading-6 text-[var(--xidea-charcoal)]">{asset.topic}</p>
+              </div>
+            </>
+          );
+
+          if (onAssetClick) {
+            return (
+              <button className={className} key={asset.id} onClick={() => onAssetClick(asset.id)} type="button">
+                {content}
+              </button>
+            );
+          }
+
+          return (
+            <div className={className} key={asset.id}>
+              {content}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -188,22 +385,25 @@ export function KnowledgePointCard({
 
   return (
     <button
-      className="flex h-full w-full flex-col rounded-[1.2rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-4 text-left shadow-none transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fcfbf7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
+      className="group flex h-full w-full flex-col rounded-[1.3rem] border border-[#e6dbcf] bg-[linear-gradient(180deg,#fffdf9_0%,#f8f2ea_100%)] p-4 text-left shadow-none transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--xidea-selection-border)] hover:shadow-[0_18px_36px_rgba(177,112,82,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
       onClick={onClick}
       type="button"
     >
-      <div className="min-w-0">
+      <div className="min-w-0 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <Badge
+            className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
+            variant="outline"
+          >
+            {point.stageLabel}
+          </Badge>
+          <span className="text-[12px] text-[var(--xidea-stone)]">{point.updatedAt}</span>
+        </div>
         <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">{point.title}</p>
-        <p className="mt-2 text-sm leading-6 text-[var(--xidea-charcoal)]">{point.description}</p>
+        <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">{point.description}</p>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Badge
-          className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
-          variant="outline"
-        >
-          {point.stageLabel}
-        </Badge>
         {point.nextReviewLabel ? (
           <Badge
             className={`border px-2 py-1 text-[12px] shadow-none ${getReviewTimingAccent(point.nextReviewLabel)}`}
@@ -220,16 +420,12 @@ export function KnowledgePointCard({
             系统建议归档
           </Badge>
         ) : null}
-        <Badge
-          className={`border px-2 py-1 text-[12px] shadow-none ${getUpdatedAtAccent(point.updatedAt)}`}
-          variant="outline"
-        >
-          {point.updatedAt}
-        </Badge>
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5">
+      <div className="mt-auto flex items-center gap-3 pt-5">
+        <div className="flex items-center gap-3">
+          <span className="text-[12px] text-[var(--xidea-stone)]">掌握程度</span>
+          <div className="flex items-center gap-1.5">
           {Array.from({ length: 4 }, (_, index) => (
             <span
               className={
@@ -240,8 +436,42 @@ export function KnowledgePointCard({
               key={`${point.id}-dot-${index}`}
             />
           ))}
+          </div>
         </div>
-        <span className="text-[12px] text-[var(--xidea-stone)]">掌握度 {point.mastery}%</span>
+      </div>
+    </button>
+  );
+}
+
+export function KnowledgePointInlineCard({
+  point,
+  onClick,
+}: {
+  point: KnowledgePointItem;
+  onClick: () => void;
+}): ReactElement {
+  return (
+    <button
+      className="flex w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-white)]"
+      onClick={onClick}
+      type="button"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <Badge
+          className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
+          variant="outline"
+        >
+          {point.stageLabel}
+        </Badge>
+        <span className="text-[12px] text-[var(--xidea-stone)]">{point.updatedAt}</span>
+      </div>
+      <div className="space-y-1">
+        <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+          {point.title}
+        </p>
+        <p className="line-clamp-2 text-sm leading-6 text-[var(--xidea-charcoal)]">
+          {point.description}
+        </p>
       </div>
     </button>
   );
@@ -265,7 +495,7 @@ export function MetaPanel({
       <CardContent className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <p className="xidea-kicker text-[var(--xidea-selection-text)]">Project Meta</p>
+            <p className="xidea-kicker text-[var(--xidea-selection-text)]">项目信息</p>
             <p className="text-base font-medium text-[var(--xidea-near-black)]">{project.name}</p>
           </div>
           <Button className="rounded-full" onClick={onClose} type="button" variant="outline">
@@ -275,12 +505,12 @@ export function MetaPanel({
 
         <div className="grid gap-2 md:grid-cols-3">
           <MetricTile label="材料" tone="amber" value={`${materialCount} 份`} />
-          <MetricTile label="Sessions" tone="sky" value={`${sessionCount} 个`} />
+          <MetricTile label="会话" tone="sky" value={`${sessionCount} 个`} />
           <MetricTile label="最近更新" tone="emerald" value={project.updatedAt} />
         </div>
 
         <div className="space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">Special Rules</p>
+          <p className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">特殊约束</p>
           <div className="flex flex-wrap gap-2">
             {project.specialRules.length > 0 ? (
               project.specialRules.map((rule) => (
@@ -293,13 +523,13 @@ export function MetaPanel({
                 </Badge>
               ))
             ) : (
-              <p className="text-sm text-[var(--xidea-stone)]">当前还没有 special rules。</p>
+              <p className="text-sm text-[var(--xidea-stone)]">当前还没有特殊约束。</p>
             )}
           </div>
         </div>
 
         <div className="space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">Project Materials</p>
+          <p className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">项目材料</p>
           <div className="space-y-2">
             {materials.length > 0 ? (
               materials.map((material) => (
@@ -309,7 +539,7 @@ export function MetaPanel({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium text-[var(--xidea-near-black)]">{material.title}</p>
-                    <span className="text-[11px] uppercase tracking-[0.12em] text-[var(--xidea-stone)]">
+                    <span className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
                       {getAssetKindLabel(material.kind)}
                     </span>
                   </div>
@@ -317,7 +547,7 @@ export function MetaPanel({
                 </div>
               ))
             ) : (
-              <p className="text-sm text-[var(--xidea-stone)]">当前还没有 project materials。</p>
+              <p className="text-sm text-[var(--xidea-stone)]">当前还没有项目材料。</p>
             )}
           </div>
         </div>

@@ -1,10 +1,15 @@
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
+import { CheckCircle2, Sparkles, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { MODE_LABELS } from "@/domain/planner";
-import type { LearningActivity, LearningActivitySubmission } from "@/domain/types";
+import type {
+  LearningActivity,
+  LearningActivityAttempt,
+  LearningActivitySubmission,
+} from "@/domain/types";
 
 function getKindLabel(kind: LearningActivity["kind"]): string {
   switch (kind) {
@@ -14,6 +19,110 @@ function getKindLabel(kind: LearningActivity["kind"]): string {
       return "对比辨析";
     case "recall":
       return "主动回忆";
+  }
+}
+
+function buildChoiceAttempt(input: {
+  readonly activity: LearningActivity;
+  readonly choiceId: string;
+  readonly attemptNumber: number;
+}): LearningActivityAttempt | null {
+  if (input.activity.input.type !== "choice") {
+    return null;
+  }
+
+  const choice =
+    input.activity.input.choices.find((item) => item.id === input.choiceId) ?? null;
+  if (choice === null) {
+    return null;
+  }
+
+  const feedbackIndex = choice.isCorrect
+    ? 0
+    : Math.min(
+        Math.max(input.attemptNumber - 1, 0),
+        Math.max(choice.feedbackLayers.length - 1, 0),
+      );
+  const feedback =
+    choice.feedbackLayers[feedbackIndex] ?? choice.analysis ?? choice.detail;
+
+  return {
+    attemptNumber: input.attemptNumber,
+    responseText: choice.label,
+    selectedChoiceId: choice.id,
+    isCorrect: choice.isCorrect,
+    feedback,
+    analysis: choice.analysis,
+  };
+}
+
+function getFeedbackToneClasses(tone: "success" | "retry"): string {
+  return tone === "success"
+    ? "border-[#bfd6a7] bg-[linear-gradient(180deg,#f7fff1_0%,#eef9e6_100%)] text-[#27481c]"
+    : "border-[var(--xidea-selection-border)] bg-[linear-gradient(180deg,#fff8f4_0%,#fceddf_100%)] text-[var(--xidea-selection-text)]";
+}
+
+function triggerFeedbackVibration(pattern: number | number[]): void {
+  if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") {
+    return;
+  }
+
+  navigator.vibrate(pattern);
+}
+
+function playFeedbackTone(
+  audioContextRef: { current: AudioContext | null },
+  tone: "success" | "retry",
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const AudioContextCtor =
+    window.AudioContext ??
+    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (AudioContextCtor === undefined) {
+    return;
+  }
+
+  try {
+    const context = audioContextRef.current ?? new AudioContextCtor();
+    audioContextRef.current = context;
+    if (context.state === "suspended") {
+      void context.resume();
+    }
+
+    const gain = context.createGain();
+    gain.connect(context.destination);
+    gain.gain.setValueAtTime(tone === "success" ? 0.055 : 0.05, context.currentTime);
+
+    const tones =
+      tone === "success"
+        ? [
+            { frequency: 660, duration: 0.08, type: "triangle" as const },
+            { frequency: 880, duration: 0.12, type: "triangle" as const },
+          ]
+        : [
+            { frequency: 220, duration: 0.1, type: "sawtooth" as const },
+            { frequency: 176, duration: 0.12, type: "sawtooth" as const },
+          ];
+
+    let startAt = context.currentTime;
+    tones.forEach((item, index) => {
+      const oscillator = context.createOscillator();
+      oscillator.type = item.type;
+      oscillator.frequency.setValueAtTime(item.frequency, startAt);
+      oscillator.connect(gain);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + item.duration);
+      if (index < tones.length - 1) {
+        startAt += item.duration * 0.78;
+      }
+    });
+
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + tones.at(-1)!.duration + 0.06);
+  } catch {
+    // Audio feedback is optional; keep the card interaction resilient.
   }
 }
 
@@ -27,25 +136,165 @@ export function LearningActivityCard({
   activity: LearningActivity;
   disabled: boolean;
   resolution: "submitted" | "skipped" | null;
-  onSkip?: () => void;
+  onSkip?: (attempts?: ReadonlyArray<LearningActivityAttempt>) => void;
   onSubmit: (submission: LearningActivitySubmission) => void;
 }): ReactElement {
   const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
   const [draftText, setDraftText] = useState("");
+  const [attempts, setAttempts] = useState<LearningActivityAttempt[]>([]);
+  const [feedbackState, setFeedbackState] = useState<{
+    readonly tone: "success" | "retry";
+    readonly title: string;
+    readonly body: string;
+    readonly helper: string;
+  } | null>(null);
+  const [pendingSubmission, setPendingSubmission] =
+    useState<LearningActivitySubmission | null>(null);
+  const [motionClass, setMotionClass] = useState("");
+  const motionResetTimerRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     setSelectedChoiceId(null);
     setDraftText("");
+    setAttempts([]);
+    setFeedbackState(null);
+    setPendingSubmission(null);
+    setMotionClass("");
   }, [activity.id]);
 
+  useEffect(() => {
+    return () => {
+      if (motionResetTimerRef.current !== null) {
+        window.clearTimeout(motionResetTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (pendingSubmission === null) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      onSubmit(pendingSubmission);
+      setPendingSubmission(null);
+    }, 720);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [onSubmit, pendingSubmission]);
+
   const isResolved = resolution !== null;
-  const canSubmit =
-    activity.input.type === "choice"
-      ? selectedChoiceId !== null
-      : draftText.trim().length >= activity.input.minLength;
+  const isChoiceActivity = activity.input.type === "choice";
+  const isLocked = disabled || isResolved || pendingSubmission !== null;
+  const latestAttempt = attempts.at(-1) ?? null;
+  const wrongAttemptCount = attempts.filter((attempt) => attempt.isCorrect === false).length;
+  const canSubmitText = draftText.trim().length >= (activity.input.type === "text" ? activity.input.minLength : 1);
+
+  function triggerMotion(nextClass: "xidea-feedback-success" | "xidea-feedback-shake"): void {
+    if (motionResetTimerRef.current !== null) {
+      window.clearTimeout(motionResetTimerRef.current);
+    }
+    setMotionClass("");
+    window.requestAnimationFrame(() => {
+      setMotionClass(nextClass);
+      motionResetTimerRef.current = window.setTimeout(() => {
+        setMotionClass("");
+        motionResetTimerRef.current = null;
+      }, 520);
+    });
+  }
+
+  function handleChoicePick(choiceId: string): void {
+    if (activity.input.type !== "choice" || isLocked) {
+      return;
+    }
+
+    setSelectedChoiceId(choiceId);
+    const nextAttempt = buildChoiceAttempt({
+      activity,
+      choiceId,
+      attemptNumber: attempts.length + 1,
+    });
+    if (nextAttempt === null) {
+      return;
+    }
+
+    const nextAttempts = [...attempts, nextAttempt];
+    setAttempts(nextAttempts);
+    if (nextAttempt.isCorrect) {
+      triggerMotion("xidea-feedback-success");
+      triggerFeedbackVibration([24, 28, 24]);
+      playFeedbackTone(audioContextRef, "success");
+      setFeedbackState({
+        tone: "success",
+        title: attempts.length === 0 ? "答对了，继续推进" : "修正到位，进入下一张",
+        body: nextAttempt.feedback ?? "这次判断已经对上关键边界了。",
+        helper:
+          attempts.length === 0
+            ? "这一张会自动收进已完成卡组。"
+            : `你在第 ${nextAttempt.attemptNumber} 次纠偏成功，这段轨迹会一起记进右侧回看区。`,
+      });
+      setPendingSubmission({
+        activityId: activity.id,
+        kind: activity.kind,
+        responseText: nextAttempt.responseText,
+        selectedChoiceId: nextAttempt.selectedChoiceId,
+        isCorrect: true,
+        attempts: nextAttempts,
+        finalFeedback: nextAttempt.feedback,
+        finalAnalysis: nextAttempt.analysis,
+      });
+      return;
+    }
+
+    triggerMotion("xidea-feedback-shake");
+    triggerFeedbackVibration([18, 34, 18]);
+    playFeedbackTone(audioContextRef, "retry");
+    setFeedbackState({
+      tone: "retry",
+      title:
+        wrongAttemptCount === 0
+          ? "还差一点，先别往下走"
+          : `再收窄一步，这是第 ${wrongAttemptCount + 1} 次提示`,
+      body: nextAttempt.feedback ?? "这条选择还没对上当前卡要验证的边界。",
+      helper: nextAttempt.analysis ?? "不用发给 agent，先把这一张做对，系统再带你进下一张。",
+    });
+  }
+
+  function handleSubmitText(): void {
+    if (activity.input.type !== "text" || isLocked || !canSubmitText) {
+      return;
+    }
+
+    const trimmed = draftText.trim();
+    onSubmit({
+      activityId: activity.id,
+      kind: activity.kind,
+      responseText: trimmed,
+      selectedChoiceId: null,
+      isCorrect: null,
+      attempts: [
+        {
+          attemptNumber: 1,
+          responseText: trimmed,
+          selectedChoiceId: null,
+          isCorrect: null,
+          feedback: null,
+          analysis: null,
+        },
+      ],
+      finalFeedback: null,
+      finalAnalysis: null,
+    });
+  }
 
   return (
-    <Card className="rounded-[1.15rem] border-[var(--xidea-selection-border)] bg-[linear-gradient(180deg,#fffdf9_0%,#fcf4ee_100%)] shadow-[0_18px_40px_rgba(111,74,53,0.08)]">
+    <Card
+      className={`rounded-[1.15rem] border-[var(--xidea-selection-border)] bg-[linear-gradient(180deg,#fffdf9_0%,#fcf4ee_100%)] shadow-[0_18px_40px_rgba(111,74,53,0.08)] ${motionClass}`}
+    >
       <CardHeader className="space-y-3 pb-2.5">
         <div className="flex flex-wrap items-center gap-2">
           <Badge
@@ -68,6 +317,14 @@ export function LearningActivityCard({
               {MODE_LABELS[activity.mode]}
             </Badge>
           ) : null}
+          {isChoiceActivity ? (
+            <Badge
+              className="border-[#d7d0c5] bg-[#fff9f3] text-[var(--xidea-stone)] shadow-none"
+              variant="outline"
+            >
+              点选后即时判定
+            </Badge>
+          ) : null}
         </div>
 
         <div className="space-y-2">
@@ -82,25 +339,44 @@ export function LearningActivityCard({
         {activity.input.type === "choice" ? (
           <div className="space-y-2.5">
             {activity.input.choices.map((choice) => {
-              const selected = selectedChoiceId === choice.id;
+              const wasLatestWrong =
+                latestAttempt?.selectedChoiceId === choice.id && latestAttempt.isCorrect === false;
+              const wasLatestCorrect =
+                latestAttempt?.selectedChoiceId === choice.id && latestAttempt.isCorrect === true;
 
               return (
                 <button
                   className={
-                    selected
-                      ? "w-full rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3.5 py-3 text-left transition-colors"
-                      : "w-full rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3.5 py-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fff8f4]"
+                    wasLatestCorrect
+                      ? "w-full rounded-[1rem] border border-[#9dc67e] bg-[linear-gradient(180deg,#f7fff1_0%,#eef9e6_100%)] px-3.5 py-3 text-left shadow-[0_16px_28px_rgba(90,140,52,0.14)] transition-all"
+                      : wasLatestWrong
+                        ? "w-full rounded-[1rem] border border-[#ebb59c] bg-[linear-gradient(180deg,#fff6f1_0%,#fde8dd_100%)] px-3.5 py-3 text-left shadow-[0_14px_26px_rgba(212,109,69,0.12)] transition-all"
+                        : selectedChoiceId === choice.id
+                          ? "w-full rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3.5 py-3 text-left transition-colors"
+                          : "w-full rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3.5 py-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#fff8f4]"
                   }
-                  disabled={disabled || isResolved}
+                  disabled={isLocked}
                   key={choice.id}
                   onClick={() => {
-                    setSelectedChoiceId(choice.id);
+                    handleChoicePick(choice.id);
                   }}
                   type="button"
                 >
-                  <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
-                    {choice.label}
-                  </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+                        {choice.label}
+                      </p>
+                      <p className="text-[13px] leading-5 text-[var(--xidea-stone)]">
+                        {choice.detail}
+                      </p>
+                    </div>
+                    {wasLatestCorrect ? (
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#5a8c34]" />
+                    ) : wasLatestWrong ? (
+                      <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#cc6d48]" />
+                    ) : null}
+                  </div>
                 </button>
               );
             })}
@@ -108,7 +384,7 @@ export function LearningActivityCard({
         ) : (
           <Textarea
             className="min-h-[7rem] rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] text-sm leading-6 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
-            disabled={disabled || isResolved}
+            disabled={isLocked}
             onChange={(event) => {
               setDraftText(event.target.value);
             }}
@@ -117,50 +393,74 @@ export function LearningActivityCard({
           />
         )}
 
+        {feedbackState !== null ? (
+          <div
+            className={`rounded-[1rem] border px-4 py-3 shadow-[0_12px_24px_rgba(112,78,55,0.08)] transition-all ${getFeedbackToneClasses(feedbackState.tone)}`}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={
+                  feedbackState.tone === "success"
+                    ? "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e3f3d8] text-[#568632]"
+                    : "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#fce4d8] text-[#d46d45]"
+                }
+              >
+                {feedbackState.tone === "success" ? (
+                  <Sparkles className="h-4 w-4" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-sm font-semibold leading-6">{feedbackState.title}</p>
+                <p className="text-sm leading-6">{feedbackState.body}</p>
+                <p className="text-[13px] leading-6 opacity-80">{feedbackState.helper}</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-[var(--xidea-stone)]">
-            {resolution === "submitted"
-              ? "这轮作答已经发给 agent，接下来会基于你的表现继续决定动作。"
-              : resolution === "skipped"
-                ? "这轮动作已跳过，agent 会根据当前状态重新安排下一步。"
-                : "先完成这一轮动作，再继续下一轮对话。"}
-          </p>
+          <div className="space-y-1">
+            <p className="text-sm text-[var(--xidea-stone)]">
+              {resolution === "submitted"
+                ? "这轮作答已经发给 agent，接下来会基于你的表现继续决定动作。"
+                : resolution === "skipped"
+                  ? "这轮动作已跳过，agent 会根据当前状态重新安排下一步。"
+                  : isChoiceActivity
+                    ? wrongAttemptCount > 0
+                      ? `已纠偏 ${wrongAttemptCount} 次，答对后会自动进入下一张。`
+                      : "选一个答案就会立刻判定；答对后自动进入下一张。"
+                    : "先完成这一轮动作，再继续下一轮对话。"}
+            </p>
+            {attempts.length > 0 ? (
+              <p className="text-[12px] text-[var(--xidea-stone)]/80">
+                当前累计尝试 {attempts.length} 次
+              </p>
+            ) : null}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             {onSkip ? (
               <Button
                 className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-parchment)]"
-                disabled={disabled || isResolved}
-                onClick={onSkip}
+                disabled={isLocked}
+                onClick={() => onSkip(attempts)}
                 type="button"
                 variant="outline"
               >
                 先跳过
               </Button>
             ) : null}
-            <Button
-              className="rounded-full bg-[var(--xidea-terracotta)] px-4 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-              disabled={disabled || isResolved || !canSubmit}
-              onClick={() => {
-                const selectedChoice =
-                  activity.input.type === "choice"
-                    ? activity.input.choices.find((choice) => choice.id === selectedChoiceId) ?? null
-                    : null;
-
-                onSubmit({
-                  activityId: activity.id,
-                  kind: activity.kind,
-                  selectedChoiceId,
-                  responseText:
-                    draftText.trim() ||
-                    selectedChoice?.detail ||
-                    selectedChoice?.label ||
-                    "",
-                });
-              }}
-              type="button"
-            >
-              {activity.submitLabel}
-            </Button>
+            {activity.input.type === "text" ? (
+              <Button
+                className="rounded-full bg-[var(--xidea-terracotta)] px-4 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                disabled={isLocked || !canSubmitText}
+                onClick={handleSubmitText}
+                type="button"
+              >
+                {activity.submitLabel}
+              </Button>
+            ) : null}
           </div>
         </div>
       </CardContent>

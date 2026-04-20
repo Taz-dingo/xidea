@@ -2,7 +2,13 @@ from pathlib import Path
 
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import run_agent_v0
-from xidea_agent.state import AgentRequest, ProjectLearningProfile, ProjectMemory
+from xidea_agent.state import (
+    AgentRequest,
+    KnowledgePoint,
+    ProjectLearningProfile,
+    ProjectMemory,
+    SourceAsset,
+)
 from xidea_agent.tools import (
     build_project_context,
     describe_tool_registry,
@@ -58,6 +64,83 @@ def test_asset_summary_handles_unknown_asset() -> None:
     assert payload["assets"][0]["id"] == "unknown-asset"
     assert "暂未提取" in payload["assets"][0]["contentExcerpt"]
     assert payload["assets"][0]["keyConcepts"] == []
+
+
+def test_asset_summary_strips_markdown_frontmatter_from_uploaded_material(tmp_path: Path) -> None:
+    material_path = tmp_path / "material.md"
+    material_path.write_text(
+        "---\ncreated: 2026-04-19\nmodified: 2026-04-20\n---\n"
+        "# 多模态编排\n\n"
+        "- 核心概念一：音视频联合检索\n"
+        "- 核心概念二：具身交互反馈\n",
+        encoding="utf-8",
+    )
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-1",
+            title="multimodal.md",
+            kind="note",
+            topic="多模态学习编排",
+            summary="frontmatter 不该进入正文摘要",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = _build_request(
+        entry_mode="material-import",
+        source_asset_ids=["material-1"],
+    )
+    result = resolve_tool_result("asset-summary", request, repository=repository)
+
+    assert result is not None
+    excerpt = result.payload["assets"][0]["contentExcerpt"]
+    concepts = result.payload["assets"][0]["keyConcepts"]
+    assert "created:" not in excerpt.lower()
+    assert "modified:" not in excerpt.lower()
+    assert "音视频联合检索" in excerpt
+    assert all("created:" not in concept.lower() for concept in concepts)
+
+
+def test_asset_summary_prefers_knowledge_point_candidates_over_filename_slug(tmp_path: Path) -> None:
+    material_path = tmp_path / "xidea-multimodal-demo.md"
+    material_path.write_text(
+        "# 多模态大模型学习梳理\n\n"
+        "- 一个可学习的知识点是：为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式。\n"
+        "- 第二个知识点是：DiT 和 Transformer 范式如何从文本迁移到图像视频。\n"
+        "- 第三个知识点是：LLM 作为具身智能常识大脑的边界。\n",
+        encoding="utf-8",
+    )
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-2",
+            title="xidea-multimodal-demo.md",
+            kind="note",
+            topic="多模态学习编排",
+            summary="不该优先把文件名 slug 当成知识点。",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = _build_request(
+        entry_mode="material-import",
+        source_asset_ids=["material-2"],
+    )
+    result = resolve_tool_result("asset-summary", request, repository=repository)
+
+    assert result is not None
+    concepts = result.payload["assets"][0]["keyConcepts"]
+    assert concepts[:3] == [
+        "为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式",
+        "DiT 和 Transformer 范式如何从文本迁移到图像视频",
+        "LLM 作为具身智能常识大脑的边界",
+    ]
+    assert "xidea-multimodal-demo" not in concepts
 
 
 def test_unit_detail_includes_enrichment() -> None:
@@ -203,6 +286,27 @@ def test_retrieve_source_assets_returns_all() -> None:
     assert all(a.id.startswith("asset-") for a in assets)
 
 
+def test_retrieve_source_assets_reads_uploaded_project_materials(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-1",
+            title="uploaded-notes.md",
+            kind="note",
+            topic="RAG 上传材料",
+            summary="记录了上传材料里的判断标准。",
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    assets = retrieve_source_assets(["material-1"], repository=repository, project_id="rag-demo")
+
+    assert len(assets) == 1
+    assert assets[0].title == "uploaded-notes.md"
+    assert assets[0].summary is not None
+
+
 def test_retrieve_learning_unit_fallback() -> None:
     unit = retrieve_learning_unit(None, "RAG 基础")
     assert unit.id == "unit-rag-core"
@@ -212,6 +316,71 @@ def test_retrieve_learning_unit_fallback() -> None:
 
     unit = retrieve_learning_unit(None, "答辩准备")
     assert unit.id == "unit-rag-explain"
+
+
+def test_retrieve_learning_unit_reads_project_knowledge_point(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-multimodal-shared-space",
+                project_id="rag-demo",
+                title="多模态共享 token 空间",
+                description="围绕文本、图像和动作都能映射到统一 token 表示空间建立理解。",
+                status="active",
+                origin_type="session-suggestion",
+                origin_session_id="thread-1",
+                source_material_refs=["material-1"],
+            )
+        ]
+    )
+
+    unit = retrieve_learning_unit(
+        "kp-multimodal-shared-space",
+        "围绕多模态建立学习理解",
+        repository=repository,
+        project_id="rag-demo",
+    )
+
+    assert unit.id == "kp-multimodal-shared-space"
+    assert unit.title == "多模态共享 token 空间"
+    assert "统一 token 表示空间" in unit.summary
+    assert "材料迁移" in unit.weakness_tags
+
+
+def test_unit_detail_reads_project_knowledge_point(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-embodied-llm",
+                project_id="rag-demo",
+                title="LLM 作为具身智能常识大脑的边界",
+                description="理解 LLM 在任务拆解、语义理解和执行闭环中的职责边界。",
+                status="active",
+                origin_type="session-suggestion",
+                origin_session_id="thread-1",
+                source_material_refs=["material-1"],
+            )
+        ]
+    )
+    request = _build_request(
+        topic="围绕具身智能建立知识点",
+        target_unit_id="kp-embodied-llm",
+    )
+
+    result = resolve_tool_result("unit-detail", request, repository=repository)
+
+    assert result is not None
+    payload = result.payload
+    assert payload["focusUnitId"] == "kp-embodied-llm"
+    assert payload["title"] == "LLM 作为具身智能常识大脑的边界"
+    assert "边界" in payload["summary"]
+    assert payload["difficulty"] == 3
+    assert payload["prerequisites"]
+    assert payload["commonMisconceptions"]
+    assert payload["coreQuestions"]
+    assert payload["teachingNote"]
 
 
 def test_resolve_none_intent() -> None:

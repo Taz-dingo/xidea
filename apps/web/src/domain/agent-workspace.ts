@@ -95,6 +95,8 @@ export interface AgentWorkspaceKnowledgePointState {
 export interface AgentWorkspaceKnowledgePointRecord {
   readonly knowledge_point: AgentWorkspaceKnowledgePoint;
   readonly knowledge_point_state: AgentWorkspaceKnowledgePointState | null;
+  readonly linked_session_ids?: ReadonlyArray<string>;
+  readonly linked_session_message_ids?: Readonly<Record<string, number>>;
 }
 
 export interface AgentWorkspaceProjectMemory {

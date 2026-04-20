@@ -1,5 +1,8 @@
+import json
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import (
@@ -12,6 +15,7 @@ from xidea_agent.runtime import (
     run_agent_v0,
 )
 from xidea_agent.review_engine import ReviewDecision
+from xidea_agent.llm import LLMClient
 from xidea_agent.state import (
     AgentRequest,
     KnowledgePoint,
@@ -22,6 +26,7 @@ from xidea_agent.state import (
     ProjectLearningProfile,
     ProjectMemory,
     Signal,
+    SourceAsset,
 )
 
 from conftest import (
@@ -58,29 +63,90 @@ def test_run_agent_v0_prefers_clarify_for_confusion() -> None:
     assert result.graph_state.diagnosis.primary_issue == "concept-confusion"
     assert result.graph_state.plan.selected_mode == "contrast-drill"
     assert result.graph_state.activity.kind == "quiz"
+    assert result.graph_state.activity.title == "先判断什么时候该补重排"
+    assert "该补的是重排" in result.graph_state.activity.prompt
+    assert len(result.graph_state.activities) == 2
+    assert result.graph_state.activities[1].kind == "coach-followup"
+    assert result.graph_state.activity.input.type == "choice"
+    choice_labels = [choice.label for choice in result.graph_state.activity.input.choices]
+    assert any("正确文档通常已经进 top-k" in label for label in choice_labels)
+    assert all("最容易混淆的两个判断对象" not in label for label in choice_labels)
+    correct_indexes = [
+        index
+        for index, choice in enumerate(result.graph_state.activity.input.choices)
+        if choice.is_correct
+    ]
+    assert len(correct_indexes) == 1
+    assert correct_indexes[0] != 0
+    assert all(
+        result.graph_state.activity.input.choices[index].is_correct is False
+        for index in range(len(result.graph_state.activity.input.choices))
+        if index != correct_indexes[0]
+    )
+    first_wrong_choice = next(
+        choice
+        for choice in result.graph_state.activity.input.choices
+        if not choice.is_correct
+    )
+    assert len(first_wrong_choice.feedback_layers) >= 3
+    assert first_wrong_choice.analysis is not None
     assert [event.event for event in result.events] == [
         "diagnosis",
         "text-delta",
         "plan",
-        "activity",
+        "activities",
         "state-patch",
         "done",
     ]
+
+
+def test_run_agent_v0_falls_back_to_rule_diagnosis_when_llm_unavailable() -> None:
+    result = run_agent_v0(
+        build_request(
+            session_type="project",
+            entry_mode="material-import",
+            target_unit_id=None,
+            topic="围绕材料推进多模态学习编排",
+            source_asset_ids=["asset-2"],
+            messages=[{"role": "user", "content": "请根据材料帮我沉淀一个知识点"}],
+        ),
+        llm=build_mock_llm(side_effect=RuntimeError("401 auth failed")),
+    )
+
+    assert result.graph_state.diagnosis is not None
+    assert result.graph_state.diagnosis.recommended_action == "clarify"
+    assert result.graph_state.plan is not None
+    assert result.graph_state.activity is None
+    assert len(result.graph_state.knowledge_point_suggestions) == 3
+    assert "asset-2" in (result.graph_state.assistant_message or "") or "检索召回与重排对比笔记" in (
+        result.graph_state.assistant_message or ""
+    )
+    assert "知识点" in (result.graph_state.assistant_message or "")
+    assert any("rule-based fallback diagnosis" in item for item in result.graph_state.rationale)
 
 
 def test_iter_agent_v0_events_yields_incrementally() -> None:
     events = list(iter_agent_v0_events(build_request(), llm=build_mock_llm()))
 
     event_types = [event.event for event in events]
-    assert event_types[0] == "diagnosis"
-    assert event_types[1] == "text-delta"
-    assert "plan" in event_types[1:-2]
-    assert "activity" in event_types[1:-2]
+    assert event_types[:2] == ["status", "status"]
+    assert event_types[2] == "diagnosis"
+    assert event_types[3] == "status"
+    assert event_types[4] == "text-delta"
+    assert "plan" in event_types[4:-2]
+    assert "activities" in event_types[4:-2]
     assert event_types[-2:] == ["state-patch", "done"]
     assert event_types.count("text-delta") >= 1
+    assert [event.phase for event in events if event.event == "status"] == [
+        "loading-context",
+        "making-decision",
+        "composing-response",
+        "preparing-followup",
+        "writing-state",
+    ]
 
 
-def test_iter_agent_v0_events_uses_bundled_reply_and_plan() -> None:
+def test_iter_agent_v0_events_reuses_bundled_reply_when_main_decision_is_complete() -> None:
     import json
     from types import SimpleNamespace
     from unittest.mock import MagicMock
@@ -109,6 +175,43 @@ def test_iter_agent_v0_events_uses_bundled_reply_and_plan() -> None:
                  "reason": "LLM-reason", "outcome": "LLM-outcome"},
             ],
         },
+        "activities": [
+            {
+                "title": "先判断问题更像召回缺口还是排序缺口",
+                "objective": "能识别什么时候该补重排。",
+                "prompt": "哪种现象最说明候选已召回到位，但前排排序不够对口？",
+                "support": "先把召回和排序边界拆开。",
+                "input": {
+                    "type": "choice",
+                    "choices": [
+                        {
+                            "id": "rerank",
+                            "label": "正确文档通常已经进 top-k，但前几条经常答非所问。",
+                            "detail": "这说明候选已在集合里，主要问题落在排序。",
+                            "is_correct": True,
+                            "feedback_layers": ["对，这更像该补重排。"],
+                            "analysis": "命中了“候选已在集合里但前排顺序不对”的信号。",
+                        },
+                        {
+                            "id": "recall",
+                            "label": "top-k 里经常完全找不到正确文档，所以先补重排。",
+                            "detail": "这更像召回覆盖不足。",
+                            "is_correct": False,
+                            "feedback_layers": ["如果文档没进候选集，重排没有对象可排。"],
+                            "analysis": "把召回缺口误判成排序缺口。",
+                        },
+                        {
+                            "id": "stuff",
+                            "label": "只要多塞上下文，就能替代重排。",
+                            "detail": "这会把排序问题伪装成堆料问题。",
+                            "is_correct": False,
+                            "feedback_layers": ["多塞内容不等于把最对口的证据排前面。"],
+                            "analysis": "把排序问题误写成覆盖率问题。",
+                        },
+                    ],
+                },
+            }
+        ],
     })
 
     def _response(content: str):
@@ -116,22 +219,41 @@ def test_iter_agent_v0_events_uses_bundled_reply_and_plan() -> None:
         choice = SimpleNamespace(message=message)
         return SimpleNamespace(choices=[choice])
 
+    def _stream_chunk(content: str):
+        delta = SimpleNamespace(content=content)
+        choice = SimpleNamespace(delta=delta)
+        return SimpleNamespace(choices=[choice])
+
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
         _response(main_decision_response),
+        iter([
+            _stream_chunk("先把 retrieval 和 reranking 的边界"),
+            _stream_chunk("拉清楚，再继续往项目判断里迁移。"),
+        ]),
     ]
     llm = LLMClient(client=mock_client, model="GLM-4.1V-Thinking-Flash", provider="zhipu")
 
     events = list(iter_agent_v0_events(build_request(), llm=llm))
+    event_types = [event.event for event in events]
 
-    assert [event.event for event in events][-2:] == ["state-patch", "done"]
+    assert event_types[:4] == ["status", "status", "diagnosis", "status"]
+    assert event_types[-2:] == ["state-patch", "done"]
     assert any(event.event == "plan" for event in events)
     assert "".join(event.delta for event in events if event.event == "text-delta").startswith("先把 retrieval")
+    assert [event.phase for event in events if event.event == "status"] == [
+        "loading-context",
+        "making-decision",
+        "composing-response",
+        "preparing-followup",
+        "writing-state",
+    ]
     assert mock_client.chat.completions.create.call_count == 1
 
 
 def test_run_agent_v0_emits_knowledge_point_suggestion_for_project_chat() -> None:
     request = build_request(
+        session_type="project",
         target_unit_id=None,
         topic="RAG 系统设计",
         messages=[
@@ -144,6 +266,7 @@ def test_run_agent_v0_emits_knowledge_point_suggestion_for_project_chat() -> Non
 
     result = run_agent_v0(request, llm=build_mock_llm())
 
+    assert result.graph_state.activity is None
     assert len(result.graph_state.knowledge_point_suggestions) == 1
     suggestion = result.graph_state.knowledge_point_suggestions[0]
     assert suggestion.kind == "create"
@@ -153,16 +276,471 @@ def test_run_agent_v0_emits_knowledge_point_suggestion_for_project_chat() -> Non
         "diagnosis",
         "text-delta",
         "plan",
-        "activity",
         "knowledge-point-suggestion",
         "state-patch",
         "done",
     ]
 
 
+def test_material_import_project_session_emits_multiple_knowledge_point_suggestions(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "materials.md"
+    material_path.write_text(
+        "视频理解 pipeline。音频时间对齐。具身交互反馈。",
+        encoding="utf-8",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-1",
+            title="llm-multimodal-notes.md",
+            kind="note",
+            topic="LLM、音视频、具身智能",
+            summary="视频理解、音频时间对齐与具身交互反馈。",
+            source_uri="llm-multimodal-notes.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = build_request(
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-1"],
+        messages=[{"role": "user", "content": "我想学这个，你帮我编排下吧"}],
+    )
+
+    result = run_agent_v0(
+        request,
+        repository=repository,
+        llm=build_mock_llm_for_material_import(),
+    )
+
+    assert len(result.graph_state.knowledge_point_suggestions) == 3
+    titles = [suggestion.title for suggestion in result.graph_state.knowledge_point_suggestions]
+    assert titles == [
+        "万物皆可Token化",
+        "DiT架构",
+        "LLM作为具身智能的“常识大脑”",
+    ]
+    assert all(suggestion.kind == "create" for suggestion in result.graph_state.knowledge_point_suggestions)
+    assert all(suggestion.status == "pending" for suggestion in result.graph_state.knowledge_point_suggestions)
+    assert all(
+        suggestion.source_material_refs == ["material-uploaded-1"]
+        for suggestion in result.graph_state.knowledge_point_suggestions
+    )
+    assert all(
+        "围绕材料《" not in suggestion.description
+        for suggestion in result.graph_state.knowledge_point_suggestions
+    )
+    assert any(
+        "统一表示空间" in suggestion.reason or "统一表示空间" in suggestion.description
+        for suggestion in result.graph_state.knowledge_point_suggestions
+    )
+
+
+def test_material_import_uses_asset_knowledge_point_candidates_when_reply_is_generic(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "materials.md"
+    material_path.write_text(
+        "# 多模态大模型学习梳理\n\n"
+        "- 一个可学习的知识点是：为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式。\n"
+        "- 第二个知识点是：DiT 和 Transformer 范式如何从文本迁移到图像视频。\n"
+        "- 第三个知识点是：LLM 作为具身智能常识大脑的边界。\n",
+        encoding="utf-8",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-2",
+            title="xidea-multimodal-demo.md",
+            kind="note",
+            topic="大模型、音视频、具身智能",
+            summary="用于验证材料正文里的知识点提炼，不依赖 reply 显式列出三条。",
+            source_uri="xidea-multimodal-demo.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = build_request(
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-2"],
+        messages=[{"role": "user", "content": "根据这份材料生成知识点"}],
+    )
+
+    def _response(content: str):
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message)
+        return SimpleNamespace(choices=[choice])
+
+    generic_main_decision = json.dumps({
+        "signals": [
+            {"kind": "project-relevance", "score": 0.92, "confidence": 0.86, "summary": "材料与当前项目高度相关"},
+        ],
+        "diagnosis": {
+            "recommended_action": "clarify",
+            "reason": "先围绕材料收敛知识点，再决定后续学习安排。",
+            "confidence": 0.86,
+            "primary_issue": "missing-context",
+            "needs_tool": False,
+        },
+        "reply": "我先按这份材料收敛学习主题，再继续往知识点沉淀和后续编排推进。",
+        "plan": {
+            "headline": "围绕材料收敛学习方向",
+            "summary": "先沉淀知识点，再决定学习与复习安排。",
+            "selected_mode": "guided-qa",
+            "expected_outcome": "明确下一轮最值得沉淀的学习对象。",
+            "steps": [
+                {
+                    "id": "clarify-material",
+                    "title": "围绕材料收敛主题",
+                    "mode": "guided-qa",
+                    "reason": "先把材料里的稳定判断拉出来。",
+                    "outcome": "明确后续要沉淀的知识点。",
+                }
+            ],
+        },
+        "activities": [],
+    })
+    fallback_plan = json.dumps(
+        {
+            "headline": "围绕材料收敛学习方向",
+            "summary": "先沉淀知识点，再决定学习与复习安排。",
+            "selected_mode": "guided-qa",
+            "expected_outcome": "明确下一轮最值得沉淀的学习对象。",
+            "steps": [
+                {
+                    "id": "clarify-material",
+                    "title": "围绕材料收敛主题",
+                    "mode": "guided-qa",
+                    "reason": "先把材料里的稳定判断拉出来。",
+                    "outcome": "明确后续要沉淀的知识点。",
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    fallback_response_bundle = json.dumps(
+        {
+            "reply": "我先按这份材料收敛学习主题。",
+            "plan": json.loads(fallback_plan),
+        },
+        ensure_ascii=False,
+    )
+    enrichment_payload = json.dumps(
+        [
+            {
+                "title": "为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式",
+                "description": "这条知识点解释多模态与具身智能为什么能共享统一建模范式：文本、图像、视频与动作都需要先被压成一致的 token 表示，再进入同一套推理接口。",
+                "reason": "材料正文已经把“统一表示空间”明确提出来，先沉淀这条判断，后续学习才不会把多模态扩展误解成几条割裂路线。",
+            },
+            {
+                "title": "DiT 和 Transformer 范式如何从文本迁移到图像视频",
+                "description": "这条知识点关注 Transformer 为什么能从文本建模扩展到图像与视频生成，关键在于表示组织和长程依赖建模方式的迁移。",
+                "reason": "材料已经把 DiT 当作关键线索，如果不单独沉淀，后续容易把“模型结构迁移”与“任务目标变化”混成一件事。",
+            },
+            {
+                "title": "LLM 作为具身智能常识大脑的边界",
+                "description": "这条知识点强调 LLM 在具身系统里更像高层常识与规划模块，负责任务拆解和语义理解，而不是替代感知与底层控制。",
+                "reason": "材料把 LLM 和具身智能并置讨论，先收住这条分工边界，后面才能判断哪些问题属于规划层，哪些属于执行层。",
+            },
+        ],
+        ensure_ascii=False,
+    )
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = [
+        _response(generic_main_decision),
+        _response(fallback_response_bundle),
+        _response(fallback_plan),
+        _response(enrichment_payload),
+        _response(enrichment_payload),
+        _response(enrichment_payload),
+    ]
+    llm = LLMClient(client=mock_client, model="gpt-4o-mini")
+
+    result = run_agent_v0(request, repository=repository, llm=llm)
+
+    titles = [suggestion.title for suggestion in result.graph_state.knowledge_point_suggestions]
+    assert titles == [
+        "为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式",
+        "DiT 和 Transformer 范式如何从文本迁移到图像视频",
+        "LLM 作为具身智能常识大脑的边界",
+    ]
+    assert "统一建模范式" in result.graph_state.knowledge_point_suggestions[0].description
+
+
+def test_iter_agent_v0_events_material_import_reply_matches_generated_suggestions(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "materials.md"
+    material_path.write_text(
+        "# 多模态大模型学习梳理\n\n"
+        "- 一个可学习的知识点是：为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式。\n"
+        "- 第二个知识点是：DiT 和 Transformer 范式如何从文本迁移到图像视频。\n"
+        "- 第三个知识点是：LLM 作为具身智能常识大脑的边界。\n",
+        encoding="utf-8",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-3",
+            title="xidea-multimodal-demo.md",
+            kind="note",
+            topic="大模型、音视频、具身智能",
+            summary="用于验证 stream 回复会和生成出的知识点建议保持一致。",
+            source_uri="xidea-multimodal-demo.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = build_request(
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-3"],
+        messages=[{"role": "user", "content": "根据这份材料生成知识点"}],
+    )
+
+    def _response(content: str):
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message)
+        return SimpleNamespace(choices=[choice])
+
+    generic_main_decision = json.dumps(
+        {
+            "signals": [
+                {
+                    "kind": "project-relevance",
+                    "score": 0.92,
+                    "confidence": 0.86,
+                    "summary": "材料与当前项目高度相关",
+                },
+            ],
+            "diagnosis": {
+                "recommended_action": "clarify",
+                "reason": "先围绕材料收敛知识点，再决定后续学习安排。",
+                "confidence": 0.86,
+                "primary_issue": "missing-context",
+                "needs_tool": False,
+            },
+            "reply": "我先按这份材料收敛学习主题，再继续往知识点沉淀和后续编排推进。",
+            "plan": {
+                "headline": "围绕材料收敛学习方向",
+                "summary": "先沉淀知识点，再决定学习与复习安排。",
+                "selected_mode": "guided-qa",
+                "expected_outcome": "明确下一轮最值得沉淀的学习对象。",
+                "steps": [
+                    {
+                        "id": "clarify-material",
+                        "title": "围绕材料收敛主题",
+                        "mode": "guided-qa",
+                        "reason": "先把材料里的稳定判断拉出来。",
+                        "outcome": "明确后续要沉淀的知识点。",
+                    }
+                ],
+            },
+            "activities": [],
+        }
+    )
+    enrichment_payload = json.dumps(
+        [
+            {
+                "title": "为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式",
+                "description": "这条知识点解释多模态与具身智能为什么能共享统一建模范式：文本、图像、视频与动作都会先被压成一致的 token 表示，再进入同一套推理接口。",
+                "reason": "材料正文已经把“统一表示空间”明确提出来，先沉淀这条判断，后续学习才不会把多模态扩展误解成割裂路线。",
+            },
+            {
+                "title": "DiT 和 Transformer 范式如何从文本迁移到图像视频",
+                "description": "这条知识点关注 Transformer 为什么能从文本建模扩展到图像与视频生成，关键在于表示组织和长程依赖建模方式的迁移。",
+                "reason": "材料已经把 DiT 当作关键线索，如果不单独沉淀，后续容易把模型结构迁移与任务目标变化混成一件事。",
+            },
+            {
+                "title": "LLM 作为具身智能常识大脑的边界",
+                "description": "这条知识点强调 LLM 在具身系统里更像高层常识与规划模块，负责任务拆解和语义理解，而不是替代感知与底层控制。",
+                "reason": "材料把 LLM 和具身智能并置讨论，先收住这条分工边界，后面才能判断哪些问题属于规划层，哪些问题属于执行层。",
+            },
+        ],
+        ensure_ascii=False,
+    )
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = [
+        _response(generic_main_decision),
+        _response(enrichment_payload),
+        _response(enrichment_payload),
+    ]
+    llm = LLMClient(client=mock_client, model="gpt-4o-mini")
+
+    events = list(iter_agent_v0_events(request, repository=repository, llm=llm))
+
+    text = "".join(event.delta for event in events if event.event == "text-delta")
+    assert "我已经先整理出 3 条候选知识点" in text
+    assert "为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式" in text
+    assert "DiT 和 Transformer 范式如何从文本迁移到图像视频" in text
+    assert "LLM 作为具身智能常识大脑的边界" in text
+
+
+def test_iter_agent_v0_events_reuses_existing_material_suggestion_and_reply(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "materials.md"
+    material_path.write_text(
+        "视频理解 pipeline。音频时间对齐。具身交互反馈。",
+        encoding="utf-8",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-1",
+            title="LLM、音视频、具身智能.md",
+            kind="note",
+            topic="LLM、音视频、具身智能",
+            summary="视频理解、音频时间对齐与具身交互反馈。",
+            source_uri="LLM、音视频、具身智能.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    initial_request = build_request(
+        thread_id="material-thread-1",
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-1"],
+        messages=[{"role": "user", "content": "请根据材料帮我沉淀一个知识点"}],
+    )
+    initial_result = run_agent_v0(
+        initial_request,
+        repository=repository,
+        llm=build_mock_llm(side_effect=RuntimeError("401 auth failed")),
+    )
+    repository.save_run(initial_request, initial_result)
+    existing_suggestion = initial_result.graph_state.knowledge_point_suggestions[0]
+
+    followup_request = build_request(
+        thread_id="material-thread-2",
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-1"],
+        messages=[{"role": "user", "content": "继续根据这份材料给我一个知识点方向"}],
+    )
+    events = list(
+        iter_agent_v0_events(
+            followup_request,
+            repository=repository,
+            llm=build_mock_llm(side_effect=RuntimeError("401 auth failed")),
+        )
+    )
+
+    text_deltas = [event.delta for event in events if event.event == "text-delta"]
+    suggestion_event = next(event for event in events if event.event == "knowledge-point-suggestion")
+
+    assert "LLM、音视频、具身智能.md" in "".join(text_deltas)
+    assert "LLM、音视频" in "".join(text_deltas)
+    assert suggestion_event.suggestions[0].id == existing_suggestion.id
+    assert suggestion_event.suggestions[0].title == existing_suggestion.title
+
+
+def test_project_session_never_emits_activity_even_with_target_unit() -> None:
+    request = build_request(session_type="project")
+
+    result = run_agent_v0(request, llm=build_mock_llm())
+
+    assert result.graph_state.activity is None
+    assert result.graph_state.activities == []
+    assert "activities" not in [event.event for event in result.events]
+    assert any("skipped activity because project session" in item for item in result.graph_state.rationale)
+
+
+def test_project_session_low_info_message_no_longer_short_circuits() -> None:
+    llm = build_mock_llm()
+    request = build_request(
+        session_type="project",
+        target_unit_id=None,
+        topic="RAG 系统设计",
+        messages=[{"role": "user", "content": "hi"}],
+    )
+
+    result = run_agent_v0(request, llm=llm)
+
+    assert result.graph_state.diagnosis is not None
+    assert result.graph_state.plan is not None
+    assert result.graph_state.assistant_message is not None
+    assert "project_chat low-info guardrail" not in " ".join(result.graph_state.rationale)
+    assert llm.client.chat.completions.create.call_count > 0
+
+
+def test_review_session_capability_message_short_circuits_without_calling_llm() -> None:
+    llm = build_mock_llm()
+    request = build_request(
+        session_type="review",
+        topic="RAG 系统设计",
+        messages=[{"role": "user", "content": "hi，你可以做什么"}],
+    )
+
+    result = run_agent_v0(request, llm=llm)
+
+    assert result.graph_state.diagnosis is not None
+    assert result.graph_state.diagnosis.primary_issue == "missing-context"
+    assert result.graph_state.activities == []
+    assert result.graph_state.activity is None
+    assert result.graph_state.assistant_message is not None
+    assert "review session" in result.graph_state.assistant_message
+    assert "主动回忆" in result.graph_state.assistant_message
+    assert any("session_capability guard" in item for item in result.graph_state.rationale)
+    assert [event.event for event in result.events] == [
+        "diagnosis",
+        "text-delta",
+        "plan",
+        "state-patch",
+        "done",
+    ]
+    assert llm.client.chat.completions.create.call_count == 0
+
+
+def test_project_session_does_not_write_learning_state_patch() -> None:
+    request = build_request(
+        session_type="project",
+        target_unit_id=None,
+        topic="RAG 系统设计",
+        messages=[
+            {
+                "role": "user",
+                "content": "我搞不清 retrieval 和 reranking 的边界，帮我先讲清楚它们分别控制什么。",
+            }
+        ],
+    )
+
+    result = run_agent_v0(request, llm=build_mock_llm())
+
+    assert result.graph_state.state_patch is not None
+    assert result.graph_state.state_patch.learner_state_patch is None
+    assert result.graph_state.state_patch.review_patch is None
+
+
 def test_run_agent_v0_blocks_off_topic_without_calling_llm() -> None:
     llm = build_mock_llm()
     request = build_request(
+        session_type="project",
         target_unit_id=None,
         topic="RAG 系统设计",
         messages=[{"role": "user", "content": "上海明天天气怎么样？"}],
@@ -190,6 +768,7 @@ def test_run_agent_v0_blocks_off_topic_without_calling_llm() -> None:
 def test_run_agent_v0_dedupes_boundary_suggestion_when_pair_order_changes(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "agent.db")
     first_request = build_request(
+        session_type="project",
         target_unit_id=None,
         topic="RAG 系统设计",
         messages=[
@@ -204,6 +783,7 @@ def test_run_agent_v0_dedupes_boundary_suggestion_when_pair_order_changes(tmp_pa
 
     second_request = build_request(
         thread_id="thread-2",
+        session_type="project",
         target_unit_id=None,
         topic="RAG 系统设计",
         messages=[
@@ -249,12 +829,14 @@ def test_run_agent_v0_emits_archive_suggestion_for_stable_knowledge_point(tmp_pa
     )
 
     request = build_request(
+        session_type="project",
         target_unit_id=None,
         topic="RAG 系统设计",
         messages=[{"role": "user", "content": "继续看看这个 project 现在还剩什么要处理。"}],
     )
     result = run_agent_v0(request, repository=repository, llm=build_mock_llm_for_teach())
 
+    assert result.graph_state.activity is None
     assert len(result.graph_state.knowledge_point_suggestions) == 1
     suggestion = result.graph_state.knowledge_point_suggestions[0]
     assert suggestion.kind == "archive"
@@ -290,6 +872,43 @@ def test_iter_agent_v0_events_streams_reply_in_multiple_chunks() -> None:
                  "reason": "LLM-reason", "outcome": "LLM-outcome"},
             ],
         },
+        "activities": [
+            {
+                "title": "先判断哪一层在决定回答质量",
+                "objective": "能说明为什么 RAG 不只是检索加拼接。",
+                "prompt": "哪句最准确说明 RAG 里真正决定回答质量的额外控制层？",
+                "support": "先把检索命中和上下文构造拆开。",
+                "input": {
+                    "type": "choice",
+                    "choices": [
+                        {
+                            "id": "context",
+                            "label": "检索命中只是拿到候选，排序、筛选和上下文组织决定模型最终会不会抓对证据。",
+                            "detail": "这句直接点出上下文构造层。",
+                            "is_correct": True,
+                            "feedback_layers": ["对，这才是 RAG 相比“检索+拼接”多出来的关键控制层。"],
+                            "analysis": "准确指出上下文构造在回答质量里的作用。",
+                        },
+                        {
+                            "id": "concat",
+                            "label": "只要能检索到相关文档，把全文直接拼进 prompt 就够了。",
+                            "detail": "会忽略上下文构造和噪音控制。",
+                            "is_correct": False,
+                            "feedback_layers": ["命中不等于可用，上下文还需要组织。"],
+                            "analysis": "把 RAG 误简化成了机械拼接。",
+                        },
+                        {
+                            "id": "more",
+                            "label": "RAG 的核心只是让模型看到更多内容，所以内容越多越好。",
+                            "detail": "这会把证据质量控制偷换成覆盖率直觉。",
+                            "is_correct": False,
+                            "feedback_layers": ["更多内容不是目标，更对口的证据才是目标。"],
+                            "analysis": "忽略了排序、截断和噪音控制。",
+                        },
+                    ],
+                },
+            }
+        ],
     })
     long_reply = "这不是简单拼接，因为检索、筛选、重排和上下文压缩各自承担不同职责，需要一起控制噪声、相关性和可解释性。"
 
@@ -300,17 +919,30 @@ def test_iter_agent_v0_events_streams_reply_in_multiple_chunks() -> None:
         choice = SimpleNamespace(message=message)
         return SimpleNamespace(choices=[choice])
 
+    def _stream_chunk(content: str):
+        from types import SimpleNamespace
+
+        delta = SimpleNamespace(content=content)
+        choice = SimpleNamespace(delta=delta)
+        return SimpleNamespace(choices=[choice])
+
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
         _response(main_decision_response),
+        iter([
+            _stream_chunk("这不是简单拼接，因为检索、筛选、重排"),
+            _stream_chunk("和上下文压缩各自承担不同职责，需要一起控制噪声、相关性和可解释性。"),
+        ]),
     ]
     llm = LLMClient(client=mock_client, model="GLM-4.1V-Thinking-Flash", provider="zhipu")
 
     events = list(iter_agent_v0_events(build_request(), llm=llm))
 
     event_types = [event.event for event in events]
-    assert event_types[0] == "diagnosis"
-    assert event_types[1] == "text-delta"
+    assert event_types[:2] == ["status", "status"]
+    assert event_types[2] == "diagnosis"
+    assert event_types[3] == "status"
+    assert event_types[4] == "text-delta"
     text_deltas = [event.delta for event in events if event.event == "text-delta"]
     assert len(text_deltas) >= 2
     assert "".join(text_deltas) == long_reply
@@ -351,6 +983,7 @@ def test_run_agent_v0_schedules_review_for_recall_requests() -> None:
 
 def test_run_agent_v0_preloads_review_context_for_review_requests() -> None:
     request = build_request(
+        session_type="review",
         messages=[{"role": "user", "content": "我最近总忘这些概念，想做一次复习巩固"}],
     )
     llm = build_mock_llm_for_review()
@@ -361,6 +994,21 @@ def test_run_agent_v0_preloads_review_context_for_review_requests() -> None:
     assert result.graph_state.tool_result.kind == "review-context"
     assert result.graph_state.tool_intent == "none"
     assert llm.client.chat.completions.create.call_count == 1
+
+
+def test_review_session_coerces_non_review_diagnosis_when_confusion_is_not_high() -> None:
+    request = build_request(
+        session_type="review",
+        messages=[{"role": "user", "content": "继续这一轮吧，我想稳一下刚学过的内容。"}],
+    )
+
+    result = run_agent_v0(request, llm=build_mock_llm_for_teach())
+
+    assert result.graph_state.diagnosis is not None
+    assert result.graph_state.activity is not None
+    assert result.graph_state.diagnosis.recommended_action == "review"
+    assert result.graph_state.diagnosis.primary_issue == "weak-recall"
+    assert result.graph_state.activity.kind == "recall"
 
 
 def test_run_agent_v0_reuses_preloaded_unit_detail_when_main_decision_requests_tool() -> None:
@@ -394,6 +1042,43 @@ def test_run_agent_v0_reuses_preloaded_unit_detail_when_main_decision_requests_t
                  "reason": "先补结构化框架", "outcome": "能说清当前单元的关键判断"},
             ],
         },
+        "activities": [
+            {
+                "title": "先抓住这个单元的主判断",
+                "objective": "能说清当前单元最关键的结构判断。",
+                "prompt": "下面哪一句最准确概括当前单元里 retrieval 和 reranking 的分工？",
+                "support": "先把主框架搭起来，再进入细追问。",
+                "input": {
+                    "type": "choice",
+                    "choices": [
+                        {
+                            "id": "split",
+                            "label": "retrieval 先找候选，reranking 再把最对口的证据排前面。",
+                            "detail": "这句把两层职责拆清楚了。",
+                            "is_correct": True,
+                            "feedback_layers": ["对，先把这个总框架搭起来。"],
+                            "analysis": "准确概括了两阶段分工。",
+                        },
+                        {
+                            "id": "same",
+                            "label": "两者本质上都在做把漏掉的文档重新找回来。",
+                            "detail": "这把召回和排序混成同一件事。",
+                            "is_correct": False,
+                            "feedback_layers": ["这里把召回和排序的职责混在一起了。"],
+                            "analysis": "把两阶段职责错误地压成了同一个补漏动作。",
+                        },
+                        {
+                            "id": "model",
+                            "label": "主要还是看模型够不够强，链路分工不重要。",
+                            "detail": "这会绕开当前真正要建立的结构理解。",
+                            "is_correct": False,
+                            "feedback_layers": ["先别把焦点跳去模型强弱，当前更重要的是搞清链路分工。"],
+                            "analysis": "把结构理解问题偷换成模型能力问题。",
+                        },
+                    ],
+                },
+            }
+        ],
     })
 
     def _response(content: str):

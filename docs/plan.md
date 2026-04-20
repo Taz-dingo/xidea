@@ -4,19 +4,19 @@
 
 ### Current Parallel Split
 
-当前前端已开始接真实 project/session contract，但当前并行主冲刺仍集中在 `apps/agent`。
-本轮主目标已从“只补 backend 基础层”推进到“稳定 backend contract / runtime 边界，并让 web 连调先跑通”；当前剩余共享热点集中在 `typed activity_result`、archive confirm 和 runtime 结构化事件收口。
+当前前端默认先不作为并行主线。
+本轮两人拆分先集中在 `apps/agent`，目标是先把 backend contract / storage 与 agent runtime / writeback 分开推进，减少共享热点文件冲突。
 
 #### Backend owner
 
 - 主目录：`apps/agent/src/xidea_agent`
 - 主文件：`state.py`、`repository.py`、`api.py`
 - 本轮 checklist：
-  - [x] 收敛对外 request / response / stream schema，统一向 `Project / Session / KnowledgePoint` 命名靠拢
-  - [x] 扩 `projects` 持久化字段，补齐 `title / description / special_rules`
-  - [x] 补 `project_materials / session_attachments` 的表结构、repository 方法和最小读取接口
-  - [x] 收敛 `project / study / review` 三类 session 的基础字段与创建 contract
-  - [x] 补 Project 创建 / bootstrap 最小链路：topic、description、materials、special rules、初始 memory、learning profile、knowledge points、project session
+  - [ ] 收敛对外 request / response / stream schema，统一向 `Project / Session / KnowledgePoint` 命名靠拢
+  - [ ] 扩 `projects` 持久化字段，补齐 `title / description / special_rules`
+  - [ ] 补 `project_materials / session_attachments` 的表结构、repository 方法和最小读取接口
+  - [ ] 收敛 `project / study / review` 三类 session 的基础字段与创建 contract
+  - [ ] 补 Project 创建 / bootstrap 最小链路：topic、description、materials、special rules、初始 memory、learning profile、knowledge points、project session
 
 #### Agent owner
 
@@ -25,19 +25,11 @@
 - 本轮 checklist：
   - [ ] 继续把主链路收敛到“预取证据上下文 -> 单次主决策 -> 少量动态 tool loop -> writeback”
   - [ ] 将 `project / study / review` 三类 session 的行为差异落实到 runtime / prompt / activity 决策
+    - 当前进展：`AgentRequest` 已显式带 `session_type`，`project session` 不再默认塞 fallback `target_unit_id`
+    - 当前进展：`project session` 才会产出 knowledge point suggestion，且不再直接下发 learning activity；`review session` 会优先保持回忆校准语义
   - [ ] 收敛知识点生命周期：bootstrap、project chat create suggestion、archive suggestion、confirm 后状态变化
   - [ ] 将 project materials、project memory、learning profile、review context 进一步收口为同一主决策证据包
   - [ ] 定出当前 `Consolidation` 的最小演示路径，优先手动触发
-
-#### Frontend owner
-
-- 主目录：`apps/web/src/app/workspace`、`apps/web/src/components/session`
-- 主文件：`use-data.ts`、`use-session-agent.ts`、`agent-workspace-client.ts`、`backend-adapter.ts`
-- 本轮 checklist：
-  - [x] 接通 `/projects`、`/projects/{project_id}`、`/projects/{project_id}/sessions/{session_id}` 的 hydration
-  - [x] 将 `create project`、`edit project meta`、`create session`、`edit knowledge point` 接到真实 backend
-  - [ ] 将 activity submit 从自由文本消息切到 typed `activity_result`
-  - [ ] 将 knowledge point archive / confirm 从本地切换切到正式 backend API
 
 #### Shared Hotspots
 
@@ -49,7 +41,7 @@
 
 1. backend owner 先落 schema / repository / API 基础层
 2. agent owner 基于稳定 schema 并行推进 runtime / prompt / writeback
-3. 前端在已接通 project/session contract 的基础上，继续切 `typed activity_result` 与 archive/confirm
+3. 两块合流后，再由前端切 `typed activity_result`
 
 ### P0
 
@@ -90,10 +82,28 @@
     - 已将 `reply + plan` bundling 为 1 次调用；sync 与 stream 目前都收敛到 2 次主模型调用
     - 已补 `main_decision` 单次主决策调用：当 `diagnosis.needs_tool=false` 时，sync / stream 会在同一次主调用里同时拿到 `signals + diagnosis + reply + plan`
     - 已把可预判的 tool context 前置到主决策前：`material-import -> asset-summary`、`coach-followup -> thread-memory`、`review -> review-context`、带 `target_unit_id` 的常规问答 -> `unit-detail`
-    - 当前剩余缺口集中在 LLM 仍主动返回 `needs_tool=true` 的少数场景：这些路径现在会优先复用预取上下文，但整体仍是 `main_decision -> tool/session loop -> bundled response`
-- [x] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
+    - 已补 typed `status` stream 事件，首个可消费事件不再等到 diagnosis；前端可在主调用未返回时先展示阶段反馈
+    - 已把 stream 端点的 reply 路径切到真实 `stream_assistant_reply`，不再把 bundled reply 在服务端切块伪装成流式
+    - 已压缩 observation 摘要长度，减少结构化主调用里的无效 prompt 膨胀
+    - 已把非 project session 的材料上下文预取收掉，避免 study / review 被 thread context 里的旧材料拖慢或污染
+    - 已补 `project session` 的 low-info 快路径：`hi / hello / 在吗 / 继续` 这类 turn 会直接短路成 project-chat 澄清，不再白跑 LLM 诊断
+    - 已取消 `project session` 的 deterministic low-info 主路径拦截；当前 `ok / 继续 / hi / 细化一下` 这类短消息会重新回到 LLM 推进，而不是被模板式澄清误伤
+    - 已补 `study / review session` 的 capability / meta guard：`你可以做什么 / 你能怎么帮我` 这类 turn 会先返回 session 能力说明，不再误触学习卡或复习卡
+    - 已把 prompt 结构升级成“共享 base prompt + `project / study / review` 分轨 session prompt”，并继续保留 runtime guard；`project session` 也已加 pedagogical reply 过滤和 template fallback，避免文本语义漂回“先做题 / 先回忆”
+    - 已把 `project session` 的默认语义进一步收成“学习方向 / 主题讨论 / 材料线索 / 知识点更新”四类推进目标，避免 prompt 和 runtime fallback 再退回空泛的 project 管理对话
+    - 已修正 reply 生成链路里的 `user_msg` 传递错误：当前使用真实 `message.content`，不再把整个 `Message` 对象字符串塞进 prompt
+    - 已把 study / review 的 activity 主路径切到 LLM 实时生成：当前优先消费 `main_decision` / `bundled response` 内直接返回的 `activities`，只有模型没稳定给卡时才回退到模板 builder
+    - 已把前端 mock runtime snapshot 里的预置卡片撤掉，避免 backend 已切真后，seed / fallback 状态继续把 demo 题卡泄漏到 UI
+    - 已把 dev tutor fixture 从比赛版前端主路径移除；正常 session 不再被 inspector、URL 参数或残留 runtime state 误切到 fixture
+    - 已把 choice activity contract 扩成 `is_correct / feedback_layers / analysis`，前端据此本地执行“错了继续、对了再过”的即时反馈；整组卡完成后仍统一回传一次 `activity_result`
+    - 已将 choice 题干与选项提示词再收紧：题目必须围绕知识点本身提问，错误项要对应真实误解；并已把正确答案位置做稳定打散，避免长期固定在第一个选项
+    - 已把 completed deck history 收进前端 runtime store 和右侧 inspector，当前可回看每张卡的尝试轨迹与错误分析
+    - 已把 `material-import` 的结构化知识点落库链修正成多 suggestion 路径：assistant 文本里明确提到的多条知识点会逐条写入 suggestion / knowledge point，而不是只落首条
+    - 已将材料导入后知识卡的 `description / reason` 改成 LLM 补全，模板只保留为 fallback；历史模板 desc 已做一次性回刷
+    - 当前剩余缺口集中在三处：一是 LLM 仍主动返回 `needs_tool=true` 的少数场景；二是 split path 下如果 bundled response 没带 `activities`，runtime 仍可能多一次 activity 生成调用；三是新知识卡仍缺少更完整的“教学化沉淀对象”，study / review 对用户动态知识卡的上下文支撑还不够厚
+- [ ] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
   - owner: 学习引擎 owner / 产品 owner
-- [x] 定义 Project 最小持久化对象：project memory、learning profile、knowledge points、sessions
+- [ ] 定义 Project 最小持久化对象：project memory、learning profile、knowledge points、sessions
   - owner: 学习引擎 owner
 - [ ] 定义 Knowledge Point 最小 schema 与生命周期
   - owner: 学习引擎 owner / 前端 owner
@@ -117,8 +127,15 @@
     - 新鲜度 / 最近更新时间
 - [x] 让学习资料、project memory、learning profile、review context 在主决策前完成预取，并进入同一证据上下文
   - owner: 学习引擎 owner
-- [ ] 定义 `project / study / review` 三类 session 的职责与状态转换
+  - [ ] 定义 `project / study / review` 三类 session 的职责与状态转换
   - owner: 产品 owner / 学习引擎 owner / 前端 owner
+  - 当前进展：
+    - request contract 已显式带 `session_type`
+    - `project session` / `review session` 的最小运行时差异已开始落到 agent
+    - `project session` 已不再发题，且前端只在 project session 暴露材料入口 / project inspector
+    - `project session` 的低信息 turn 已不再误触学习回复；下一步重点转到更细的 project-chat judgment 质量和 `needs_tool=true` 残留路径
+    - study / review session 已切到整组 `activities[]` 卡组，并在本地做完整组后再统一进入下一轮 agent loop
+    - 剩余缺口主要在 session create/bootstrap contract、持久化字段和更完整的状态转换
 - [x] 将 Project Workspace 改成默认知识点工作台，只有进入 session 时才展开 session workspace
   - owner: 前端 owner
   - 参考：`docs/reference/project-workspace-ui.md`
@@ -127,20 +144,25 @@
   - 参考：`docs/reference/project-workspace-ui.md`
 - [ ] 收敛 project chat 行为：默认继续当前会话，支持手动新建 `project session`，不自动切分
   - owner: 前端 owner / 学习引擎 owner
+  - 当前进展：
+    - 点击 `研讨 / 学习 / 复习` 已统一先进入待开始态，只有首条真实消息后才创建 thread
+    - 当前仍需继续检查跨项目切换、切 session 和挂材后多轮追问时，是否还有旧 thread 上下文或旧草稿泄漏
 - [ ] 支持 project chat 中的新增材料、知识点建议新增、知识点轻量编辑、topic/rules 修改入口
   - owner: 前端 owner / 学习引擎 owner
   - 说明：
     - 前端入口可先完成，但知识点建议新增的最终判断权归 agent；当前前端本地启发式已移除，等待 backend suggestion 事件
   - 当前进展：
-    - `edit project meta`、`create session`、`edit knowledge point` 已接到真实 backend
-    - `新增材料` 与 suggestion / archive confirm 仍待正式后端写口
-- [ ] 将学习 / 复习 session 第一版限制为选择题，不先接入简答题与开放式对练
+    - backend 已补 `project_materials` 持久化与 `list / upload` API
+    - frontend 已在 `Edit Project Meta` 和 `project session` 材料 tray 接入真实本地文件上传；上传结果会回流到当前 project materials，并可直接附着到当前 `project session`
+    - 当前剩余缺口是“创建 Project 时直接上传本地文件”这条创建流；第一版仍沿用 demo seed 材料选择
+- [x] 将学习 / 复习 session 第一版限制为选择题，不先接入简答题与开放式对练
   - owner: 产品 owner / 前端 owner / 学习引擎 owner
 - [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环，让学习/复习结果真正影响知识点状态与 project learning profile
   - owner: 学习引擎 owner / 前端 owner
   - 当前进展：
     - backend typed contract、repository writeback、project-level preload 已完成
-    - frontend 仍待把 activity submit 从自由文本切到 typed `activity_result`
+    - frontend 已将整组 activity 完成结果作为 typed `activity_result` 随下一轮请求回传
+    - 当前剩余缺口是把多张 card 的表现进一步拆成更细粒度的 backend writeback，而不是只做整组聚合结果
 - [x] 明确 project 不相关内容的 guardrail：主动提醒，但不更新 memory、不新增知识点、不触发学习/复习编排
   - owner: 学习引擎 owner
 - [x] 定义 knowledge point archive 建议规则：多次复习稳定后由系统建议，用户确认执行

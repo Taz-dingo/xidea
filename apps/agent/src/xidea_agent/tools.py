@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
 
+from xidea_agent.material_content import (
+    extract_material_knowledge_point_candidates,
+    normalize_material_text,
+)
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.state import (
     AgentRequest,
+    KnowledgePoint,
     LearningUnit,
     Message,
     ProjectContext,
@@ -166,7 +173,18 @@ _UNIT_ENRICHMENT: dict[str, dict[str, Any]] = {
 }
 
 
-def retrieve_source_assets(asset_ids: list[str]) -> list[SourceAsset]:
+def retrieve_source_assets(
+    asset_ids: list[str],
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+) -> list[SourceAsset]:
+    if repository is not None and project_id is not None:
+        materials = repository.get_project_materials_by_ids(project_id, asset_ids)
+        materials_by_id = {material.id: material for material in materials}
+        resolved_assets = [materials_by_id[asset_id] for asset_id in asset_ids if asset_id in materials_by_id]
+        if len(resolved_assets) == len(asset_ids):
+            return resolved_assets
+
     assets: list[SourceAsset] = []
 
     for asset_id in asset_ids:
@@ -186,9 +204,35 @@ def retrieve_source_assets(asset_ids: list[str]) -> list[SourceAsset]:
     return assets
 
 
-def retrieve_learning_unit(unit_id: str | None, topic: str) -> LearningUnit:
+def _build_learning_unit_from_knowledge_point(point: KnowledgePoint) -> LearningUnit:
+    summary = point.description.strip() or f"围绕知识点「{point.title}」建立稳定理解与可迁移判断。"
+    weakness_tags = ["知识点沉淀", "概念边界"]
+    if point.source_material_refs:
+        weakness_tags.append("材料迁移")
+    return LearningUnit(
+        id=point.id,
+        title=point.title,
+        summary=summary,
+        weakness_tags=list(dict.fromkeys(weakness_tags)),
+        candidate_modes=["guided-qa", "contrast-drill", "scenario-sim"],
+        difficulty=3 if point.source_material_refs else 2,
+    )
+
+
+def retrieve_learning_unit(
+    unit_id: str | None,
+    topic: str,
+    *,
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+) -> LearningUnit:
     if unit_id and unit_id in _UNIT_CATALOG:
         return _UNIT_CATALOG[unit_id]
+
+    if unit_id and repository is not None and project_id is not None:
+        point = repository.get_knowledge_point(project_id, unit_id)
+        if point is not None:
+            return _build_learning_unit_from_knowledge_point(point)
 
     lowered = topic.lower()
     if "重排" in topic or "rerank" in lowered:
@@ -210,7 +254,11 @@ def resolve_tool_result(
     if tool_intent == "asset-summary":
         return ToolResult(
             kind=tool_intent,
-            payload=_build_asset_summary_payload(request.source_asset_ids),
+            payload=_build_asset_summary_payload(
+                request.source_asset_ids,
+                repository=repository,
+                project_id=request.project_id,
+            ),
         )
 
     if tool_intent == "thread-memory":
@@ -229,7 +277,12 @@ def resolve_tool_result(
             ),
         )
 
-    unit = retrieve_learning_unit(request.target_unit_id, request.topic)
+    unit = retrieve_learning_unit(
+        request.target_unit_id,
+        request.topic,
+        repository=repository,
+        project_id=request.project_id,
+    )
     return ToolResult(
         kind=tool_intent,
         payload=_build_unit_detail_payload(unit),
@@ -288,46 +341,66 @@ def describe_tool_registry() -> dict[str, dict[str, Any]]:
     }
 
 
-def _build_asset_summary_payload(asset_ids: list[str]) -> dict[str, Any]:
-    assets = retrieve_source_assets(asset_ids)
+def _build_asset_summary_payload(
+    asset_ids: list[str],
+    *,
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+) -> dict[str, Any]:
+    assets = retrieve_source_assets(asset_ids, repository=repository, project_id=project_id)
     asset_details: list[dict[str, Any]] = []
     all_concepts: list[str] = []
 
     for asset in assets:
         enrichment = _ASSET_ENRICHMENT.get(asset.id, {})
-        concepts = enrichment.get("keyConcepts", [])
+        extracted_text = _read_asset_text(asset)
+        normalized_excerpt = _normalize_asset_text(extracted_text)
+        uploaded_summary = asset.summary.strip() if isinstance(asset.summary, str) else ""
+        concept_source = normalized_excerpt or uploaded_summary
+        extracted_concepts = enrichment.get("keyConcepts") or _extract_key_concepts(concept_source)
+        title_concepts = _extract_title_concepts(asset.title)
+        concepts = list(dict.fromkeys([*title_concepts, *extracted_concepts]))[:4]
         all_concepts.extend(concepts)
         asset_details.append({
             "id": asset.id,
             "title": asset.title,
             "kind": asset.kind,
             "topic": asset.topic,
-            "contentExcerpt": enrichment.get(
-                "contentExcerpt",
-                f"材料「{asset.title}」的内容摘要暂未提取，后续接入解析后自动补充。",
-            ),
+            "contentExcerpt": enrichment.get("contentExcerpt", normalized_excerpt or uploaded_summary)
+            or f"材料「{asset.title}」的内容摘要暂未提取，后续接入解析后自动补充。",
             "keyConcepts": concepts,
             "relevanceHint": enrichment.get(
                 "relevanceHint",
-                "该材料与当前学习主题的关联度待评估。",
+                "该材料已进入当前 project 材料池，可作为这轮 project 判断与知识点建议的上下文。",
             ),
         })
 
     unique_concepts = list(dict.fromkeys(all_concepts))
+    visible_titles = "、".join(asset["title"] for asset in asset_details[:3])
+    visible_concepts = "、".join(unique_concepts[:6])
     return {
         "assetIds": [asset.id for asset in assets],
         "assets": asset_details,
         "keyConcepts": unique_concepts,
         "summary": (
-            f"已读取 {len(assets)} 份材料，"
-            f"提取到 {len(unique_concepts)} 个核心概念。"
-            "建议围绕这些概念验证学习者的理解深度和迁移能力。"
+            f"已读取 {len(assets)} 份材料：{visible_titles or '暂无标题'}。"
+            f"核心概念包括：{visible_concepts or '待补充解析'}。"
+            "建议直接围绕这些材料判断学习主题、概念边界和可沉淀的知识点。"
         ),
     }
 
 
-def build_asset_summary_payload(asset_ids: list[str]) -> dict[str, Any]:
-    return _build_asset_summary_payload(asset_ids)
+def build_asset_summary_payload(
+    asset_ids: list[str],
+    *,
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+) -> dict[str, Any]:
+    return _build_asset_summary_payload(
+        asset_ids,
+        repository=repository,
+        project_id=project_id,
+    )
 
 
 def build_project_context(
@@ -349,8 +422,17 @@ def build_project_context(
         if isinstance(thread_context, dict)
         else []
     )
-    source_asset_ids = request.source_asset_ids or stored_asset_ids
-    focus_unit = retrieve_learning_unit(request.target_unit_id, request.topic)
+    source_asset_ids = (
+        request.source_asset_ids or stored_asset_ids
+        if request.session_type == "project"
+        else []
+    )
+    focus_unit = retrieve_learning_unit(
+        request.target_unit_id,
+        request.topic,
+        repository=repository,
+        project_id=request.project_id,
+    )
     recent_messages = (
         repository_context.get("recent_messages", [])
         if repository_context is not None
@@ -372,7 +454,13 @@ def build_project_context(
         recent_messages = request.messages[-5:]
 
     asset_summary = (
-        _build_asset_summary_payload(source_asset_ids) if source_asset_ids else None
+        _build_asset_summary_payload(
+            source_asset_ids,
+            repository=repository,
+            project_id=request.project_id,
+        )
+        if source_asset_ids
+        else None
     )
     thread_memory = _build_thread_memory_payload(
         request.thread_id,
@@ -412,7 +500,7 @@ def build_project_context(
     recent_message_summary = _summarize_recent_messages(recent_messages)
     if recent_message_summary is not None:
         summary_parts.append(f"最近会话摘要：{recent_message_summary}")
-    if source == "request" and request.context_hint:
+    if request.context_hint:
         summary_parts.append(f"请求上下文提示：{request.context_hint}")
 
     return ProjectContext(
@@ -432,6 +520,94 @@ def build_project_context(
         source=source,
         summary="；".join(item for item in summary_parts if item) + "。",
     )
+
+
+def _extract_key_concepts(summary: str) -> list[str]:
+    if summary.strip() == "":
+        return []
+
+    knowledge_points = extract_material_knowledge_point_candidates(summary, limit=4)
+    if knowledge_points:
+        return knowledge_points
+
+    fragments = re.split(r"[。；;，,\n]+", summary)
+    concepts: list[str] = []
+    for fragment in fragments:
+        cleaned = fragment.strip(" ：:-")
+        if len(cleaned) < 4:
+            continue
+        lowered = cleaned.lower()
+        if lowered.startswith(("created:", "modified:", "updated:", "date:", "tags:")):
+            continue
+        if re.fullmatch(r"[\d\s:,-]+", cleaned):
+            continue
+        concepts.append(cleaned[:28])
+        if len(concepts) >= 4:
+            break
+    return concepts
+
+
+def _extract_title_concepts(title: str) -> list[str]:
+    stem = re.sub(r"\.[^.]+$", "", title).strip()
+    if stem == "":
+        return []
+    if stem.lower().startswith("imported asset "):
+        return []
+    if re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,}", stem.lower()):
+        return []
+
+    split_parts = [
+        part.strip(" ：:-")
+        for part in re.split(r"[、/,，；;｜|]+", stem)
+        if part.strip(" ：:-")
+    ]
+    if len(split_parts) >= 2:
+        return split_parts[:4]
+
+    lowered = stem.lower()
+    if lowered.endswith(("笔记", "记录", "网页", "方案", "文档", "材料")) and len(stem) > 4:
+        stem = re.sub(r"(笔记|记录|网页|方案|文档|材料)$", "", stem).strip(" ：:-")
+
+    return [stem[:24]] if len(stem) >= 2 else []
+
+
+def _read_asset_text(asset: SourceAsset) -> str:
+    content_ref = getattr(asset, "content_ref", None)
+    if not isinstance(content_ref, str) or not content_ref.strip():
+        return asset.summary or ""
+
+    path = Path(content_ref)
+    if not path.exists() or not path.is_file():
+        return asset.summary or ""
+
+    if asset.kind in {"note", "web"}:
+        try:
+            return path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return asset.summary or ""
+
+    if asset.kind == "pdf":
+        try:
+            from pypdf import PdfReader  # type: ignore
+        except Exception:
+            return asset.summary or ""
+
+        try:
+            reader = PdfReader(str(path))
+            page_text = []
+            for page in reader.pages[:3]:
+                extracted = page.extract_text() or ""
+                if extracted.strip():
+                    page_text.append(extracted)
+            return "\n".join(page_text) if page_text else (asset.summary or "")
+        except Exception:
+            return asset.summary or ""
+
+    return asset.summary or ""
+
+
+def _normalize_asset_text(text: str, limit: int = 900) -> str:
+    return normalize_material_text(text, limit=limit)
 
 
 def _summarize_project_memory(project_memory: object | None) -> str | None:
@@ -465,6 +641,30 @@ def _summarize_project_learning_profile(project_learning_profile: object | None)
 
 def _build_unit_detail_payload(unit: LearningUnit) -> dict[str, Any]:
     enrichment = _UNIT_ENRICHMENT.get(unit.id, {})
+    generic_title = unit.title.strip()
+    generic_summary = unit.summary.strip()
+    prerequisites = enrichment.get("prerequisites")
+    if prerequisites is None:
+        prerequisites = [
+            f"先明确「{generic_title}」在当前项目里要解决什么判断问题。",
+            "先把来源材料中的关键概念、术语和例子对齐，再进入学习动作。",
+        ]
+    common_misconceptions = enrichment.get("commonMisconceptions")
+    if common_misconceptions is None:
+        common_misconceptions = [
+            f"把「{generic_title}」当成泛泛主题，而不是一个需要建立边界的知识点。",
+            "只记住表面结论，没有回到材料证据和适用条件。",
+        ]
+    core_questions = enrichment.get("coreQuestions")
+    if core_questions is None:
+        core_questions = [
+            f"「{generic_title}」最关键的判断边界是什么？",
+            f"如果要把「{generic_title}」讲给别人听，最先应该举哪个例子或证据？",
+        ]
+    related_units = enrichment.get("relatedUnits")
+    if related_units is None:
+        related_units = []
+
     return {
         "focusUnitId": unit.id,
         "title": unit.title,
@@ -472,10 +672,11 @@ def _build_unit_detail_payload(unit: LearningUnit) -> dict[str, Any]:
         "candidateModes": unit.candidate_modes,
         "weaknessTags": unit.weakness_tags,
         "difficulty": unit.difficulty,
-        "prerequisites": enrichment.get("prerequisites", []),
-        "commonMisconceptions": enrichment.get("commonMisconceptions", []),
-        "coreQuestions": enrichment.get("coreQuestions", []),
-        "relatedUnits": enrichment.get("relatedUnits", []),
+        "prerequisites": prerequisites,
+        "commonMisconceptions": common_misconceptions,
+        "coreQuestions": core_questions,
+        "relatedUnits": related_units,
+        "teachingNote": generic_summary,
     }
 
 

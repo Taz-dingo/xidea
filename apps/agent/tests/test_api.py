@@ -1,12 +1,19 @@
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+import base64
 
 import pytest
 from fastapi.testclient import TestClient
 
 from xidea_agent.api import create_app
 from xidea_agent.repository import SQLiteRepository
-from xidea_agent.state import KnowledgePoint, KnowledgePointState
+from xidea_agent.state import (
+    KnowledgePoint,
+    KnowledgePointState,
+    KnowledgePointSuggestion,
+    ProjectLearningProfile,
+    ProjectMemory,
+)
 
 from conftest import build_mock_llm, build_mock_llm_for_review, build_mock_llm_for_teach
 
@@ -71,7 +78,6 @@ def test_schemas_endpoint_exposes_stream_event_schema(client: TestClient) -> Non
     payload = response.json()
     assert "stream_event" in payload
     assert "discriminator" in payload["stream_event"]
-    assert "project_bootstrap" in payload
 
 
 def test_run_v0_endpoint_returns_structured_result(client: TestClient) -> None:
@@ -116,6 +122,8 @@ def test_persisted_run_is_queryable_from_storage_endpoints(
     assert run_response.status_code == 200
 
     storage_response = persisted_client.get("/storage/status")
+    project_threads_response = persisted_client.get("/projects/rag-demo/threads")
+    full_messages_response = persisted_client.get("/threads/thread-1/messages")
     messages_response = persisted_client.get("/threads/thread-1/recent-messages")
     state_response = persisted_client.get("/threads/thread-1/units/unit-rag-retrieval")
     context_response = persisted_client.get("/threads/thread-1/context")
@@ -128,6 +136,23 @@ def test_persisted_run_is_queryable_from_storage_endpoints(
 
     assert storage_response.status_code == 200
     assert storage_response.json()["enabled"] is True
+
+    assert project_threads_response.status_code == 200
+    thread_records = project_threads_response.json()
+    assert len(thread_records) == 1
+    assert thread_records[0]["thread_id"] == "thread-1"
+    assert thread_records[0]["session_type"] == "study"
+    assert thread_records[0]["knowledge_point_id"] == "unit-rag-retrieval"
+    assert thread_records[0]["entry_mode"] == "chat-question"
+    assert thread_records[0]["source_asset_ids"] == []
+
+    assert full_messages_response.status_code == 200
+    full_messages = full_messages_response.json()
+    assert len(full_messages) == 2
+    assert full_messages[0]["role"] == "user"
+    assert full_messages[1]["role"] == "assistant"
+    assert isinstance(full_messages[0]["message_id"], int)
+    assert isinstance(full_messages[0]["created_at"], str)
 
     assert messages_response.status_code == 200
     messages = messages_response.json()
@@ -158,62 +183,86 @@ def test_persisted_run_is_queryable_from_storage_endpoints(
     assert len(asset_payload["assets"]) == 2
 
 
-def test_session_scoped_alias_endpoints_match_thread_storage_reads(
-    persisted_client: TestClient,
-) -> None:
-    run_response = persisted_client.post(
-        "/runs/v0",
+def test_project_material_upload_and_list_endpoint(persisted_client: TestClient) -> None:
+    encoded = base64.b64encode("retrieval 和 reranking 不是同一层判断".encode("utf-8")).decode("utf-8")
+
+    upload_response = persisted_client.post(
+        "/projects/rag-demo/materials/upload",
         json={
-            "project_id": "rag-demo",
-            "thread_id": "thread-1",
-            "entry_mode": "chat-question",
-            "topic": "RAG retrieval design",
-            "target_unit_id": "unit-rag-retrieval",
-            "messages": [
-                {"role": "user", "content": "我最近总忘这些概念，想做一次复习巩固"}
-            ],
+            "filename": "rag-notes.md",
+            "content_base64": encoded,
+            "topic": "RAG 边界判断",
         },
     )
-    assert run_response.status_code == 200
 
-    messages_response = persisted_client.get("/projects/rag-demo/sessions/thread-1/recent-messages")
-    context_response = persisted_client.get("/projects/rag-demo/sessions/thread-1/context")
-    bootstrap_response = persisted_client.get(
-        "/projects/rag-demo/sessions/thread-1/inspector-bootstrap",
-        params={"unit_id": "unit-rag-retrieval"},
+    assert upload_response.status_code == 200
+    upload_payload = upload_response.json()
+    assert upload_payload["title"] == "rag-notes.md"
+    assert upload_payload["kind"] == "note"
+    assert upload_payload["summary"]
+
+    list_response = persisted_client.get("/projects/rag-demo/materials")
+    assert list_response.status_code == 200
+    listed = list_response.json()
+    assert len(listed) == 1
+    assert listed[0]["id"] == upload_payload["id"]
+
+    summary_response = persisted_client.get(
+        "/assets/summary",
+        params={"asset_ids": upload_payload["id"], "project_id": "rag-demo"},
     )
-    state_response = persisted_client.get(
-        "/projects/rag-demo/sessions/thread-1/units/unit-rag-retrieval"
+    assert summary_response.status_code == 200
+    summary_payload = summary_response.json()
+    assert summary_payload["assetIds"] == [upload_payload["id"]]
+    assert summary_payload["assets"][0]["title"] == "rag-notes.md"
+    assert summary_payload["assets"][0]["contentExcerpt"]
+    assert "retrieval 和 reranking" in summary_payload["assets"][0]["contentExcerpt"]
+
+
+def test_delete_project_knowledge_point_endpoint(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-multimodal",
+                project_id="rag-demo",
+                title="多模态统一表示",
+                description="说明音视频与文本共用表示空间。",
+                status="active",
+                origin_type="session-suggestion",
+                origin_session_id="thread-project-1",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            )
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-multimodal",
+                mastery=0,
+                learning_status="new",
+                review_status="idle",
+                updated_at=now,
+            )
+        ],
     )
-    review_response = persisted_client.get(
-        "/projects/rag-demo/sessions/thread-1/units/unit-rag-retrieval/review-inspector"
-    )
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
 
-    assert messages_response.status_code == 200
-    assert len(messages_response.json()) == 2
-    assert context_response.status_code == 200
-    assert context_response.json()["entry_mode"] == "chat-question"
-    assert bootstrap_response.status_code == 200
-    assert bootstrap_response.json()["thread_context"]["entry_mode"] == "chat-question"
-    assert bootstrap_response.json()["review_inspector"]["reviewCount"] == 1
-    assert state_response.status_code == 200
-    assert state_response.json()["recommended_action"] == "review"
-    assert review_response.status_code == 200
-    assert review_response.json()["reviewCount"] == 1
+    response = client.delete("/projects/rag-demo/knowledge-points/kp-multimodal")
 
-
-def test_session_scoped_alias_endpoints_return_session_not_found_for_unknown_session(
-    persisted_client: TestClient,
-) -> None:
-    response = persisted_client.get("/projects/rag-demo/sessions/session-missing/context")
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Session not found"
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    points_response = client.get("/projects/rag-demo/knowledge-points")
+    assert points_response.status_code == 200
+    assert points_response.json() == []
 
 
 _SAMPLE_REQUEST = {
     "project_id": "rag-demo",
     "thread_id": "thread-1",
+    "session_type": "study",
     "entry_mode": "chat-question",
     "topic": "RAG retrieval design",
     "target_unit_id": "unit-rag-retrieval",
@@ -225,6 +274,7 @@ _SAMPLE_REQUEST = {
 _SUGGESTION_REQUEST = {
     "project_id": "rag-demo",
     "thread_id": "thread-project-1",
+    "session_type": "project",
     "entry_mode": "chat-question",
     "topic": "RAG 系统设计",
     "messages": [
@@ -238,6 +288,7 @@ _SUGGESTION_REQUEST = {
 _ARCHIVE_REQUEST = {
     "project_id": "rag-demo",
     "thread_id": "thread-project-archive",
+    "session_type": "project",
     "entry_mode": "chat-question",
     "topic": "RAG 系统设计",
     "messages": [
@@ -250,6 +301,8 @@ _ARCHIVE_REQUEST = {
 
 
 def test_stream_endpoint_returns_sse_events(client: TestClient) -> None:
+    import json
+
     response = client.post("/runs/v0/stream", json=_SAMPLE_REQUEST)
 
     assert response.status_code == 200
@@ -261,12 +314,29 @@ def test_stream_endpoint_returns_sse_events(client: TestClient) -> None:
         if line.startswith("event: "):
             event_types.append(line[len("event: "):])
 
-    assert event_types[0] == "diagnosis"
-    assert event_types[1] == "text-delta"
-    assert "plan" in event_types[1:-2]
-    assert "activity" in event_types[1:-2]
+    assert event_types[:2] == ["status", "status"]
+    assert event_types[2] == "diagnosis"
+    assert event_types[3] == "status"
+    assert event_types[4] == "text-delta"
+    assert "plan" in event_types[4:-2]
+    assert "activities" in event_types[4:-2]
     assert event_types[-2:] == ["state-patch", "done"]
     assert event_types.count("text-delta") >= 1
+
+    phases = []
+    for line in raw.splitlines():
+        if line.startswith("data: "):
+            payload = json.loads(line[len("data: "):])
+            if payload["event"] == "status":
+                phases.append(payload["phase"])
+
+    assert phases == [
+        "loading-context",
+        "making-decision",
+        "composing-response",
+        "preparing-followup",
+        "writing-state",
+    ]
 
 
 def test_stream_endpoint_events_are_valid_json(client: TestClient) -> None:
@@ -291,11 +361,14 @@ def test_stream_endpoint_emits_activity_payload(client: TestClient) -> None:
 
     data_lines = [line[len("data: "):] for line in raw.splitlines() if line.startswith("data: ")]
     activity_payload = next(
-        json.loads(data_line) for data_line in data_lines if json.loads(data_line)["event"] == "activity"
+        json.loads(data_line)
+        for data_line in data_lines
+        if json.loads(data_line)["event"] == "activities"
     )
 
-    assert activity_payload["activity"]["kind"] == "quiz"
-    assert activity_payload["activity"]["knowledge_point_id"] == "unit-rag-retrieval"
+    assert len(activity_payload["activities"]) == 2
+    assert activity_payload["activities"][0]["kind"] == "quiz"
+    assert activity_payload["activities"][0]["knowledge_point_id"] == "unit-rag-retrieval"
 
 
 def test_stream_endpoint_emits_knowledge_point_suggestion_payload(client: TestClient) -> None:
@@ -305,14 +378,47 @@ def test_stream_endpoint_emits_knowledge_point_suggestion_payload(client: TestCl
     raw = response.text
 
     data_lines = [line[len("data: "):] for line in raw.splitlines() if line.startswith("data: ")]
+    payloads = [json.loads(data_line) for data_line in data_lines]
     suggestion_payload = next(
-        json.loads(data_line)
-        for data_line in data_lines
-        if json.loads(data_line)["event"] == "knowledge-point-suggestion"
+        payload
+        for payload in payloads
+        if payload["event"] == "knowledge-point-suggestion"
     )
 
     assert suggestion_payload["suggestions"][0]["kind"] == "create"
     assert suggestion_payload["suggestions"][0]["title"] == "embedding 与 reranking 的边界"
+    assert "activities" not in [payload["event"] for payload in payloads]
+
+
+def test_run_v0_project_session_returns_suggestion_without_activity(client: TestClient) -> None:
+    response = client.post("/runs/v0", json=_SUGGESTION_REQUEST)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["graph_state"]["activity"] is None
+    assert payload["graph_state"]["knowledge_point_suggestions"][0]["kind"] == "create"
+
+
+def test_run_v0_normalizes_project_material_requests_to_material_import(
+    persisted_client: TestClient,
+) -> None:
+    response = persisted_client.post(
+        "/runs/v0",
+        json={
+            "project_id": "rag-demo",
+            "thread_id": "thread-project-materials",
+            "session_type": "project",
+            "entry_mode": "chat-question",
+            "topic": "RAG 系统设计",
+            "messages": [{"role": "user", "content": "根据这份材料生成一些知识点"}],
+            "source_asset_ids": ["material-1"],
+        },
+    )
+
+    assert response.status_code == 200
+    context = persisted_client.get("/threads/thread-project-materials/context").json()
+    assert context["entry_mode"] == "material-import"
+    assert context["source_asset_ids"] == ["material-1"]
 
 
 def test_stream_endpoint_off_topic_does_not_emit_activity_or_suggestion(client: TestClient) -> None:
@@ -332,9 +438,10 @@ def test_stream_endpoint_off_topic_does_not_emit_activity_or_suggestion(client: 
     data_lines = [json.loads(line[len("data: "):]) for line in raw.splitlines() if line.startswith("data: ")]
 
     event_types = [item["event"] for item in data_lines]
-    assert event_types[0] == "diagnosis"
+    assert event_types[0] == "status"
+    assert event_types[1] == "diagnosis"
     assert event_types[-3:] == ["plan", "state-patch", "done"]
-    assert "activity" not in event_types
+    assert "activities" not in event_types
     assert "knowledge-point-suggestion" not in event_types
 
 
@@ -345,7 +452,7 @@ def test_stream_diagnosis_contains_action_scores(client: TestClient) -> None:
     raw = response.text
 
     data_lines = [line[len("data: "):] for line in raw.splitlines() if line.startswith("data: ")]
-    diagnosis_data = json.loads(data_lines[0])
+    diagnosis_data = next(json.loads(line) for line in data_lines if json.loads(line)["event"] == "diagnosis")
     assert diagnosis_data["event"] == "diagnosis"
     assert diagnosis_data["diagnosis"]["recommended_action"] == "clarify"
 
@@ -375,6 +482,7 @@ def test_confirm_knowledge_point_suggestion_endpoint_is_idempotent(
     assert payload["suggestion"]["status"] == "accepted"
     assert payload["knowledge_point"]["title"] == "embedding 与 reranking 的边界"
     assert payload["knowledge_point_state"]["learning_status"] == "new"
+    assert payload["linked_session_message_ids"]["thread-project-1"] > 0
 
     second_confirm = persisted_client_with_suggestion.post(
         f"/projects/rag-demo/knowledge-point-suggestions/{suggestion_id}/confirm"
@@ -382,6 +490,31 @@ def test_confirm_knowledge_point_suggestion_endpoint_is_idempotent(
     assert second_confirm.status_code == 200
     assert second_confirm.json()["suggestion"]["status"] == "accepted"
     assert second_confirm.json()["knowledge_point"]["id"] == payload["knowledge_point"]["id"]
+
+
+def test_project_knowledge_points_endpoint_returns_session_message_links(
+    persisted_client_with_suggestion: TestClient,
+) -> None:
+    run_response = persisted_client_with_suggestion.post("/runs/v0", json=_SUGGESTION_REQUEST)
+    assert run_response.status_code == 200
+    suggestion_id = run_response.json()["graph_state"]["knowledge_point_suggestions"][0]["id"]
+
+    confirm_response = persisted_client_with_suggestion.post(
+        f"/projects/rag-demo/knowledge-point-suggestions/{suggestion_id}/confirm"
+    )
+    assert confirm_response.status_code == 200
+    knowledge_point_id = confirm_response.json()["knowledge_point"]["id"]
+
+    list_response = persisted_client_with_suggestion.get("/projects/rag-demo/knowledge-points")
+    assert list_response.status_code == 200
+    record = next(
+        item
+        for item in list_response.json()
+        if item["knowledge_point"]["id"] == knowledge_point_id
+    )
+
+    assert record["linked_session_ids"] == ["thread-project-1"]
+    assert record["linked_session_message_ids"]["thread-project-1"] > 0
 
 
 def test_dismiss_knowledge_point_suggestion_endpoint_is_idempotent(
@@ -485,6 +618,192 @@ def test_run_v0_persists_activity_result_writeback(tmp_path: Path) -> None:
     knowledge_point_state = repository.get_knowledge_point_state("kp-rag-boundary")
     assert knowledge_point_state is not None
     assert knowledge_point_state.review_status == "scheduled"
+    thread_context = repository.get_thread_context("thread-1")
+    assert thread_context is not None
+    assert thread_context["entry_mode"] == "coach-followup"
+
+
+def test_thread_activity_decks_endpoint_returns_persisted_decks(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm_for_review()))
+
+    response = client.post(
+        "/runs/v0",
+        json={
+            "project_id": "rag-demo",
+            "thread_id": "thread-activity",
+            "session_type": "study",
+            "knowledge_point_id": "kp-rag-boundary",
+            "entry_mode": "coach-followup",
+            "topic": "RAG retrieval design",
+            "target_unit_id": "unit-rag-retrieval",
+            "messages": [{"role": "user", "content": "这是这轮学习动作结果。"}],
+            "activity_result": {
+                "run_id": "run-activity-1",
+                "project_id": "rag-demo",
+                "session_id": "thread-activity",
+                "activity_id": "batch-activity-1",
+                "knowledge_point_id": "kp-rag-boundary",
+                "result_type": "exercise",
+                "action": "submit",
+                "answer": "已提交本组学习动作结果（2 张卡，尝试 2 次，已全部答对）。",
+                "meta": {
+                    "items": [
+                        {
+                            "activityId": "activity-1",
+                            "activityTitle": "边界判断",
+                            "activityPrompt": "说明为什么不能只做向量召回。",
+                            "knowledgePointId": "kp-rag-boundary",
+                            "kind": "guided-qa",
+                            "action": "submit",
+                            "responseText": "召回不等于回答可用。",
+                            "selectedChoiceId": None,
+                            "isCorrect": True,
+                            "attempts": [],
+                            "finalFeedback": "回答到位。",
+                            "finalAnalysis": None,
+                        }
+                    ]
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+
+    decks_response = client.get("/threads/thread-activity/activity-decks")
+    assert decks_response.status_code == 200
+    payload = decks_response.json()
+    assert len(payload) == 1
+    assert payload[0]["deck_id"] == "run-activity-1"
+    assert payload[0]["session_type"] == "study"
+    assert payload[0]["knowledge_point_id"] == "kp-rag-boundary"
+    assert len(payload[0]["cards"]) == 1
+
+
+def test_consolidation_preview_summarizes_project_state(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.create_or_update_project_memory(
+        ProjectMemory(
+            project_id="rag-demo",
+            summary="最近 project chat 反复暴露 retrieval 与 reranking 的边界问题。",
+            updated_at=now,
+        )
+    )
+    repository.create_or_update_project_learning_profile(
+        ProjectLearningProfile(
+            project_id="rag-demo",
+            current_stage="正在把 RAG 基础概念压成稳定判断",
+            primary_weaknesses=["retrieval / reranking 边界", "query routing"],
+            learning_preferences=["先辨析再练习"],
+            freshness="fresh",
+            updated_at=now,
+        )
+    )
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-rag-boundary",
+                project_id="rag-demo",
+                title="retrieval 与 reranking 的边界",
+                description="说明 retrieval 与 reranking 在 RAG 里的职责边界。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            ),
+            KnowledgePoint(
+                id="kp-query-routing",
+                project_id="rag-demo",
+                title="query routing 的判断条件",
+                description="说明什么时候要把问题路由到不同检索链路。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-2"],
+                created_at=now,
+                updated_at=now,
+            ),
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-rag-boundary",
+                mastery=52,
+                learning_status="learning",
+                review_status="scheduled",
+                next_review_at=now - timedelta(days=1),
+                archive_suggested=False,
+                updated_at=now,
+            ),
+            KnowledgePointState(
+                knowledge_point_id="kp-query-routing",
+                mastery=91,
+                learning_status="stable",
+                review_status="stable",
+                next_review_at=now + timedelta(days=14),
+                archive_suggested=True,
+                updated_at=now,
+            ),
+        ],
+    )
+    repository.save_knowledge_point_suggestions(
+        [
+            KnowledgePointSuggestion(
+                id="suggest-create-boundary",
+                kind="create",
+                project_id="rag-demo",
+                session_id="thread-project-1",
+                title="hybrid search 与 reranking 的边界",
+                description="沉淀 hybrid search 与 reranking 的差异。",
+                reason="project chat 里持续出现边界混淆。",
+                source_material_refs=["asset-2"],
+                status="pending",
+                created_at=now,
+                updated_at=now,
+            ),
+            KnowledgePointSuggestion(
+                id="suggest-archive-routing",
+                kind="archive",
+                project_id="rag-demo",
+                session_id="thread-project-1",
+                knowledge_point_id="kp-query-routing",
+                title="query routing 的判断条件",
+                description="说明什么时候要把问题路由到不同检索链路。",
+                reason="已经稳定，可考虑归档。",
+                source_material_refs=["asset-2"],
+                status="pending",
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+    )
+
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
+    response = client.get("/projects/rag-demo/consolidation-preview")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["project_id"] == "rag-demo"
+    assert payload["knowledge_point_stats"]["total"] == 2
+    assert payload["knowledge_point_stats"]["due_for_review"] == 1
+    assert payload["knowledge_point_stats"]["pending_create_suggestions"] == 1
+    assert payload["knowledge_point_stats"]["pending_archive_suggestions"] == 1
+    assert payload["due_for_review"][0]["knowledge_point_id"] == "kp-rag-boundary"
+    assert payload["project_learning_profile"]["primary_weaknesses"][0] == "retrieval / reranking 边界"
+    assert any("review session" in item for item in payload["recommended_actions"])
+
+
+def test_consolidation_preview_returns_404_without_project_state(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
+
+    response = client.get("/projects/missing/consolidation-preview")
+
+    assert response.status_code == 404
 
 
 def test_thread_context_returns_no_content_before_first_persist(
@@ -502,359 +821,3 @@ def test_create_app_fails_without_api_key() -> None:
     with patch.dict(os.environ, {}, clear=True):
         with pytest.raises(RuntimeError, match="LLM API key is required"):
             create_app()
-
-
-def test_project_bootstrap_endpoints(tmp_path: Path) -> None:
-    repository = SQLiteRepository(tmp_path / "agent.db")
-    repository.initialize()
-    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
-
-    create_response = client.post(
-        "/projects",
-        json={
-            "title": "RAG Demo 答辩排练",
-            "topic": "围绕 RAG 系统设计准备比赛答辩",
-            "description": "先把主题、材料和知识点池收紧。",
-            "special_rules": ["优先围绕比赛答辩表达"],
-            "initial_materials": [
-                {
-                    "id": "asset-rag-overview",
-                    "kind": "pdf",
-                    "title": "RAG 系统设计概览",
-                    "summary": "覆盖 retrieval、reranking 和 context construction。",
-                },
-                {
-                    "id": "asset-defense-outline",
-                    "kind": "note",
-                    "title": "答辩表达提纲",
-                },
-            ],
-        },
-    )
-
-    assert create_response.status_code == 201
-    created_payload = create_response.json()
-    project_id = created_payload["project"]["id"]
-    assert created_payload["project"]["title"] == "RAG Demo 答辩排练"
-    assert len(created_payload["project_materials"]) == 2
-    assert created_payload["project_learning_profile"]["current_stage"] == "bootstrapping"
-
-    get_response = client.get(f"/projects/{project_id}")
-    assert get_response.status_code == 200
-    assert get_response.json()["project"]["topic"] == "围绕 RAG 系统设计准备比赛答辩"
-
-    patch_response = client.patch(
-        f"/projects/{project_id}",
-        json={
-            "description": "补齐答辩主线，并替换初始材料池。",
-            "initial_materials": [
-                {
-                    "id": "asset-defense-outline",
-                    "kind": "note",
-                    "title": "答辩表达提纲",
-                },
-                {
-                    "id": "asset-review-checklist",
-                    "kind": "web",
-                    "title": "Review Checklist",
-                    "source_uri": "https://example.com/review-checklist",
-                },
-            ],
-        },
-    )
-    assert patch_response.status_code == 200
-    patched_payload = patch_response.json()
-    assert patched_payload["project"]["description"] == "补齐答辩主线，并替换初始材料池。"
-    material_status = {
-        material["id"]: material["status"] for material in patched_payload["project_materials"]
-    }
-    assert material_status["asset-rag-overview"] == "archived"
-    assert material_status["asset-defense-outline"] == "active"
-    assert material_status["asset-review-checklist"] == "active"
-    assert {
-        attachment["project_material_id"] for attachment in patched_payload["session_attachments"]
-    } == {"asset-defense-outline", "asset-review-checklist"}
-
-
-def test_list_projects_endpoint_returns_recent_projects_first(tmp_path: Path) -> None:
-    repository = SQLiteRepository(tmp_path / "agent.db")
-    repository.initialize()
-    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
-
-    client.post(
-        "/projects",
-        json={
-            "project_id": "project-first",
-            "title": "First Project",
-            "topic": "First Topic",
-            "description": "First description",
-        },
-    )
-    client.post(
-        "/projects",
-        json={
-            "project_id": "project-second",
-            "title": "Second Project",
-            "topic": "Second Topic",
-            "description": "Second description",
-        },
-    )
-    client.patch(
-        "/projects/project-first",
-        json={"description": "First project touched later."},
-    )
-
-    response = client.get("/projects")
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert [project["id"] for project in payload] == ["project-first", "project-second"]
-    assert payload[0]["description"] == "First project touched later."
-
-
-def test_session_endpoints_support_list_get_and_create(tmp_path: Path) -> None:
-    repository = SQLiteRepository(tmp_path / "agent.db")
-    repository.initialize()
-    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
-
-    create_project_response = client.post(
-        "/projects",
-        json={
-            "project_id": "project-rag-demo",
-            "title": "RAG Demo",
-            "topic": "RAG 系统设计",
-            "description": "初始化 project。",
-            "initial_materials": [
-                {"id": "asset-1", "kind": "pdf", "title": "RAG 概览"},
-                {"id": "asset-2", "kind": "note", "title": "答辩表达提纲"},
-            ],
-        },
-    )
-    assert create_project_response.status_code == 201
-    knowledge_point_id = create_project_response.json()["knowledge_points"][0]["id"]
-
-    create_session_response = client.post(
-        "/projects/project-rag-demo/sessions",
-        json={
-            "session_id": "session-review-rerank",
-            "type": "review",
-            "focus_knowledge_point_ids": [knowledge_point_id],
-            "project_material_ids": ["asset-2"],
-        },
-    )
-    assert create_session_response.status_code == 201
-    create_payload = create_session_response.json()
-    assert create_payload["session"]["id"] == "session-review-rerank"
-    assert create_payload["session"]["focus_knowledge_point_ids"] == [knowledge_point_id]
-    assert create_payload["thread_context"]["source_asset_ids"] == ["asset-2"]
-    assert [attachment["project_material_id"] for attachment in create_payload["session_attachments"]] == [
-        "asset-2"
-    ]
-
-    list_response = client.get("/projects/project-rag-demo/sessions")
-    assert list_response.status_code == 200
-    assert [session["id"] for session in list_response.json()][:2] == [
-        "session-review-rerank",
-        "session-project-rag-demo-project",
-    ]
-
-    get_response = client.get("/projects/project-rag-demo/sessions/session-review-rerank")
-    assert get_response.status_code == 200
-    assert get_response.json()["session"]["type"] == "review"
-
-
-def test_patch_session_endpoint_updates_materials_and_status(tmp_path: Path) -> None:
-    repository = SQLiteRepository(tmp_path / "agent.db")
-    repository.initialize()
-    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
-
-    create_project_response = client.post(
-        "/projects",
-        json={
-            "project_id": "project-rag-demo",
-            "title": "RAG Demo",
-            "topic": "RAG 系统设计",
-            "description": "初始化 project。",
-            "initial_materials": [
-                {"id": "asset-1", "kind": "pdf", "title": "RAG 概览"},
-                {"id": "asset-2", "kind": "note", "title": "答辩表达提纲"},
-            ],
-        },
-    )
-    knowledge_point_id = create_project_response.json()["knowledge_points"][0]["id"]
-    create_session_response = client.post(
-        "/projects/project-rag-demo/sessions",
-        json={
-            "session_id": "session-review-rerank",
-            "type": "review",
-            "focus_knowledge_point_ids": [knowledge_point_id],
-            "project_material_ids": ["asset-2"],
-        },
-    )
-    assert create_session_response.status_code == 201
-
-    patch_response = client.patch(
-        "/projects/project-rag-demo/sessions/session-review-rerank",
-        json={
-            "title": "复习：边界回拉",
-            "status": "closed",
-            "focus_knowledge_point_ids": [],
-            "project_material_ids": ["asset-1"],
-        },
-    )
-    assert patch_response.status_code == 200
-    payload = patch_response.json()
-    assert payload["session"]["title"] == "复习：边界回拉"
-    assert payload["session"]["status"] == "closed"
-    assert payload["session"]["focus_knowledge_point_ids"] == []
-    assert payload["thread_context"]["source_asset_ids"] == ["asset-1"]
-    assert [attachment["project_material_id"] for attachment in payload["session_attachments"]] == [
-        "asset-1"
-    ]
-
-    project_response = client.get("/projects/project-rag-demo")
-    assert project_response.status_code == 200
-    assert project_response.json()["project_memory"]["open_threads"] == [
-        "session-project-rag-demo-project"
-    ]
-
-
-def test_create_session_endpoint_rejects_unknown_refs_and_duplicate_id(tmp_path: Path) -> None:
-    repository = SQLiteRepository(tmp_path / "agent.db")
-    repository.initialize()
-    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
-
-    create_project_response = client.post(
-        "/projects",
-        json={
-            "project_id": "project-rag-demo",
-            "title": "RAG Demo",
-            "topic": "RAG 系统设计",
-            "description": "初始化 project。",
-            "initial_materials": [
-                {"id": "asset-1", "kind": "pdf", "title": "RAG 概览"},
-            ],
-        },
-    )
-    assert create_project_response.status_code == 201
-
-    invalid_material_response = client.post(
-        "/projects/project-rag-demo/sessions",
-        json={
-            "type": "study",
-            "project_material_ids": ["asset-missing"],
-        },
-    )
-    assert invalid_material_response.status_code == 400
-    assert "Unknown active project material ids" in invalid_material_response.json()["detail"]
-
-    duplicate_response = client.post(
-        "/projects/project-rag-demo/sessions",
-        json={
-            "session_id": "session-project-rag-demo-project",
-            "type": "project",
-        },
-    )
-    assert duplicate_response.status_code == 409
-    assert "Session already exists" in duplicate_response.json()["detail"]
-
-    invalid_patch_response = client.patch(
-        "/projects/project-rag-demo/sessions/session-project-rag-demo-project",
-        json={"project_material_ids": ["asset-missing"]},
-    )
-    assert invalid_patch_response.status_code == 400
-    assert "Unknown active project material ids" in invalid_patch_response.json()["detail"]
-
-
-def test_knowledge_point_endpoints_support_list_get_and_patch(tmp_path: Path) -> None:
-    repository = SQLiteRepository(tmp_path / "agent.db")
-    repository.initialize()
-    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
-
-    create_response = client.post(
-        "/projects",
-        json={
-            "project_id": "project-rag-demo",
-            "title": "RAG Demo",
-            "topic": "RAG 系统设计",
-            "description": "初始化 project。",
-            "initial_materials": [
-                {"id": "asset-1", "kind": "pdf", "title": "RAG 概览"},
-                {"id": "asset-2", "kind": "note", "title": "答辩表达提纲"},
-            ],
-        },
-    )
-    knowledge_point_id = create_response.json()["knowledge_points"][0]["id"]
-
-    list_response = client.get("/projects/project-rag-demo/knowledge-points")
-    assert list_response.status_code == 200
-    list_payload = list_response.json()
-    assert len(list_payload) >= 1
-    assert list_payload[0]["knowledge_point"]["project_id"] == "project-rag-demo"
-
-    get_response = client.get(
-        f"/projects/project-rag-demo/knowledge-points/{knowledge_point_id}"
-    )
-    assert get_response.status_code == 200
-    assert get_response.json()["knowledge_point"]["id"] == knowledge_point_id
-
-    patch_response = client.patch(
-        f"/projects/project-rag-demo/knowledge-points/{knowledge_point_id}",
-        json={
-            "title": "更新后的知识点标题",
-            "description": "更新后的知识点描述。",
-            "source_material_refs": ["asset-2"],
-        },
-    )
-    assert patch_response.status_code == 200
-    patched_payload = patch_response.json()
-    assert patched_payload["knowledge_point"]["title"] == "更新后的知识点标题"
-    assert patched_payload["knowledge_point"]["source_material_refs"] == ["asset-2"]
-
-
-def test_patch_knowledge_point_endpoint_rejects_unknown_material_refs(tmp_path: Path) -> None:
-    repository = SQLiteRepository(tmp_path / "agent.db")
-    repository.initialize()
-    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
-
-    create_response = client.post(
-        "/projects",
-        json={
-            "project_id": "project-rag-demo",
-            "title": "RAG Demo",
-            "topic": "RAG 系统设计",
-            "description": "初始化 project。",
-            "initial_materials": [
-                {"id": "asset-1", "kind": "pdf", "title": "RAG 概览"},
-            ],
-        },
-    )
-    knowledge_point_id = create_response.json()["knowledge_points"][0]["id"]
-
-    patch_response = client.patch(
-        f"/projects/project-rag-demo/knowledge-points/{knowledge_point_id}",
-        json={"source_material_refs": ["asset-missing"]},
-    )
-
-    assert patch_response.status_code == 400
-    assert "Unknown project material refs" in patch_response.json()["detail"]
-
-
-def test_create_project_endpoint_returns_conflict_for_duplicate_id(tmp_path: Path) -> None:
-    repository = SQLiteRepository(tmp_path / "agent.db")
-    repository.initialize()
-    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
-
-    payload = {
-        "project_id": "project-rag-demo",
-        "title": "RAG Demo",
-        "topic": "RAG 系统设计",
-        "description": "初始化 project。",
-        "initial_materials": [],
-    }
-
-    first_response = client.post("/projects", json=payload)
-    second_response = client.post("/projects", json=payload)
-
-    assert first_response.status_code == 201
-    assert second_response.status_code == 409

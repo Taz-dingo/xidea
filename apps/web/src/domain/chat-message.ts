@@ -51,3 +51,145 @@ export function getLatestUserDraft(
 
   return draftPrompt.trim();
 }
+
+function normalizeComparableText(text: string): string {
+  return text.replace(/\s+/g, "").trim().toLowerCase();
+}
+
+function getMessageSignature(message: UIMessage): string {
+  return `${message.role}:${normalizeComparableText(getMessageText(message))}`;
+}
+
+function pickPreferredMessage(left: UIMessage, right: UIMessage): UIMessage {
+  const leftText = getMessageText(left);
+  const rightText = getMessageText(right);
+  if (rightText.length > leftText.length) {
+    return right;
+  }
+  if (leftText.length > rightText.length) {
+    return left;
+  }
+  return right;
+}
+
+function dedupeMessagesById(messages: ReadonlyArray<UIMessage>): UIMessage[] {
+  const ordered: UIMessage[] = [];
+  const indexById = new Map<string, number>();
+
+  for (const message of messages) {
+    const existingIndex = indexById.get(message.id);
+    if (existingIndex === undefined) {
+      indexById.set(message.id, ordered.length);
+      ordered.push(message);
+      continue;
+    }
+
+    ordered[existingIndex] = pickPreferredMessage(ordered[existingIndex] as UIMessage, message);
+  }
+
+  return ordered;
+}
+
+function areCompatibleAlignedMessages(
+  left: ReadonlyArray<UIMessage>,
+  right: ReadonlyArray<UIMessage>,
+): boolean {
+  return left.every((message, index) => {
+    const next = right[index];
+    if (next === undefined || message.role !== next.role) {
+      return false;
+    }
+
+    const leftText = normalizeComparableText(getMessageText(message));
+    const rightText = normalizeComparableText(getMessageText(next));
+    return (
+      leftText === rightText ||
+      leftText.startsWith(rightText) ||
+      rightText.startsWith(leftText)
+    );
+  });
+}
+
+function areMessagesEquivalent(left: UIMessage, right: UIMessage): boolean {
+  if (left.role !== right.role) {
+    return false;
+  }
+
+  const leftText = normalizeComparableText(getMessageText(left));
+  const rightText = normalizeComparableText(getMessageText(right));
+  return (
+    leftText === rightText ||
+    leftText.startsWith(rightText) ||
+    rightText.startsWith(leftText)
+  );
+}
+
+function getHistoryTextLength(messages: ReadonlyArray<UIMessage>): number {
+  return messages.reduce((total, message) => total + getMessageText(message).length, 0);
+}
+
+function hasMatchingPrefix(
+  left: ReadonlyArray<UIMessage>,
+  right: ReadonlyArray<UIMessage>,
+): boolean {
+  return right.every(
+    (message, index) => getMessageSignature(left[index] as UIMessage) === getMessageSignature(message),
+  );
+}
+
+export function areSameMessageHistory(
+  left: ReadonlyArray<UIMessage>,
+  right: ReadonlyArray<UIMessage>,
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((message, index) => getMessageSignature(message) === getMessageSignature(right[index] as UIMessage))
+  );
+}
+
+export function mergeMessageHistory(
+  base: ReadonlyArray<UIMessage>,
+  incoming: ReadonlyArray<UIMessage>,
+): UIMessage[] {
+  const normalizedBase = dedupeMessagesById(base);
+  const normalizedIncoming = dedupeMessagesById(incoming);
+
+  if (normalizedIncoming.length === 0) {
+    return [...normalizedBase];
+  }
+  if (normalizedBase.length === 0) {
+    return [...normalizedIncoming];
+  }
+  if (areSameMessageHistory(normalizedBase, normalizedIncoming)) {
+    return [...normalizedBase];
+  }
+  if (
+    normalizedBase.length === normalizedIncoming.length &&
+    areCompatibleAlignedMessages(normalizedBase, normalizedIncoming)
+  ) {
+    return getHistoryTextLength(normalizedBase) >= getHistoryTextLength(normalizedIncoming)
+      ? [...normalizedBase]
+      : [...normalizedIncoming];
+  }
+  if (
+    normalizedBase.length >= normalizedIncoming.length &&
+    hasMatchingPrefix(normalizedBase, normalizedIncoming)
+  ) {
+    return [...normalizedBase];
+  }
+  if (
+    normalizedIncoming.length >= normalizedBase.length &&
+    hasMatchingPrefix(normalizedIncoming, normalizedBase)
+  ) {
+    return [...normalizedIncoming];
+  }
+
+  const unmatchedIncoming = normalizedIncoming.filter(
+    (incomingMessage) =>
+      !normalizedBase.some((baseMessage) =>
+        areMessagesEquivalent(baseMessage, incomingMessage),
+      ),
+  );
+
+  return dedupeMessagesById([...normalizedBase, ...unmatchedIncoming]);
+}

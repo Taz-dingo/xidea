@@ -22,6 +22,7 @@ export interface EditableKnowledgePointDraft {
 }
 
 export interface ProjectMetaDraft {
+  readonly name: string;
   readonly topic: string;
   readonly description: string;
   readonly specialRulesText: string;
@@ -30,10 +31,9 @@ export interface ProjectMetaDraft {
 
 export interface PendingSessionIntent {
   readonly projectId: string;
-  readonly type: Extract<SessionType, "review" | "study">;
+  readonly type: SessionType;
   readonly knowledgePointId: string | null;
   readonly knowledgePointTitle: string | null;
-  readonly sourceAssetIds: ReadonlyArray<string>;
 }
 
 export interface PendingInitialPrompt {
