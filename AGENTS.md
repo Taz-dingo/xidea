@@ -43,7 +43,7 @@
 - 需要理解文档结构、判断该读哪几份、决定信息该写到哪里、或清理重复文档时，用 `docs-governance`
 - 遇到 `App`、page、endpoint、graph/runtime 入口开始变重，或需要边开发边拆分职责时，用 `clean-code-guardrails`
 - 做前端页面、React 组件、交互性能和实现细节时，用 `vercel-react-best-practices`
-- 需要起 PR、填写 PR 描述、整理 `Summary / Screenshots / Risks` 时，用 `pr-description`
+- 需要起 PR、开 PR、填写 PR 描述、整理 `Summary / Screenshots / Risks` 时，用 `pr-description`
 - 写 Python 后端、类型标注、测试、异步逻辑时，用 `python-pro`
 - 设计 agent loop、ReAct / Plan-and-Execute、tool / memory 模式时，用 `ai-agent-basics`
 - 改 LangGraph 节点、状态流和框架用法时，用 `langgraph-docs`
@@ -52,7 +52,7 @@
 如果一个任务同时涉及 UI、React 和类型设计，可以组合使用。
 如果一个任务同时涉及前端交互与后端 agent contract，优先组合 `vercel-react-best-practices`、`ai-agent-basics`、`langgraph-docs`。
 
-默认建议先运行 `project-onboarding`；遇到超重入口文件或职责漂移时，再加 `clean-code-guardrails`；涉及开分支、重命名分支或 PR 协作时，再加 `branch-workflow`；需要补 PR 描述时，再加 `pr-description`。
+默认建议先运行 `project-onboarding`；遇到超重入口文件或职责漂移时，再加 `clean-code-guardrails`；涉及开分支、重命名分支或 PR 协作时，再加 `branch-workflow`；只要任务包含“提 PR / 开 PR / 补 PR 描述”，默认同时加 `pr-description`。
 
 ### Implementation Default
 
@@ -86,6 +86,7 @@
 - 一个 PR 只解决一个问题
 - 改动默认按“小步、稳定、可验证”的切片推进；每完成一段可构建、可 review、职责清晰的改动，就应尽快单独 commit，不要把许多无关编辑堆成一个大提交
 - 提 PR 前先补齐这次改动对应的 docs 更新，再做一次自 review；确认文档、实现、验证和风险说明对齐后再开 PR
+- 用户只要说“提 PR”或“开 PR”，默认同时视为需要生成并写入仓库默认 PR 描述；除非用户明确要求英文，否则 PR body 默认使用中文
 - 每次新开工先判断当前任务属于哪个分工，再继续实现
 - 可以提出额外产品能力建议，但未经用户明确确认，不要主动实现新的产品功能
 - 涉及代码改动的任务默认补测试；如果当前阶段不补测试，必须明确说明原因、风险和后续补齐点

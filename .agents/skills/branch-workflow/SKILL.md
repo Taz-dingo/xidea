@@ -6,6 +6,7 @@ description: Project-level branch and PR workflow skill for Xidea. Use when crea
 # Branch Workflow
 
 Use this skill whenever the task starts with a branch, branch rename, branch naming check, or PR-scoping request.
+If the user asks to open or prepare a PR, this skill must be paired with `pr-description`.
 
 ## Goal
 
@@ -34,6 +35,8 @@ Read these files in order:
 - if the task changes team-wide understanding, update `docs/memory/decision-log.md`
 - if the task changes current execution state or priorities, update `docs/status.md` or `docs/plan.md`
 - do not append obsolete branch-process detail into the active decision log; archive it if it only matters as history
+- when the user says "提 PR" or "开 PR", treat that as both a branch/PR workflow task and a PR description task
+- unless the user explicitly asks for another language, the PR body must use the repo's default Chinese description format
 
 ## Choose The Type
 
@@ -64,10 +67,11 @@ When the user says they want a branch mainly to discuss, align, or document arch
 2. If the request only needs a discussion branch, prefer `docs/...`.
 3. If the current non-`main` branch already matches the task, keep it or rename it instead of creating a second branch.
 4. Create or rename the branch with the repo convention in mind.
-5. Tell the user the final branch name and any `type` or `owner` assumption you made.
-6. After a PR is merged, prefer deleting the branch and opening the next task from a fresh branch instead of reusing the old one.
-7. Before finishing the task, check whether `decision-log`, `status`, or `plan` also need updates.
-8. If the work naturally breaks into stable slices, create multiple focused commits instead of waiting until the whole branch is done.
+5. If the user is opening or preparing a PR, invoke `pr-description` and use its Chinese template by default.
+6. Tell the user the final branch name and any `type` or `owner` assumption you made.
+7. After a PR is merged, prefer deleting the branch and opening the next task from a fresh branch instead of reusing the old one.
+8. Before finishing the task, check whether `decision-log`, `status`, or `plan` also need updates.
+9. If the work naturally breaks into stable slices, create multiple focused commits instead of waiting until the whole branch is done.
 
 ## Output Expectations
 
