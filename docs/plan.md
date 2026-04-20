@@ -12,11 +12,11 @@
 - 主目录：`apps/agent/src/xidea_agent`
 - 主文件：`state.py`、`repository.py`、`api.py`
 - 本轮 checklist：
-  - [ ] 收敛对外 request / response / stream schema，统一向 `Project / Session / KnowledgePoint` 命名靠拢
-  - [ ] 扩 `projects` 持久化字段，补齐 `title / description / special_rules`
-  - [ ] 补 `project_materials / session_attachments` 的表结构、repository 方法和最小读取接口
-  - [ ] 收敛 `project / study / review` 三类 session 的基础字段与创建 contract
-  - [ ] 补 Project 创建 / bootstrap 最小链路：topic、description、materials、special rules、初始 memory、learning profile、knowledge points、project session
+  - [x] 收敛对外 request / response / stream schema，统一向 `Project / Session / KnowledgePoint` 命名靠拢
+  - [x] 扩 `projects` 持久化字段，补齐 `title / description / special_rules`
+  - [x] 补 `project_materials / session_attachments` 的表结构、repository 方法和最小读取接口
+  - [x] 收敛 `project / study / review` 三类 session 的基础字段与创建 contract
+  - [x] 补 Project 创建 / bootstrap 最小链路：topic、description、materials、special rules、初始 memory、learning profile、knowledge points、project session
 
 #### Agent owner
 

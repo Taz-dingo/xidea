@@ -1,3 +1,6 @@
+import { getAgentBaseUrl } from "@/lib/agent-client";
+import { updateWorkspaceKnowledgePoint } from "@/lib/agent-workspace-client";
+import { hydrateWorkspaceFromBackend } from "@/app/workspace/hooks/data/backend-hydration";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useKnowledgePointActions(data: WorkspaceData) {
@@ -43,7 +46,7 @@ export function useKnowledgePointActions(data: WorkspaceData) {
     data.setArchiveConfirmationPointId(null);
   }
 
-  function handleSaveKnowledgePoint(): void {
+  async function handleSaveKnowledgePoint(): Promise<void> {
     if (data.selectedKnowledgePoint === null) {
       return;
     }
@@ -51,6 +54,29 @@ export function useKnowledgePointActions(data: WorkspaceData) {
     const nextTitle = data.knowledgePointDraft.title.trim();
     const nextDescription = data.knowledgePointDraft.description.trim();
     if (nextTitle === "" || nextDescription === "") {
+      return;
+    }
+
+    if (getAgentBaseUrl() !== null) {
+      try {
+        await updateWorkspaceKnowledgePoint(
+          data.selectedProject.id,
+          data.selectedKnowledgePoint.id,
+          {
+            title: nextTitle,
+            description: nextDescription,
+          },
+        );
+        await hydrateWorkspaceFromBackend(data, {
+          preferredKnowledgePointId: data.selectedKnowledgePoint.id,
+          preferredProjectId: data.selectedProject.id,
+          preferredSessionId: data.selectedSession?.id ?? data.selectedSessionId,
+        });
+        data.setIsEditingKnowledgePoint(false);
+        data.setArchiveConfirmationPointId(null);
+      } catch {
+        return;
+      }
       return;
     }
 

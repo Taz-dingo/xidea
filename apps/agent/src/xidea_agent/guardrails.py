@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from xidea_agent.state import GraphState
+from xidea_agent.state import Diagnosis, GraphState, LearnerUnitState
 
 
 class GuardrailResult(BaseModel):
@@ -105,16 +105,14 @@ def check_reason_not_empty(state: GraphState) -> GuardrailResult:
 
 
 def validate_diagnosis(
-    diagnosis: "Diagnosis",
-    learner_state: "LearnerUnitState | None",
+    diagnosis: Diagnosis,
+    learner_state: LearnerUnitState | None,
 ) -> list[GuardrailResult]:
     """Pre-validate a diagnosis before it enters the graph.
 
     Used to reject LLM diagnoses that violate hard constraints, triggering
     fallback to rule-based diagnosis.
     """
-    from xidea_agent.state import Diagnosis, LearnerUnitState
-
     results: list[GuardrailResult] = []
 
     if learner_state is not None:

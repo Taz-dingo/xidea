@@ -41,6 +41,8 @@ export function SessionWorkspace({
   displayMessages,
   draftPrompt,
   errorMessage,
+  activityInputDisabled,
+  composerDisabled,
   hasPendingActivity,
   hasPersistedState,
   hasStructuredRuntime,
@@ -76,7 +78,6 @@ export function SessionWorkspace({
   selectedSourceAssetIds,
   selectedUnitTitle,
   selectedProjectSessions,
-  submitDisabled,
   tutorFixtureScenarios,
   workspaceSection,
 }: {
@@ -93,6 +94,8 @@ export function SessionWorkspace({
   displayMessages: ReadonlyArray<UIMessage>;
   draftPrompt: string;
   errorMessage: string | null;
+  activityInputDisabled: boolean;
+  composerDisabled: boolean;
   hasPendingActivity: boolean;
   hasPersistedState: boolean;
   hasStructuredRuntime: boolean;
@@ -128,7 +131,6 @@ export function SessionWorkspace({
   selectedSourceAssetIds: ReadonlyArray<string>;
   selectedUnitTitle: string | null;
   selectedProjectSessions: ReadonlyArray<SessionItem>;
-  submitDisabled: boolean;
   tutorFixtureScenarios: ReadonlyArray<TutorFixtureScenario>;
   workspaceSection: WorkspaceSection;
 }): ReactElement {
@@ -219,6 +221,8 @@ export function SessionWorkspace({
           displayMessages={displayMessages}
           draftPrompt={draftPrompt}
           errorMessage={errorMessage}
+          activityInputDisabled={activityInputDisabled}
+          composerDisabled={composerDisabled}
           hasPendingActivity={hasPendingActivity}
           hasStructuredRuntime={hasStructuredRuntime}
           isAgentRunning={isAgentRunning}
@@ -236,7 +240,6 @@ export function SessionWorkspace({
           selectedSessionId={selectedSession.id}
           selectedSessionType={selectedSession.type}
           selectedSourceAssetIds={selectedSourceAssetIds}
-          submitDisabled={submitDisabled}
         />
       </Card>
 

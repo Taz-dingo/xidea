@@ -48,7 +48,7 @@ export function createSessionActions({
     type?: "project" | "study" | "review",
     knowledgePointId?: string | null,
     initialSourceAssetIds?: ReadonlyArray<string>,
-  ) => { id: string } | null;
+  ) => Promise<{ id: string } | null>;
   isMaterialsTrayOpen: boolean;
   isUsingDevTutorFixture: boolean;
   selectedSessionKey: string | null;
@@ -81,16 +81,19 @@ export function createSessionActions({
         return;
       }
 
-      const createdSession = handleCreateSession(
+      void handleCreateSession(
         data.pendingSessionIntent.projectId,
         data.pendingSessionIntent.type,
         data.pendingSessionIntent.knowledgePointId,
         data.pendingSessionIntent.sourceAssetIds,
-      );
-      if (createdSession !== null) {
+      ).then((createdSession) => {
+        if (createdSession === null) {
+          return;
+        }
+
         data.setPendingInitialPrompt({ sessionId: createdSession.id, text, sessionSummary: text });
         data.setDraftPrompt("");
-      }
+      });
       return;
     }
 

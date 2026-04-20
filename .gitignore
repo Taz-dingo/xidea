@@ -20,3 +20,5 @@ __pycache__
 uv.lock
 .playwright-cli
 output/playwright
+apps/agent/output/
+apps/web/package-lock.json
