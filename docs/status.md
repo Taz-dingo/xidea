@@ -5,7 +5,7 @@
 ### Current Focus
 
 - demo 主链已经可讲可演示：`上传材料 -> 生成知识点 -> 启动学习/复习 -> 完成牌组 -> 刷新后回看` 这条链已跑通
-- 当前剩余工作已不再是“大块功能缺失”，而是收尾型缺口：主决策时延、session 生命周期细化、创建 Project 时的真实上传、细粒度 writeback、`Consolidation` 形态和答辩材料
+- 当前剩余工作已不再是“大块功能缺失”，而是收尾型缺口：主决策时延、session 生命周期细化、创建 Project 时的真实上传、无感 `Consolidation`、少量高信号题卡、演示级 `RSR`、细粒度 writeback 和答辩材料
 
 ### Remaining Gaps
 
@@ -13,8 +13,10 @@
 - 新知识卡虽然已经能真实落库并带 `description / reason`，但仍缺更厚的“教学化沉淀对象”，`study / review` 对动态知识卡的上下文支撑还不够强
 - `project / study / review` 三类 session 的基础合同已经落地，但状态转换、create/bootstrap 边界和 project chat 默认续写行为还需要继续收口
 - project chat 相关入口基本打通；当前前端只剩“创建 Project 时直接上传本地文件”这条创建流还没补齐
+- 题卡主路径仍以选择题为主；当前还没补齐定义澄清、边界辨析、误解纠偏这几类高信号真实题卡
 - `activity_result` 已能回写知识点状态、review state、project memory 和 learning profile；当前剩余缺口是把多张 card 的表现进一步拆成更细粒度的 backend writeback
-- `Consolidation` 仍未决定第一版是手动触发演示还是模拟定时入口
+- `Consolidation` 的展示位和刷新策略已定稿，但前端主区顶部的无感 checkpoint 还未落地
+- 演示级 `RSR / Review Engine` 还没收成稳定展示；当前仍缺 `why now / next review / due summary` 这一层答辩友好输出
 - 产品 / demo 侧仍需补答辩素材与竞品对比摘要
 
 ### Done
@@ -109,7 +111,7 @@
 - 明确每个 Project 拥有项目级 memory、项目级 learning profile，以及一组扁平 knowledge points
 - 明确知识点是项目内最小学习单元；学习和复习都围绕知识点组织，不先做知识点层级关系
 - 明确知识点卡片只负责浏览和状态展示，真正作答发生在 `study session / review session`
-- 明确第一版学习 / 复习形式先只做选择题，不先做简答题和开放式多轮对练
+- 明确第一版学习 / 复习形式先收敛为少量高信号题卡，不先做简答题和开放式多轮对练
 - 明确 `project session` 通过显式新建进入；系统不自动切分 project session
 - 明确 session 类型显式分为 `project / study / review`
 - 明确 project 页默认优先展示 knowledge points 工作台；session workspace 只在用户明确进入某个 session 后展开
@@ -302,13 +304,13 @@
 - 已将 waiting feedback 接到 backend typed `status` 事件，但首个真正的 diagnosis / reply 体感仍明显受 provider 时延影响；后续继续盯主模型调用耗时，而不是只靠前端动画掩盖
 - 收敛前端 activity gating：当前学习动作未完成前，主输入区改成受约束交互
 - 收敛用户侧 activity 节奏：让"作答完成 -> 下一轮简短诊断 / 动作反馈"更自然，避免重新把内部证据摊回中间学习线程
-- 规划后续可借鉴的学习模式扩展项：`hint / more questions / performance feedback / 材料直出 quiz 或 study guide`，但不作为第一版选择题 session 的阻塞项
+- 规划后续可借鉴的学习模式扩展项：`hint / more questions / performance feedback / 材料直出 quiz 或 study guide`，但不作为第一版高信号题卡 session 的阻塞项
 - 将"project-level material library + session / turn attachments"收成稳定 contract，替换当前前端先行适配的数据壳
 - 将多 activity / card deck 从前端 fixture 和过渡归一化推进到真实后端事件
 - 清理前端里残留的 backend-owned learning semantics，避免 heuristic / fallback 再次回流到 `apps/web`
 - 将前端已出现的学习交互件整理成后端 prompt / contract 需求清单，供学习引擎 owner 对齐实现
 - 收敛 tutor system prompt：明确何时发起 activity、何时只给短引导、何时禁止继续自由讲解
-- 收敛当前 `Consolidation` 的演示路径，决定是手动触发还是模拟定时入口
+- 收敛当前 `Consolidation` 的演示路径，固定为 `Project Workspace` 主区顶部的无感 `System Checkpoint`
 
 ### Next
 
@@ -321,7 +323,7 @@
 - 将当前 summary 级 project memory / learning profile 写回继续扩成更稳定的 project-level 读模型，并接到知识点详情页与浏览态
 - 将当前单个 `activity` 事件扩成稳定的 session activity contract，补齐多 activity / card deck / 受约束输入节奏
 - 将 web activity 提交从自由文本消息切到 typed `activity_result` contract，直接消费 backend 已完成的 writeback 闭环
-- 决定当前 `Consolidation` 是先做手动触发演示，还是带模拟定时入口的可视化 demo
+- 将当前 `Consolidation` 落地为“先展示上一版结果、再后台刷新”的无感 project-level checkpoint
 - 决定主案例稳定后优先补哪个次级 demo surface：继续放大"材料导入"，还是转向"导师对练"
 - 补答辩素材与竞品对比摘要，避免 demo 能演示但叙事支撑不足
 - 可选：迭代 LLM prompt 效果（真实 API 测试已通过）

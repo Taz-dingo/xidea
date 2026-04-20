@@ -6,6 +6,13 @@
 
 当前主链已经打通，`Current Sprint` 不再以“大块基础建设”推进，而是集中收尾剩余缺口。
 
+### Demo Priorities
+
+- `P0`: 稳主链与主区无感 `Consolidation`，先保证 demo 全链路稳、快、可讲
+- `P1`: 扩真实题卡类型，但只做少量高信号卡片，不扩成题型超市
+- `P2`: 补演示级 `RSR / Review Engine` 展示，讲清 `why now`
+- `P3`: 语音模式只保留为录屏或口头展望，不进入主线阻塞项
+
 #### Learning Engine owner
 
 - 主目录：`apps/agent/src/xidea_agent`
@@ -14,7 +21,8 @@
   - [ ] 清掉残留 `needs_tool=true` 场景与 split path 额外 activity 调用
   - [ ] 把新知识卡继续沉淀成更厚的教学对象，提升 `study / review` 对动态知识卡的上下文支撑
   - [ ] 将多张 card 的 `activity_result` 进一步拆成更细粒度的 backend writeback
-  - [ ] 定出当前 `Consolidation` 的最小演示路径，优先手动触发
+  - [ ] 收口少量高信号题卡类型的 backend contract：选择题、定义澄清、边界辨析、误解纠偏
+  - [ ] 为演示级 `RSR / Review Engine` 补足 `why now / next review / due summary` 所需后端读模型
 
 #### Frontend owner
 
@@ -22,12 +30,15 @@
 - 当前重点：
   - [ ] 继续验证 project chat 默认续写链路，重点检查跨项目切换、切 session、挂材后多轮追问时是否还有旧上下文泄漏
   - [ ] 补齐“创建 Project 时直接上传本地文件”这条创建流
+  - [ ] 在 `Project Workspace` 主区顶部落地无感 `System Checkpoint / Consolidation`：先进库里旧结果，再后台刷新并更新 UI
+  - [ ] 为少量高信号题卡类型补统一展示组件与状态反馈
 
 #### Product / Demo owner
 
 - 主目录：`docs/spec.md`、`docs/status.md`、`docs/plan.md`、答辩材料
 - 当前重点：
-  - [ ] 决定 `Consolidation` 的 demo 形态：手动触发演示，还是模拟定时入口
+  - [ ] 把 `Consolidation` 讲法收口为“无感 project-level system checkpoint”，而不是手动工具入口
+  - [ ] 决定演示级 `RSR / Review Engine` 的最小展示字段与答辩讲法
   - [ ] 准备答辩素材和竞品对比摘要
 
 ### P0
@@ -150,8 +161,16 @@
     - topic/rules 修改入口与知识点轻量编辑入口已接通
   - 当前剩余缺口：
     - “创建 Project 时直接上传本地文件”这条创建流仍未补齐；第一版当前仍沿用 demo seed 材料选择
-- [x] 将学习 / 复习 session 第一版限制为选择题，不先接入简答题与开放式对练
+- [ ] 收敛学习 / 复习 session 第一版题卡类型为少量高信号卡片，而不是只做选择题或扩成题型超市
   - owner: 产品 owner / 前端 owner / 学习引擎 owner
+  - 范围：
+    - 选择题
+    - 定义澄清卡
+    - 边界辨析卡
+    - 误解纠偏卡
+  - 当前要求：
+    - 题卡类型必须服务于“系统根据知识状态切换训练形式”的主叙事
+    - 不接简答题、开放式多轮对练和重语音交互
 - [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环，让学习/复习结果真正影响知识点状态与 project learning profile
   - owner: 学习引擎 owner / 前端 owner
   - 当前进展：
@@ -162,8 +181,18 @@
   - owner: 学习引擎 owner
 - [x] 定义 knowledge point archive 建议规则：多次复习稳定后由系统建议，用户确认执行
   - owner: 学习引擎 owner / 产品 owner
-- [ ] 决定当前 `Consolidation` 是手动触发演示还是模拟定时入口
-  - owner: 学习引擎 owner / 产品 owner
+- [ ] 落地无感 `Consolidation` 展示：进入 `Project` 时先展示上一次结果，再后台刷新最新 project-level checkpoint
+  - owner: 学习引擎 owner / 前端 owner / 产品 owner
+  - 当前要求：
+    - 展示位固定在 `Project Workspace` 主区顶部、知识点列表上方
+    - 不是普通 `AI summary`，而是结构化 project-level 收口卡片
+    - 默认 lazy-load 旧结果，同时显示刷新中的状态；刷新失败时保留旧结果
+- [ ] 补演示级 `RSR / Review Engine` 展示，不追完整 `FSRS`
+  - owner: 学习引擎 owner / 前端 owner / 产品 owner
+  - 当前要求：
+    - 至少讲清 `due / upcoming / stable`
+    - 能说明 `why now / next review`
+    - 与 `Consolidation` 和知识点状态形成闭环
 - [ ] 准备答辩素材和对比竞品摘要
   - owner: 产品 owner
 - [x] 整理 `docs/memory/decision-log.md` 与文档分层，控制长期记忆体积
@@ -175,6 +204,7 @@
 
 - [x] 接真实模型 API（已默认接到智谱 OpenAI-compatible / `glm-5`，保留 OpenAI 兼容）
 - 增强动态知识卡的“教学化沉淀对象”，让 `study / review` 更稳定复用用户新建知识卡
+- 收敛少量高信号题卡类型，让系统能因知识状态切换训练形式
 - 将学习 / 复习结果写回从整组聚合进一步细化到单卡表现
 - 增加 1 到 2 个次级 demo surface
 - 增加 evaluation 和答辩支撑材料
@@ -205,11 +235,18 @@
    - 明确 session create/bootstrap 的边界和状态转换
 4. `apps/web` 补齐创建 Project 时的真实本地文件上传
    - 消掉当前仍依赖 demo seed 材料的创建流
-5. `apps/agent` 细化 `activity_result` writeback
+5. `apps/web` 与 `apps/agent` 落地无感 `Consolidation`
+   - `Project Workspace` 主区顶部展示 `System Checkpoint`
+   - 先展示上一版结果，再后台刷新
+6. 收敛少量高信号题卡类型
+   - 选择题、定义澄清、边界辨析、误解纠偏
+   - 不扩成题型超市
+7. `apps/agent` 细化 `activity_result` writeback
    - 从整组聚合结果继续拆到单卡表现
-6. 产品 / 学习引擎共同确定 `Consolidation` 演示形态
-   - 手动触发演示，或模拟定时入口
-7. 产品 owner 准备答辩支撑材料
+8. 补演示级 `RSR / Review Engine` 展示
+   - `due / upcoming / stable`
+   - `why now / next review`
+9. 产品 owner 准备答辩支撑材料
    - demo 讲述顺序
    - 竞品对比摘要
    - evaluation / 风险说明
@@ -223,7 +260,7 @@
 - `project / study / review` 三类 session 边界
 - `App Home -> Project Workspace -> Knowledge Point Detail` 页面主结构
 - Project Workspace 默认知识点工作台、session 按需展开的产品心智
-- 学习 / 复习第一版只做选择题
+- 学习 / 复习第一版只做少量高信号题卡类型，而不是单一选择题或大而全题型
 - web-agent 事件流协议的迁移方向
 - `maybe_tool` 边界
 - `Review Engine`
