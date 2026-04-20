@@ -110,7 +110,19 @@ export function useSessionAgent({
     data.devTutorFixtureState === null
       ? null
       : getTutorFixtureScenario(data.devTutorFixtureState.fixtureId);
-  const isUsingDevTutorFixture = activeTutorFixture !== null;
+  const persistedMessageCount = data.selectedSession
+    ? data.sessionMessagesById[data.selectedSession.id]?.length ?? 0
+    : 0;
+  const persistedRuntimeSource = data.selectedSession
+    ? data.sessionSnapshots[data.selectedSession.id]?.source ?? null
+    : null;
+  const hasRealSessionState =
+    data.selectedSession !== undefined &&
+    (persistedMessageCount > 0 ||
+      persistedRuntimeSource === "hydrated-state" ||
+      persistedRuntimeSource === "live-agent" ||
+      data.runningSessionIds[data.selectedSession.id] === true);
+  const isUsingDevTutorFixture = activeTutorFixture !== null && !hasRealSessionState;
   const activeRuntime =
     data.selectedSession === undefined
       ? seedRuntime
@@ -152,9 +164,7 @@ export function useSessionAgent({
   const hasPersistedState =
     activeRuntime.source === "hydrated-state" || activeRuntime.source === "live-agent";
   const hasStructuredRuntime = activeRuntime.source === "live-agent";
-  const sessionMessageCount = data.selectedSession
-    ? data.sessionMessagesById[data.selectedSession.id]?.length ?? 0
-    : 0;
+  const sessionMessageCount = persistedMessageCount;
   const isBlankSession =
     data.selectedSession !== undefined &&
     data.selectedSession.knowledgePointId === null &&
@@ -446,6 +456,13 @@ export function useSessionAgent({
     projectId: data.selectedProject.id,
     selectedSessionKey,
   });
+
+  useEffect(() => {
+    if (activeTutorFixture === null || !hasRealSessionState) {
+      return;
+    }
+    data.setDevTutorFixtureState(null);
+  }, [activeTutorFixture, data.setDevTutorFixtureState, hasRealSessionState]);
 
   useEffect(() => {
     if (selectedSessionKey === null || activityBatchState === null || deckKey === null) {

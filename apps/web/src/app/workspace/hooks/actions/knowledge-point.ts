@@ -1,3 +1,4 @@
+import { deleteKnowledgePoint } from "@/lib/agent-client";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useKnowledgePointActions(data: WorkspaceData) {
@@ -70,6 +71,39 @@ export function useKnowledgePointActions(data: WorkspaceData) {
     data.setArchiveConfirmationPointId(null);
   }
 
+  function handleDeleteKnowledgePoint(pointId: string): void {
+    const targetPoint =
+      data.knowledgePoints.find((point) => point.id === pointId) ?? null;
+    if (targetPoint === null) {
+      return;
+    }
+
+    void deleteKnowledgePoint(targetPoint.projectId, pointId).catch(() => undefined);
+
+    data.setKnowledgePoints((current) =>
+      current.filter((point) => point.id !== pointId),
+    );
+    data.setSessions((current) =>
+      current.map((session) =>
+        session.knowledgePointId === pointId
+          ? { ...session, knowledgePointId: null }
+          : session,
+      ),
+    );
+    data.setArchiveConfirmationPointId(null);
+    data.setIsEditingKnowledgePoint(false);
+    data.setIsKnowledgePointDialogOpen(false);
+    data.setSelectedKnowledgePointId((current) => {
+      if (current !== pointId) {
+        return current;
+      }
+      const fallbackPoint = data.knowledgePoints.find(
+        (point) => point.projectId === targetPoint.projectId && point.id !== pointId,
+      );
+      return fallbackPoint?.id ?? "";
+    });
+  }
+
   return {
     handleArchiveKnowledgePoint,
     handleCancelKnowledgePointEditing: () => {
@@ -82,6 +116,7 @@ export function useKnowledgePointActions(data: WorkspaceData) {
       });
       data.setIsEditingKnowledgePoint(false);
     },
+    handleDeleteKnowledgePoint,
     handleOpenKnowledgePointEditor,
     handleSaveKnowledgePoint,
     handleStartArchiveConfirmation: (pointId: string) =>

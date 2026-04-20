@@ -66,7 +66,6 @@ export function SessionWorkspace({
   latestReviewedLabel,
   nextReviewLabel,
   onChangeDraftPrompt,
-  onCloseSession,
   onDeleteSession,
   onDisableTutorFixture,
   onEditKnowledgePoint,
@@ -128,7 +127,6 @@ export function SessionWorkspace({
   latestReviewedLabel: string;
   nextReviewLabel: string;
   onChangeDraftPrompt: (value: string) => void;
-  onCloseSession: () => void;
   onDeleteSession: () => void;
   onDisableTutorFixture: () => void;
   onEditKnowledgePoint: (pointId: string) => void;
@@ -307,9 +305,6 @@ export function SessionWorkspace({
                   <X className={deleteArmed ? "h-4 w-4 text-red-600" : "h-4 w-4"} />
                 </Button>
               ) : null}
-              <Button className="rounded-full" onClick={onCloseSession} type="button" variant="outline">
-                关闭 session
-              </Button>
             </div>
           </div>
         </CardHeader>

@@ -53,6 +53,12 @@ def _build_main_decision_response(
     return json.dumps(payload)
 
 
+def _build_knowledge_point_enrichment_response(
+    items: list[dict[str, str]],
+) -> str:
+    return json.dumps(items, ensure_ascii=False)
+
+
 def _build_activity_card(
     *,
     title: str,
@@ -453,6 +459,23 @@ def build_mock_llm_for_material_import() -> LLMClient:
             ],
         ),
     ]
+    enrichments = _build_knowledge_point_enrichment_response([
+        {
+            "title": "万物皆可Token化",
+            "description": "这条知识点解释多模态与具身智能为什么能与 LLM 共用同一套建模接口：文本、图像、视频和动作都需要先被压成可计算的 token 表示，再进入统一推理链路。",
+            "reason": "材料已经把 LLM、音视频和具身智能并置讨论，先收住“统一表示空间”这条判断，后续学习时才不会把多模态扩展误解成几个割裂模块。",
+        },
+        {
+            "title": "DiT架构",
+            "description": "这条知识点关注 Diffusion Transformer 为什么会取代部分 U-Net 角色，关键不在模型名字，而在 Transformer 如何接管图像/视频生成中的表示组织与长程依赖建模。",
+            "reason": "材料里显式提到 DiT 与范式迁移，如果不单独沉淀这一点，后续学习容易把“模型结构变化”和“训练目标变化”混在一起。",
+        },
+        {
+            "title": "LLM作为具身智能的“常识大脑”",
+            "description": "这条知识点强调 LLM 在具身系统里更像高层常识与规划模块，负责任务拆解、语义理解和决策组织，而不是直接替代感知与低层控制。",
+            "reason": "材料已经把 LLM 和具身智能并列，先收住这条分工边界，后面编排学习时才能判断哪些问题属于规划层，哪些属于感知执行层。",
+        },
+    ])
 
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
@@ -474,6 +497,7 @@ def build_mock_llm_for_material_import() -> LLMClient:
                 activities=activities,
             )
         ),
+        _mock_openai_response(enrichments),
         _mock_openai_stream([
             "我先看看你导入的材料，",
             "然后基于材料内容安排学习。",

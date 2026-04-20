@@ -219,6 +219,46 @@ def test_project_material_upload_and_list_endpoint(persisted_client: TestClient)
     assert "retrieval 和 reranking" in summary_payload["assets"][0]["contentExcerpt"]
 
 
+def test_delete_project_knowledge_point_endpoint(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-multimodal",
+                project_id="rag-demo",
+                title="多模态统一表示",
+                description="说明音视频与文本共用表示空间。",
+                status="active",
+                origin_type="session-suggestion",
+                origin_session_id="thread-project-1",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            )
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-multimodal",
+                mastery=0,
+                learning_status="new",
+                review_status="idle",
+                updated_at=now,
+            )
+        ],
+    )
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
+
+    response = client.delete("/projects/rag-demo/knowledge-points/kp-multimodal")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    points_response = client.get("/projects/rag-demo/knowledge-points")
+    assert points_response.status_code == 200
+    assert points_response.json() == []
+
+
 _SAMPLE_REQUEST = {
     "project_id": "rag-demo",
     "thread_id": "thread-1",

@@ -557,6 +557,27 @@ PLAN_ENRICH_SYSTEM_PROMPT = """\
 - 输出严格 JSON 数组，每个元素含 id, reason, outcome 三个字段
 """
 
+KNOWLEDGE_POINT_ENRICH_SYSTEM_PROMPT = """\
+你是 Xidea 学习编排系统的知识点沉淀模块。
+
+你的任务是把“从材料里提炼出的候选知识点标题”补成真正可学习、可复习的知识卡摘要。
+
+## 输出格式
+
+严格输出 JSON 数组，顺序必须与输入候选标题一致。每个元素包含：
+- title: 保持与输入标题一致，不要改名
+- description: 1-2 句中文，直接说明这个知识点在讲什么、关键判断是什么、为什么它值得单独学
+- reason: 1-2 句中文，说明为什么这轮值得把它沉淀成独立知识点，可以结合材料、当前项目目标或用户诉求
+
+## 质量约束
+
+- description 必须像真正的知识卡摘要，而不是流程提示
+- 不要写“围绕材料沉淀知识点”“优先补齐”“这轮 project 研讨挂入了材料”这类系统内部语句
+- 不要只复述标题，要补出关键关系、边界或判断
+- 如果材料信息不足，也要基于材料摘要尽量给出具体而可学的表述
+- 输出严格 JSON 数组，不要包含 markdown 代码块标记
+"""
+
 SESSION_SYSTEM_PROMPT_BLOCKS: dict[str, dict[str, str]] = {
     "project": {
         "default": """\
@@ -667,6 +688,7 @@ PROMPT_FAMILY_TO_SESSION_BLOCKS: dict[str, tuple[str, ...]] = {
     "plan": ("default", "plan"),
     "reply": ("default", "reply"),
     "response": ("default", "plan", "reply"),
+    "knowledge-point-enrichment": ("default", "reply"),
 }
 
 
@@ -2249,6 +2271,99 @@ def llm_build_activities(
             return None
         logger.warning(
             "LLM activity generation failed, falling back to template activities. raw preview: %r",
+            raw[:160] if "raw" in locals() else "",
+            exc_info=True,
+        )
+        return None
+
+
+def llm_enrich_material_knowledge_points(
+    llm: LLMClient,
+    *,
+    topic: str,
+    user_message: str,
+    assistant_reply: str,
+    asset_summary: dict[str, object],
+    candidate_titles: list[str],
+    session_type: str = "project",
+) -> list[dict[str, str]] | None:
+    if not candidate_titles:
+        return None
+
+    assets_payload: list[dict[str, object]] = []
+    assets = asset_summary.get("assets")
+    if isinstance(assets, list):
+        for asset in assets[:3]:
+            if not isinstance(asset, dict):
+                continue
+            assets_payload.append({
+                "title": str(asset.get("title") or "").strip(),
+                "topic": str(asset.get("topic") or "").strip(),
+                "excerpt": _compact_context_text(str(asset.get("contentExcerpt") or ""), max_chars=220),
+                "keyConcepts": [
+                    str(item).strip()
+                    for item in (asset.get("keyConcepts") or [])
+                    if str(item).strip()
+                ][:4],
+            })
+
+    user_prompt = "\n".join([
+        f"当前 session 类型：{session_type}",
+        f"当前项目主题：{topic}",
+        f"用户这轮输入：{user_message}",
+        f"当前 assistant 已初步回复：{assistant_reply}",
+        f"材料摘要：{str(asset_summary.get('summary') or '').strip()}",
+        f"材料详情：{json.dumps(assets_payload, ensure_ascii=False)}",
+        f"候选知识点标题：{json.dumps(candidate_titles, ensure_ascii=False)}",
+        "请输出严格 JSON 数组，为每个候选标题补全 description 和 reason。",
+    ])
+
+    try:
+        response = _chat_completion(
+            llm,
+            messages=[
+                {
+                    "role": "system",
+                    "content": _build_system_prompt(
+                        KNOWLEDGE_POINT_ENRICH_SYSTEM_PROMPT,
+                        session_type=session_type,
+                        family="knowledge-point-enrichment",
+                    ),
+                },
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.4,
+            max_tokens=900,
+            _caller="enrich_material_knowledge_points",
+        )
+        raw = _extract_message_text(response)
+        raw = _prepare_structured_output(raw, prefer="[")
+        parsed = _load_structured_json(raw)
+        if not isinstance(parsed, list):
+            return None
+
+        enrichments: list[dict[str, str]] = []
+        for candidate_title, payload in zip(candidate_titles, parsed):
+            if not isinstance(payload, dict):
+                return None
+            normalized_title = str(payload.get("title") or "").strip() or candidate_title
+            if normalized_title != candidate_title:
+                normalized_title = candidate_title
+            description = str(payload.get("description") or "").strip()
+            reason = str(payload.get("reason") or "").strip()
+            if not description or not reason:
+                return None
+            enrichments.append({
+                "title": normalized_title,
+                "description": description,
+                "reason": reason,
+            })
+        if len(enrichments) != len(candidate_titles):
+            return None
+        return enrichments
+    except Exception:
+        logger.warning(
+            "LLM knowledge point enrichment failed, falling back to template copy. raw preview: %r",
             raw[:160] if "raw" in locals() else "",
             exc_info=True,
         )

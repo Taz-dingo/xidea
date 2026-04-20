@@ -205,10 +205,6 @@ export function WorkspacePage(): ReactElement {
                   latestReviewedLabel={session.latestReviewedLabel}
                   nextReviewLabel={session.nextReviewLabel}
                   onChangeDraftPrompt={session.handleChangeDraftPrompt}
-                  onCloseSession={() => {
-                    data.setPendingSessionIntent(null);
-                    data.setSelectedSessionId("");
-                  }}
                   onDeleteSession={() => {
                     if (data.selectedSession !== undefined) {
                       actions.handleDeleteSession();
@@ -292,6 +288,9 @@ export function WorkspacePage(): ReactElement {
                   onChangeDraft={data.setKnowledgePointDraft}
                   onConfirmArchive={() =>
                     actions.handleArchiveKnowledgePoint(data.selectedKnowledgePoint!.id)
+                  }
+                  onDelete={() =>
+                    actions.handleDeleteKnowledgePoint(data.selectedKnowledgePoint!.id)
                   }
                   onOpenSession={(sessionId) => {
                     data.setPendingSessionIntent(null);

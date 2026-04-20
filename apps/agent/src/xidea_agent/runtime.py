@@ -1864,6 +1864,7 @@ def _build_material_import_knowledge_point_suggestions(
     state: GraphState,
     repository: SQLiteRepository | None,
     timestamp: datetime,
+    llm: "LLMClient" | None = None,
 ) -> list[KnowledgePointSuggestion]:
     if state.project_context is None or not state.project_context.source_asset_ids:
         return []
@@ -1900,7 +1901,7 @@ def _build_material_import_knowledge_point_suggestions(
                 existing_accepted_by_key[suggestion_key] = suggestion
 
     suggestion_titles = _extract_material_import_suggestion_titles(state.assistant_message or "")
-    suggestions: list[KnowledgePointSuggestion] = []
+    candidate_contexts: list[dict[str, str]] = []
     seen_candidate_keys: set[str] = set()
 
     for asset in assets:
@@ -1932,74 +1933,111 @@ def _build_material_import_knowledge_point_suggestions(
             if candidate_key in seen_candidate_keys:
                 continue
             seen_candidate_keys.add(candidate_key)
+            candidate_contexts.append({
+                "key": candidate_key,
+                "title": title,
+                "asset_title": asset_title,
+                "concept_hint": concept_hint,
+                "topic_hint": topic_hint,
+            })
 
-            if candidate_key in existing_pending_by_key:
-                suggestions.append(existing_pending_by_key[candidate_key])
-                continue
-            if candidate_key in existing_keys:
-                existing_knowledge_point_id = existing_point_id_by_key.get(candidate_key)
-                accepted_suggestion = existing_accepted_by_key.get(candidate_key)
-                if existing_knowledge_point_id is not None:
-                    suggestions.append(
-                        KnowledgePointSuggestion(
-                            id=build_suggestion_id(
-                                state.request.project_id,
-                                state.request.thread_id,
-                                title,
-                            ),
-                            kind="create",
-                            project_id=state.request.project_id,
-                            session_id=state.request.thread_id,
-                            knowledge_point_id=existing_knowledge_point_id,
-                            title=title,
-                            description=accepted_suggestion.description
-                            if accepted_suggestion is not None
-                            else f"沿用知识点「{title}」，继续围绕当前材料推进。",
-                            reason=(
-                                f"当前材料继续收敛到已存在的知识点「{title}」，"
-                                "这轮应把当前会话也挂到这张知识卡上，方便后续回看与继续编排。"
-                            ),
-                            source_material_refs=list(
-                                state.project_context.source_asset_ids
-                                if state.project_context is not None
-                                else []
-                            ),
-                            status="accepted",
-                            created_at=timestamp,
-                            resolved_at=timestamp,
-                            updated_at=timestamp,
-                        )
+    def _build_fallback_copy(candidate: dict[str, str]) -> tuple[str, str]:
+        description = (
+            f"围绕材料《{candidate['asset_title']}》沉淀知识点「{candidate['title']}」，"
+            f"优先补齐 {candidate['concept_hint'] or candidate['topic_hint'] or '这份材料里的核心判断'}。"
+        )
+        reason = (
+            f"这轮 project 研讨挂入了材料《{candidate['asset_title']}》，"
+            f"其中暴露出的重点包括 {candidate['concept_hint'] or candidate['topic_hint'] or '当前主题边界'}，"
+            f"建议把「{candidate['title']}」收成独立知识点，再继续学习编排和复习安排。"
+        )
+        return description, reason
+
+    enriched_by_key: dict[str, dict[str, str]] = {}
+    if llm is not None and candidate_contexts:
+        from xidea_agent.llm import llm_enrich_material_knowledge_points
+
+        enriched = llm_enrich_material_knowledge_points(
+            llm,
+            topic=state.request.topic,
+            user_message=latest_user_message(state.request.messages),
+            assistant_reply=state.assistant_message or "",
+            asset_summary=asset_summary,
+            candidate_titles=[candidate["title"] for candidate in candidate_contexts],
+            session_type=state.request.session_type,
+        )
+        if enriched is not None:
+            for candidate, payload in zip(candidate_contexts, enriched):
+                enriched_by_key[candidate["key"]] = payload
+
+    suggestions: list[KnowledgePointSuggestion] = []
+    for candidate in candidate_contexts:
+        candidate_key = candidate["key"]
+        title = candidate["title"]
+        if candidate_key in existing_pending_by_key:
+            suggestions.append(existing_pending_by_key[candidate_key])
+            continue
+        if candidate_key in existing_keys:
+            existing_knowledge_point_id = existing_point_id_by_key.get(candidate_key)
+            accepted_suggestion = existing_accepted_by_key.get(candidate_key)
+            if existing_knowledge_point_id is not None:
+                suggestions.append(
+                    KnowledgePointSuggestion(
+                        id=build_suggestion_id(
+                            state.request.project_id,
+                            state.request.thread_id,
+                            title,
+                        ),
+                        kind="create",
+                        project_id=state.request.project_id,
+                        session_id=state.request.thread_id,
+                        knowledge_point_id=existing_knowledge_point_id,
+                        title=title,
+                        description=accepted_suggestion.description
+                        if accepted_suggestion is not None
+                        else f"沿用知识点「{title}」，继续围绕当前材料推进。",
+                        reason=(
+                            f"当前材料继续收敛到已存在的知识点「{title}」，"
+                            "这轮应把当前会话也挂到这张知识卡上，方便后续回看与继续编排。"
+                        ),
+                        source_material_refs=list(
+                            state.project_context.source_asset_ids
+                            if state.project_context is not None
+                            else []
+                        ),
+                        status="accepted",
+                        created_at=timestamp,
+                        resolved_at=timestamp,
+                        updated_at=timestamp,
                     )
-                continue
-
-            description = (
-                f"围绕材料《{asset_title}》沉淀知识点「{title}」，"
-                f"优先补齐 {concept_hint or topic_hint or '这份材料里的核心判断'}。"
-            )
-            reason = (
-                f"这轮 project 研讨挂入了材料《{asset_title}》，"
-                f"其中暴露出的重点包括 {concept_hint or topic_hint or '当前主题边界'}，"
-                f"建议把「{title}」收成独立知识点，再继续学习编排和复习安排。"
-            )
-            suggestions.append(
-                KnowledgePointSuggestion(
-                    id=build_suggestion_id(
-                        state.request.project_id,
-                        state.request.thread_id,
-                        title,
-                    ),
-                    kind="create",
-                    project_id=state.request.project_id,
-                    session_id=state.request.thread_id,
-                    title=title,
-                    description=description,
-                    reason=reason,
-                    source_material_refs=list(state.project_context.source_asset_ids),
-                    status="pending",
-                    created_at=timestamp,
-                    updated_at=timestamp,
                 )
+            continue
+
+        enriched = enriched_by_key.get(candidate_key)
+        description, reason = (
+            (enriched["description"], enriched["reason"])
+            if enriched is not None
+            else _build_fallback_copy(candidate)
+        )
+        suggestions.append(
+            KnowledgePointSuggestion(
+                id=build_suggestion_id(
+                    state.request.project_id,
+                    state.request.thread_id,
+                    title,
+                ),
+                kind="create",
+                project_id=state.request.project_id,
+                session_id=state.request.thread_id,
+                title=title,
+                description=description,
+                reason=reason,
+                source_material_refs=list(state.project_context.source_asset_ids),
+                status="pending",
+                created_at=timestamp,
+                updated_at=timestamp,
             )
+        )
 
     return suggestions[:3]
 
@@ -2167,6 +2205,7 @@ def _build_archive_knowledge_point_suggestion(
 def build_knowledge_point_suggestions(
     state: GraphState,
     repository: SQLiteRepository | None = None,
+    llm: "LLMClient" | None = None,
 ) -> list[KnowledgePointSuggestion]:
     if state.diagnosis is None or state.is_off_topic:
         return []
@@ -2181,6 +2220,7 @@ def build_knowledge_point_suggestions(
             state,
             repository,
             timestamp,
+            llm=llm,
         )
         return material_suggestions
 
@@ -2421,6 +2461,7 @@ def iter_agent_v0_events(
         state.knowledge_point_suggestions = build_knowledge_point_suggestions(
             state,
             repository=repository,
+            llm=llm,
         )
 
     from xidea_agent.llm import llm_build_plan, stream_assistant_reply
@@ -2593,6 +2634,7 @@ def iter_agent_v0_events(
         state.knowledge_point_suggestions = build_knowledge_point_suggestions(
             state,
             repository=repository,
+            llm=llm,
         )
     if state.knowledge_point_suggestions:
         suggestion_event = KnowledgePointSuggestionEvent(
@@ -3126,7 +3168,11 @@ def compose_response_step(
             bundled_activities=state.activities,
         )
         state.activity = state.activities[0] if state.activities else None
-        state.knowledge_point_suggestions = build_knowledge_point_suggestions(state, repository=repository)
+        state.knowledge_point_suggestions = build_knowledge_point_suggestions(
+            state,
+            repository=repository,
+            llm=llm,
+        )
         state.rationale.append(
             f"compose_response built a {len(state.plan.steps)}-step plan "
             f"with mode {state.plan.selected_mode} "
@@ -3243,7 +3289,11 @@ def compose_response_step(
         bundled_activities=bundled_activities,
     )
     state.activity = state.activities[0] if state.activities else None
-    state.knowledge_point_suggestions = build_knowledge_point_suggestions(state, repository=repository)
+    state.knowledge_point_suggestions = build_knowledge_point_suggestions(
+        state,
+        repository=repository,
+        llm=llm,
+    )
     if reply_source == "template" or _should_use_material_import_structured_reply(state):
         state.assistant_message = _compose_material_import_project_reply(
             state,

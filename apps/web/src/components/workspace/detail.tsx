@@ -1,5 +1,5 @@
-import type { ReactElement } from "react";
-import { Archive, ArrowLeft, FilePenLine, X } from "lucide-react";
+import { useEffect, useState, type ReactElement } from "react";
+import { Archive, ArrowLeft, FilePenLine, Trash2, X } from "lucide-react";
 import type { KnowledgePointItem, SessionItem } from "@/domain/project-workspace";
 import type { ReviewHeatmapCell } from "@/domain/review-heatmap";
 import type { SourceAsset } from "@/domain/types";
@@ -41,6 +41,7 @@ export function KnowledgePointDetailScreen({
   onCancelEditing,
   onChangeDraft,
   onConfirmArchive,
+  onDelete,
   onOpenSession,
   onSave,
   onStartArchiveConfirmation,
@@ -63,6 +64,7 @@ export function KnowledgePointDetailScreen({
   onCancelEditing: () => void;
   onChangeDraft: (draft: EditableKnowledgePointDraftValue) => void;
   onConfirmArchive: () => void;
+  onDelete: () => void;
   onOpenSession: (sessionId: string) => void;
   onSave: () => void;
   onStartArchiveConfirmation: () => void;
@@ -75,6 +77,21 @@ export function KnowledgePointDetailScreen({
   selectedSessionId: string;
   showBackButton?: boolean;
 }): ReactElement {
+  const [deleteArmed, setDeleteArmed] = useState(false);
+
+  useEffect(() => {
+    if (!deleteArmed) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setDeleteArmed(false), 2200);
+    return () => window.clearTimeout(timeoutId);
+  }, [deleteArmed]);
+
+  useEffect(() => {
+    setDeleteArmed(false);
+  }, [knowledgePoint.id]);
+
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div className="space-y-4">
@@ -133,6 +150,22 @@ export function KnowledgePointDetailScreen({
                 )}
               </div>
               <div className="flex items-start gap-2">
+                <Button
+                  aria-label={deleteArmed ? "确认删除知识卡" : "删除知识卡"}
+                  className="h-9 w-9 shrink-0 rounded-full border-[var(--xidea-border)] p-0 text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-parchment)]"
+                  onClick={() => {
+                    if (deleteArmed) {
+                      onDelete();
+                      return;
+                    }
+                    setDeleteArmed(true);
+                  }}
+                  title={deleteArmed ? "再点一次删除" : "删除知识卡"}
+                  type="button"
+                  variant="ghost"
+                >
+                  <Trash2 className={deleteArmed ? "h-4 w-4 text-red-600" : "h-4 w-4"} />
+                </Button>
                 <Badge
                   className={`border px-3 py-1.5 text-[12px] shadow-none ${getKnowledgePointAccent(knowledgePoint.status)}`}
                   variant="outline"

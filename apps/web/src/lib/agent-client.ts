@@ -392,6 +392,30 @@ export async function deleteThread(
   }
 }
 
+export async function deleteKnowledgePoint(
+  projectId: string,
+  knowledgePointId: string,
+  options?: { signal?: AbortSignal },
+): Promise<void> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    throw new Error("未配置 agent API 地址。开发环境可直接启动本地代理，或设置 VITE_AGENT_API_BASE_URL。");
+  }
+
+  const response = await fetch(
+    `${baseUrl}/projects/${projectId}/knowledge-points/${knowledgePointId}`,
+    {
+      method: "DELETE",
+      signal: options?.signal,
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `删除知识卡失败（${response.status}）。`);
+  }
+}
+
 export async function getInspectorBootstrap(
   threadId: string,
   unitId: string,

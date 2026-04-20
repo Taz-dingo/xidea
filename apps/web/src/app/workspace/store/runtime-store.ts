@@ -3,7 +3,6 @@ import type { UIMessage } from "ai";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { resetLegacyWorkspaceStorage } from "@/app/workspace/store/persistence";
-import { getTutorFixtureScenario } from "@/data/tutor-fixtures";
 import type {
   AgentAssetSummary,
   AgentEntryMode,
@@ -15,7 +14,6 @@ import {
   type CompletedActivityDeck,
   type DevTutorFixtureState,
   type SessionActivityBatchState,
-  buildDevTutorFixtureState,
 } from "@/domain/project-session-runtime";
 
 function resolveState<T>(
@@ -28,13 +26,7 @@ function resolveState<T>(
 }
 
 function getInitialDevTutorFixtureState(): DevTutorFixtureState | null {
-  if (!import.meta.env.DEV || typeof window === "undefined") {
-    return null;
-  }
-
-  const fixtureId = new URLSearchParams(window.location.search).get("mockTutor");
-  const fixture = getTutorFixtureScenario(fixtureId);
-  return fixture ? buildDevTutorFixtureState(fixture) : null;
+  return null;
 }
 
 interface WorkspaceRuntimeState {

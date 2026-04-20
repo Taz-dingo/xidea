@@ -207,6 +207,14 @@ def create_app(
             )
         return records
 
+    @app.delete("/projects/{project_id}/knowledge-points/{knowledge_point_id}")
+    def delete_project_knowledge_point(project_id: str, knowledge_point_id: str) -> dict[str, bool]:
+        repo = _require_repository(repository)
+        deleted = repo.delete_knowledge_point(project_id, knowledge_point_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Knowledge point not found")
+        return {"ok": True}
+
     @app.post("/projects/{project_id}/materials/upload", response_model=SourceAsset)
     def upload_project_material(
         project_id: str,

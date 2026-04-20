@@ -780,6 +780,100 @@ class SQLiteRepository:
 
         return self._row_to_knowledge_point_state(row) if row is not None else None
 
+    def delete_knowledge_point(self, project_id: str, knowledge_point_id: str) -> bool:
+        self.initialize()
+        now_value = _utc_now()
+        with self._connect() as connection:
+            point_row = connection.execute(
+                """
+                SELECT knowledge_point_id
+                FROM knowledge_points
+                WHERE project_id = ? AND knowledge_point_id = ?
+                """,
+                (project_id, knowledge_point_id),
+            ).fetchone()
+            if point_row is None:
+                return False
+
+            project_thread_ids = [
+                row["thread_id"]
+                for row in connection.execute(
+                    """
+                    SELECT thread_id
+                    FROM threads
+                    WHERE project_id = ?
+                    """,
+                    (project_id,),
+                ).fetchall()
+            ]
+
+            if project_thread_ids:
+                placeholders = ", ".join("?" for _ in project_thread_ids)
+                connection.execute(
+                    f"""
+                    DELETE FROM learner_unit_state
+                    WHERE unit_id = ? AND thread_id IN ({placeholders})
+                    """,
+                    [knowledge_point_id, *project_thread_ids],
+                )
+                connection.execute(
+                    f"""
+                    DELETE FROM review_state
+                    WHERE unit_id = ? AND thread_id IN ({placeholders})
+                    """,
+                    [knowledge_point_id, *project_thread_ids],
+                )
+                connection.execute(
+                    f"""
+                    DELETE FROM review_events
+                    WHERE unit_id = ? AND thread_id IN ({placeholders})
+                    """,
+                    [knowledge_point_id, *project_thread_ids],
+                )
+
+            connection.execute(
+                """
+                UPDATE threads
+                SET knowledge_point_id = NULL, updated_at = ?
+                WHERE project_id = ? AND knowledge_point_id = ?
+                """,
+                (now_value, project_id, knowledge_point_id),
+            )
+            connection.execute(
+                """
+                UPDATE thread_activity_decks
+                SET knowledge_point_id = NULL
+                WHERE knowledge_point_id = ? AND thread_id IN (
+                  SELECT thread_id
+                  FROM threads
+                  WHERE project_id = ?
+                )
+                """,
+                (knowledge_point_id, project_id),
+            )
+            connection.execute(
+                """
+                DELETE FROM knowledge_point_state
+                WHERE knowledge_point_id = ?
+                """,
+                (knowledge_point_id,),
+            )
+            connection.execute(
+                """
+                DELETE FROM knowledge_point_suggestions
+                WHERE project_id = ? AND knowledge_point_id = ?
+                """,
+                (project_id, knowledge_point_id),
+            )
+            connection.execute(
+                """
+                DELETE FROM knowledge_points
+                WHERE project_id = ? AND knowledge_point_id = ?
+                """,
+                (project_id, knowledge_point_id),
+            )
+        return True
+
     def list_knowledge_point_suggestions(
         self,
         project_id: str,

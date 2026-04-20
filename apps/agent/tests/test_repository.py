@@ -209,6 +209,172 @@ def test_repository_resolves_archive_suggestion_and_archives_knowledge_point(tmp
     assert resolution.knowledge_point_state.archive_suggested is False
 
 
+def test_repository_deletes_knowledge_point_and_clears_thread_links(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-multimodal",
+                project_id="rag-demo",
+                title="多模态统一表示",
+                description="说明音视频与文本共用表示空间。",
+                status="active",
+                origin_type="session-suggestion",
+                origin_session_id="thread-study-1",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            )
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-multimodal",
+                mastery=35,
+                learning_status="learning",
+                review_status="idle",
+                updated_at=now,
+            )
+        ],
+    )
+    repository.save_knowledge_point_suggestions(
+        [
+            KnowledgePointSuggestion(
+                id="suggestion-create-1",
+                kind="create",
+                project_id="rag-demo",
+                session_id="thread-project-1",
+                knowledge_point_id="kp-multimodal",
+                title="多模态统一表示",
+                description="说明音视频与文本共用表示空间。",
+                reason="适合沉淀成知识卡。",
+                status="accepted",
+                created_at=now,
+                updated_at=now,
+            )
+        ]
+    )
+    with repository._connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO projects(project_id, topic, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            ("rag-demo", "多模态学习", now.isoformat(), now.isoformat()),
+        )
+        connection.execute(
+            """
+            INSERT INTO threads(
+              thread_id, project_id, topic, session_type, knowledge_point_id,
+              title, summary, status, entry_mode, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "thread-study-1",
+                "rag-demo",
+                "多模态学习",
+                "study",
+                "kp-multimodal",
+                "学习：多模态统一表示",
+                "围绕多模态统一表示学习。",
+                "已更新",
+                "chat-question",
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO learner_unit_state(
+              thread_id, unit_id, mastery, understanding_level, memory_strength,
+              confusion_level, transfer_readiness, weak_signals, recommended_action,
+              confidence, based_on, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "thread-study-1",
+                "kp-multimodal",
+                30,
+                2,
+                2,
+                1,
+                1,
+                "[]",
+                "teach",
+                0.8,
+                "test",
+                now.isoformat(),
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO review_state(
+              thread_id, unit_id, due_unit_ids, scheduled_at, review_reason,
+              review_count, lapse_count, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "thread-study-1",
+                "kp-multimodal",
+                '["kp-multimodal"]',
+                now.isoformat(),
+                "test",
+                1,
+                0,
+                now.isoformat(),
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO review_events(
+              thread_id, unit_id, event_kind, event_at, review_reason, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "thread-study-1",
+                "kp-multimodal",
+                "scheduled",
+                now.isoformat(),
+                "test",
+                now.isoformat(),
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO thread_activity_decks(
+              deck_id, thread_id, session_type, knowledge_point_id, completed_at, payload
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "deck-1",
+                "thread-study-1",
+                "study",
+                "kp-multimodal",
+                now.isoformat(),
+                '{"cards":[]}',
+            ),
+        )
+
+    deleted = repository.delete_knowledge_point("rag-demo", "kp-multimodal")
+
+    assert deleted is True
+    assert repository.get_knowledge_point("rag-demo", "kp-multimodal") is None
+    assert repository.get_knowledge_point_state("kp-multimodal") is None
+    assert repository.list_knowledge_point_suggestions("rag-demo") == []
+    assert repository.get_learner_unit_state("thread-study-1", "kp-multimodal") is None
+    assert repository.get_review_state("thread-study-1", "kp-multimodal") is None
+    assert repository.list_review_events("thread-study-1", "kp-multimodal") == []
+    thread_record = repository.list_project_threads("rag-demo")[0]
+    assert thread_record["knowledge_point_id"] is None
+    assert repository.list_thread_activity_decks("thread-study-1")[0]["knowledge_point_id"] is None
+
+
 def test_repository_persists_activity_result_writeback_to_project_level_state(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "agent.db")
     repository.initialize()

@@ -318,7 +318,11 @@ def test_material_import_project_session_emits_multiple_knowledge_point_suggesti
         for suggestion in result.graph_state.knowledge_point_suggestions
     )
     assert all(
-        "llm-multimodal-notes.md" in suggestion.reason
+        "围绕材料《" not in suggestion.description
+        for suggestion in result.graph_state.knowledge_point_suggestions
+    )
+    assert any(
+        "统一表示空间" in suggestion.reason or "统一表示空间" in suggestion.description
         for suggestion in result.graph_state.knowledge_point_suggestions
     )
 
@@ -364,11 +368,6 @@ def test_material_import_uses_asset_knowledge_point_candidates_when_reply_is_gen
         choice = SimpleNamespace(message=message)
         return SimpleNamespace(choices=[choice])
 
-    def _stream_chunk(content: str):
-        delta = SimpleNamespace(content=content)
-        choice = SimpleNamespace(delta=delta)
-        return SimpleNamespace(choices=[choice])
-
     generic_main_decision = json.dumps({
         "signals": [
             {"kind": "project-relevance", "score": 0.92, "confidence": 0.86, "summary": "材料与当前项目高度相关"},
@@ -398,11 +397,60 @@ def test_material_import_uses_asset_knowledge_point_candidates_when_reply_is_gen
         },
         "activities": [],
     })
+    fallback_plan = json.dumps(
+        {
+            "headline": "围绕材料收敛学习方向",
+            "summary": "先沉淀知识点，再决定学习与复习安排。",
+            "selected_mode": "guided-qa",
+            "expected_outcome": "明确下一轮最值得沉淀的学习对象。",
+            "steps": [
+                {
+                    "id": "clarify-material",
+                    "title": "围绕材料收敛主题",
+                    "mode": "guided-qa",
+                    "reason": "先把材料里的稳定判断拉出来。",
+                    "outcome": "明确后续要沉淀的知识点。",
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    fallback_response_bundle = json.dumps(
+        {
+            "reply": "我先按这份材料收敛学习主题。",
+            "plan": json.loads(fallback_plan),
+        },
+        ensure_ascii=False,
+    )
+    enrichment_payload = json.dumps(
+        [
+            {
+                "title": "为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式",
+                "description": "这条知识点解释多模态与具身智能为什么能共享统一建模范式：文本、图像、视频与动作都需要先被压成一致的 token 表示，再进入同一套推理接口。",
+                "reason": "材料正文已经把“统一表示空间”明确提出来，先沉淀这条判断，后续学习才不会把多模态扩展误解成几条割裂路线。",
+            },
+            {
+                "title": "DiT 和 Transformer 范式如何从文本迁移到图像视频",
+                "description": "这条知识点关注 Transformer 为什么能从文本建模扩展到图像与视频生成，关键在于表示组织和长程依赖建模方式的迁移。",
+                "reason": "材料已经把 DiT 当作关键线索，如果不单独沉淀，后续容易把“模型结构迁移”与“任务目标变化”混成一件事。",
+            },
+            {
+                "title": "LLM 作为具身智能常识大脑的边界",
+                "description": "这条知识点强调 LLM 在具身系统里更像高层常识与规划模块，负责任务拆解和语义理解，而不是替代感知与底层控制。",
+                "reason": "材料把 LLM 和具身智能并置讨论，先收住这条分工边界，后面才能判断哪些问题属于规划层，哪些属于执行层。",
+            },
+        ],
+        ensure_ascii=False,
+    )
 
     mock_client = MagicMock()
     mock_client.chat.completions.create.side_effect = [
         _response(generic_main_decision),
-        iter([_stream_chunk("我先按这份材料收敛学习主题。")]),
+        _response(fallback_response_bundle),
+        _response(fallback_plan),
+        _response(enrichment_payload),
+        _response(enrichment_payload),
+        _response(enrichment_payload),
     ]
     llm = LLMClient(client=mock_client, model="gpt-4o-mini")
 
@@ -414,6 +462,7 @@ def test_material_import_uses_asset_knowledge_point_candidates_when_reply_is_gen
         "DiT 和 Transformer 范式如何从文本迁移到图像视频",
         "LLM 作为具身智能常识大脑的边界",
     ]
+    assert "统一建模范式" in result.graph_state.knowledge_point_suggestions[0].description
 
 
 def test_iter_agent_v0_events_material_import_reply_matches_generated_suggestions(
@@ -493,9 +542,33 @@ def test_iter_agent_v0_events_material_import_reply_matches_generated_suggestion
             "activities": [],
         }
     )
+    enrichment_payload = json.dumps(
+        [
+            {
+                "title": "为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式",
+                "description": "这条知识点解释多模态与具身智能为什么能共享统一建模范式：文本、图像、视频与动作都会先被压成一致的 token 表示，再进入同一套推理接口。",
+                "reason": "材料正文已经把“统一表示空间”明确提出来，先沉淀这条判断，后续学习才不会把多模态扩展误解成割裂路线。",
+            },
+            {
+                "title": "DiT 和 Transformer 范式如何从文本迁移到图像视频",
+                "description": "这条知识点关注 Transformer 为什么能从文本建模扩展到图像与视频生成，关键在于表示组织和长程依赖建模方式的迁移。",
+                "reason": "材料已经把 DiT 当作关键线索，如果不单独沉淀，后续容易把模型结构迁移与任务目标变化混成一件事。",
+            },
+            {
+                "title": "LLM 作为具身智能常识大脑的边界",
+                "description": "这条知识点强调 LLM 在具身系统里更像高层常识与规划模块，负责任务拆解和语义理解，而不是替代感知与底层控制。",
+                "reason": "材料把 LLM 和具身智能并置讨论，先收住这条分工边界，后面才能判断哪些问题属于规划层，哪些问题属于执行层。",
+            },
+        ],
+        ensure_ascii=False,
+    )
 
     mock_client = MagicMock()
-    mock_client.chat.completions.create.side_effect = [_response(generic_main_decision)]
+    mock_client.chat.completions.create.side_effect = [
+        _response(generic_main_decision),
+        _response(enrichment_payload),
+        _response(enrichment_payload),
+    ]
     llm = LLMClient(client=mock_client, model="gpt-4o-mini")
 
     events = list(iter_agent_v0_events(request, repository=repository, llm=llm))
