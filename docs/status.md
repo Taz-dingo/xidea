@@ -2,6 +2,21 @@
 
 ## As Of 2026-04-20
 
+### Current Focus
+
+- demo 主链已经可讲可演示：`上传材料 -> 生成知识点 -> 启动学习/复习 -> 完成牌组 -> 刷新后回看` 这条链已跑通
+- 当前剩余工作已不再是“大块功能缺失”，而是收尾型缺口：主决策时延、session 生命周期细化、创建 Project 时的真实上传、细粒度 writeback、`Consolidation` 形态和答辩材料
+
+### Remaining Gaps
+
+- 学习引擎主路径还要继续收敛到更稳定的“单次主决策 + 少量 tool loop + writeback”，重点清掉残留 `needs_tool=true` 场景和 split path 额外 activity 调用
+- 新知识卡虽然已经能真实落库并带 `description / reason`，但仍缺更厚的“教学化沉淀对象”，`study / review` 对动态知识卡的上下文支撑还不够强
+- `project / study / review` 三类 session 的基础合同已经落地，但状态转换、create/bootstrap 边界和 project chat 默认续写行为还需要继续收口
+- project chat 相关入口基本打通；当前前端只剩“创建 Project 时直接上传本地文件”这条创建流还没补齐
+- `activity_result` 已能回写知识点状态、review state、project memory 和 learning profile；当前剩余缺口是把多张 card 的表现进一步拆成更细粒度的 backend writeback
+- `Consolidation` 仍未决定第一版是手动触发演示还是模拟定时入口
+- 产品 / demo 侧仍需补答辩素材与竞品对比摘要
+
 ### Done
 
 #### 真实学习主链与前端主路径收口（2026-04-20）
@@ -30,7 +45,7 @@
 - `apps/web` 已将知识卡和相关 session 的联动补成可回读对象：本会话创建或接受的知识卡会回挂到对应回复位置，知识卡详情也能按 `linkedSessionIds` 回读相关会话
 - 已在浏览器实跑验证主 demo 链：`上传材料 -> 研讨生成知识点 -> 项目主页回看知识卡 -> 围绕知识卡启动学习 session -> 完成牌组后刷新并重新打开 session 仍能回看 deck`
 
-### Done
+### Earlier Done
 
 #### 本轮页面设计收口（2026-04-19）
 
