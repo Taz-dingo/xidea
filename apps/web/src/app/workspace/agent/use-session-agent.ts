@@ -1,6 +1,5 @@
 import { useChat } from "@ai-sdk/react";
 import { useCallback, useMemo, useRef } from "react";
-import { learningUnits, sourceAssets } from "@/data/demo";
 import { getTutorFixtureScenario } from "@/data/tutor-fixtures";
 import {
   buildMockRuntimeSnapshot,
@@ -21,6 +20,7 @@ import type { LearningActivitySubmission, SourceAsset } from "@/domain/types";
 import {
   getAgentBaseUrl,
 } from "@/lib/agent-client";
+import { buildLearningUnitFromKnowledgePoint } from "@/app/workspace/model/backend-adapter";
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
 import { createSessionActions } from "@/app/workspace/agent/session-actions";
 import { useAgentHealth } from "@/app/workspace/agent/effects/use-agent-health";
@@ -39,16 +39,20 @@ export function useSessionAgent({
     type?: "project" | "study" | "review",
     knowledgePointId?: string | null,
     initialSourceAssetIds?: ReadonlyArray<string>,
-  ) => { id: string } | null;
+  ) => Promise<{ id: string } | null>;
 }) {
   const selectedSessionKey = data.selectedSession?.id ?? null;
   const selectedSessionKnowledgePointId = data.selectedSession?.knowledgePointId ?? null;
   const sessionSnapshotsRef = useRef(data.sessionSnapshots);
   sessionSnapshotsRef.current = data.sessionSnapshots;
-  const selectedUnit = selectedSessionKnowledgePointId
-    ? learningUnits.find((unit) => unit.id === selectedSessionKnowledgePointId)
-    : undefined;
-  const runtimeUnit = selectedUnit ?? data.initialUnit;
+  const selectedSessionKnowledgePoint = selectedSessionKnowledgePointId
+    ? (data.knowledgePoints.find(
+        (point) => point.id === selectedSessionKnowledgePointId,
+      ) ?? null)
+    : null;
+  const runtimeUnit = selectedSessionKnowledgePoint
+    ? buildLearningUnitFromKnowledgePoint(selectedSessionKnowledgePoint)
+    : data.initialUnit;
   const selectedSourceAssetIds = data.selectedSession
     ? data.sessionSourceAssetIds[data.selectedSession.id] ?? []
     : [];
@@ -99,8 +103,8 @@ export function useSessionAgent({
     data.sessionSnapshots[data.selectedSession.id] === undefined &&
     data.draftPrompt.trim() === "";
   const activeSourceAssets = useMemo(
-    () => sourceAssets.filter((asset) => selectedSourceAssetIds.includes(asset.id)),
-    [selectedSourceAssetIds],
+    () => data.sourceAssets.filter((asset) => selectedSourceAssetIds.includes(asset.id)),
+    [data.sourceAssets, selectedSourceAssetIds],
   );
   const effectiveEntryMode = selectedSourceAssetIds.length > 0 ? "material-import" : "chat-question";
   const isMaterialsTrayOpen =
@@ -160,7 +164,7 @@ export function useSessionAgent({
   const nextReviewLabel = activeReviewInspector?.scheduledAt
     ? formatDateLabel(activeReviewInspector.scheduledAt) ?? "待安排"
     : activeRuntime.state.nextReviewAt ?? "待安排";
-  const selectedUnitTitle = selectedUnit?.title ?? null;
+  const selectedUnitTitle = selectedSessionKnowledgePoint?.title ?? null;
   const activeTutorFixtureId = activeTutorFixture?.id ?? null;
 
   const handleTransportSnapshot = useCallback(
@@ -210,7 +214,11 @@ export function useSessionAgent({
   const errorMessage = isUsingDevTutorFixture
     ? data.devTutorFixtureState?.errorMessage ?? null
     : getErrorMessage(error);
-  const submitDisabled = hasPendingActivity || isAgentRunning || getAgentBaseUrl() === null;
+  const transportUnavailable =
+    !isUsingDevTutorFixture && getAgentBaseUrl() === null;
+  const activityInputDisabled = isAgentRunning || transportUnavailable;
+  const composerDisabled =
+    hasPendingActivity || isAgentRunning || transportUnavailable;
 
   useFixtureSync({ data, fixtureIdFromUrl });
   useAgentHealth(data);
@@ -277,8 +285,8 @@ export function useSessionAgent({
     requestSourceAssetIds,
     reviewHeatmap,
     selectedSourceAssetIds,
-    selectedUnit,
     selectedUnitTitle,
-    submitDisabled,
+    activityInputDisabled,
+    composerDisabled,
   };
 }

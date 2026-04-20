@@ -1,6 +1,5 @@
 import type { ReactElement } from "react";
 import { tutorFixtureScenarios } from "@/data/tutor-fixtures";
-import { sourceAssets } from "@/data/demo";
 import { WorkspaceHeader } from "@/app/workspace/ui/header";
 import { WorkspaceHero } from "@/app/workspace/ui/hero";
 import { useSessionAgent } from "@/app/workspace/agent/use-session-agent";
@@ -46,7 +45,7 @@ export function WorkspacePage(): ReactElement {
 
           {data.isCreatingProject ? (
             <CreateProjectPanel
-              assets={sourceAssets}
+              assets={data.sourceAssets}
               draft={data.projectDraft}
               onCancel={actions.handleCancelCreatingProject}
               onChange={data.setProjectDraft}
@@ -86,7 +85,7 @@ export function WorkspacePage(): ReactElement {
                 isDetailScreen={data.screen === "detail"}
                 onBack={actions.handleBackToWorkspace}
                 onStartProjectSession={() =>
-                  actions.handleCreateSession(data.selectedProject.id, "project")
+                  void actions.handleCreateSession(data.selectedProject.id, "project")
                 }
                 onStartReview={() =>
                   actions.handlePrepareSessionStart(
@@ -139,7 +138,7 @@ export function WorkspacePage(): ReactElement {
 
                   {data.isEditingProjectMeta ? (
                     <EditMetaPanel
-                      assets={sourceAssets}
+                      assets={data.sourceAssets}
                       draft={data.projectMetaDraft}
                       onCancel={actions.handleCancelEditingProjectMeta}
                       onChange={data.setProjectMetaDraft}
@@ -234,6 +233,8 @@ export function WorkspacePage(): ReactElement {
                   displayMessages={session.displayMessages}
                   draftPrompt={data.draftPrompt}
                   errorMessage={session.errorMessage}
+                  activityInputDisabled={session.activityInputDisabled}
+                  composerDisabled={session.composerDisabled}
                   hasPendingActivity={session.hasPendingActivity}
                   hasPersistedState={session.hasPersistedState}
                   hasStructuredRuntime={session.hasStructuredRuntime}
@@ -272,7 +273,6 @@ export function WorkspacePage(): ReactElement {
                   selectedSession={data.selectedSession}
                   selectedSourceAssetIds={session.selectedSourceAssetIds}
                   selectedUnitTitle={session.selectedUnitTitle}
-                  submitDisabled={session.submitDisabled}
                   tutorFixtureScenarios={tutorFixtureScenarios}
                   workspaceSection={data.workspaceSection}
                 />

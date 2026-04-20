@@ -1,5 +1,12 @@
 import type { SessionItem } from "@/domain/project-workspace";
 import { getDefaultSourceAssetIds } from "@/domain/project-session-runtime";
+import { getAgentBaseUrl } from "@/lib/agent-client";
+import {
+  createWorkspaceProject,
+  updateWorkspaceProject,
+} from "@/lib/agent-workspace-client";
+import { buildProjectMaterialInputs } from "@/app/workspace/model/backend-adapter";
+import { hydrateWorkspaceFromBackend } from "@/app/workspace/hooks/data/backend-hydration";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useProjectActions(data: WorkspaceData) {
@@ -16,7 +23,7 @@ export function useProjectActions(data: WorkspaceData) {
     data.setPendingSessionIntent(null);
   }
 
-  function handleSaveProject(): void {
+  async function handleSaveProject(): Promise<void> {
     const nextName = data.projectDraft.name.trim();
     const nextTopic = data.projectDraft.topic.trim();
     const nextDescription = data.projectDraft.description.trim();
@@ -26,6 +33,36 @@ export function useProjectActions(data: WorkspaceData) {
       .filter((rule) => rule !== "");
 
     if (nextName === "" || nextTopic === "" || nextDescription === "") {
+      return;
+    }
+
+    if (getAgentBaseUrl() !== null) {
+      try {
+        const createdProject = await createWorkspaceProject({
+          title: nextName,
+          topic: nextTopic,
+          description: nextDescription,
+          special_rules:
+            specialRules.length > 0
+              ? specialRules
+              : ["先收敛主题和材料，再开始学习编排。"],
+          initial_materials: buildProjectMaterialInputs(
+            data.projectDraft.initialMaterialIds,
+            data.sourceAssets,
+          ),
+        });
+
+        await hydrateWorkspaceFromBackend(data, {
+          preferredProjectId: createdProject.project.id,
+        });
+        data.setIsProjectMetaOpen(true);
+        data.setIsCreatingProject(false);
+        data.setPendingSessionIntent(null);
+        data.setSearchQuery("");
+        data.setScreen("workspace");
+      } catch {
+        return;
+      }
       return;
     }
 
@@ -91,7 +128,7 @@ export function useProjectActions(data: WorkspaceData) {
     handleStartEditingProjectMeta();
   }
 
-  function handleSaveProjectMeta(): void {
+  async function handleSaveProjectMeta(): Promise<void> {
     const nextTopic = data.projectMetaDraft.topic.trim();
     const nextDescription = data.projectMetaDraft.description.trim();
     const nextSpecialRules = data.projectMetaDraft.specialRulesText
@@ -100,6 +137,32 @@ export function useProjectActions(data: WorkspaceData) {
       .filter((rule) => rule !== "");
 
     if (nextTopic === "" || nextDescription === "") {
+      return;
+    }
+
+    if (getAgentBaseUrl() !== null) {
+      try {
+        await updateWorkspaceProject(data.selectedProject.id, {
+          topic: nextTopic,
+          description: nextDescription,
+          special_rules:
+            nextSpecialRules.length > 0
+              ? nextSpecialRules
+              : ["先收敛主题和材料，再开始学习编排。"],
+          initial_materials: buildProjectMaterialInputs(
+            data.projectMetaDraft.materialIds,
+            data.sourceAssets,
+          ),
+        });
+        await hydrateWorkspaceFromBackend(data, {
+          preferredKnowledgePointId: data.selectedKnowledgePoint?.id ?? data.selectedKnowledgePointId,
+          preferredProjectId: data.selectedProject.id,
+          preferredSessionId: data.selectedSession?.id ?? data.selectedSessionId,
+        });
+        data.setIsEditingProjectMeta(false);
+      } catch {
+        return;
+      }
       return;
     }
 

@@ -4,19 +4,19 @@
 
 ### Current Parallel Split
 
-当前前端默认先不作为并行主线。
-本轮两人拆分先集中在 `apps/agent`，目标是先把 backend contract / storage 与 agent runtime / writeback 分开推进，减少共享热点文件冲突。
+当前前端已开始接真实 project/session contract，但当前并行主冲刺仍集中在 `apps/agent`。
+本轮主目标已从“只补 backend 基础层”推进到“稳定 backend contract / runtime 边界，并让 web 连调先跑通”；当前剩余共享热点集中在 `typed activity_result`、archive confirm 和 runtime 结构化事件收口。
 
 #### Backend owner
 
 - 主目录：`apps/agent/src/xidea_agent`
 - 主文件：`state.py`、`repository.py`、`api.py`
 - 本轮 checklist：
-  - [ ] 收敛对外 request / response / stream schema，统一向 `Project / Session / KnowledgePoint` 命名靠拢
-  - [ ] 扩 `projects` 持久化字段，补齐 `title / description / special_rules`
-  - [ ] 补 `project_materials / session_attachments` 的表结构、repository 方法和最小读取接口
-  - [ ] 收敛 `project / study / review` 三类 session 的基础字段与创建 contract
-  - [ ] 补 Project 创建 / bootstrap 最小链路：topic、description、materials、special rules、初始 memory、learning profile、knowledge points、project session
+  - [x] 收敛对外 request / response / stream schema，统一向 `Project / Session / KnowledgePoint` 命名靠拢
+  - [x] 扩 `projects` 持久化字段，补齐 `title / description / special_rules`
+  - [x] 补 `project_materials / session_attachments` 的表结构、repository 方法和最小读取接口
+  - [x] 收敛 `project / study / review` 三类 session 的基础字段与创建 contract
+  - [x] 补 Project 创建 / bootstrap 最小链路：topic、description、materials、special rules、初始 memory、learning profile、knowledge points、project session
 
 #### Agent owner
 
@@ -29,6 +29,16 @@
   - [ ] 将 project materials、project memory、learning profile、review context 进一步收口为同一主决策证据包
   - [ ] 定出当前 `Consolidation` 的最小演示路径，优先手动触发
 
+#### Frontend owner
+
+- 主目录：`apps/web/src/app/workspace`、`apps/web/src/components/session`
+- 主文件：`use-data.ts`、`use-session-agent.ts`、`agent-workspace-client.ts`、`backend-adapter.ts`
+- 本轮 checklist：
+  - [x] 接通 `/projects`、`/projects/{project_id}`、`/projects/{project_id}/sessions/{session_id}` 的 hydration
+  - [x] 将 `create project`、`edit project meta`、`create session`、`edit knowledge point` 接到真实 backend
+  - [ ] 将 activity submit 从自由文本消息切到 typed `activity_result`
+  - [ ] 将 knowledge point archive / confirm 从本地切换切到正式 backend API
+
 #### Shared Hotspots
 
 - `state.py` 是当前并行热点文件，由 backend owner 主改；agent owner 如需加字段，先对齐字段清单再合入
@@ -39,7 +49,7 @@
 
 1. backend owner 先落 schema / repository / API 基础层
 2. agent owner 基于稳定 schema 并行推进 runtime / prompt / writeback
-3. 两块合流后，再由前端切 `typed activity_result`
+3. 前端在已接通 project/session contract 的基础上，继续切 `typed activity_result` 与 archive/confirm
 
 ### P0
 
@@ -81,9 +91,9 @@
     - 已补 `main_decision` 单次主决策调用：当 `diagnosis.needs_tool=false` 时，sync / stream 会在同一次主调用里同时拿到 `signals + diagnosis + reply + plan`
     - 已把可预判的 tool context 前置到主决策前：`material-import -> asset-summary`、`coach-followup -> thread-memory`、`review -> review-context`、带 `target_unit_id` 的常规问答 -> `unit-detail`
     - 当前剩余缺口集中在 LLM 仍主动返回 `needs_tool=true` 的少数场景：这些路径现在会优先复用预取上下文，但整体仍是 `main_decision -> tool/session loop -> bundled response`
-- [ ] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
+- [x] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
   - owner: 学习引擎 owner / 产品 owner
-- [ ] 定义 Project 最小持久化对象：project memory、learning profile、knowledge points、sessions
+- [x] 定义 Project 最小持久化对象：project memory、learning profile、knowledge points、sessions
   - owner: 学习引擎 owner
 - [ ] 定义 Knowledge Point 最小 schema 与生命周期
   - owner: 学习引擎 owner / 前端 owner
@@ -121,6 +131,9 @@
   - owner: 前端 owner / 学习引擎 owner
   - 说明：
     - 前端入口可先完成，但知识点建议新增的最终判断权归 agent；当前前端本地启发式已移除，等待 backend suggestion 事件
+  - 当前进展：
+    - `edit project meta`、`create session`、`edit knowledge point` 已接到真实 backend
+    - `新增材料` 与 suggestion / archive confirm 仍待正式后端写口
 - [ ] 将学习 / 复习 session 第一版限制为选择题，不先接入简答题与开放式对练
   - owner: 产品 owner / 前端 owner / 学习引擎 owner
 - [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环，让学习/复习结果真正影响知识点状态与 project learning profile

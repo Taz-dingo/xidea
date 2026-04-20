@@ -44,10 +44,12 @@ export function useWorkspaceStores() {
       projectMaterialIdsByProject: state.projectMaterialIdsByProject,
       projects: state.projects,
       sessions: state.sessions,
+      sourceAssets: state.sourceAssets,
       setKnowledgePoints: state.setKnowledgePoints,
       setProjectMaterialIdsByProject: state.setProjectMaterialIdsByProject,
       setProjects: state.setProjects,
       setSessions: state.setSessions,
+      setSourceAssets: state.setSourceAssets,
     })),
   );
   const runtime = useWorkspaceRuntimeStore(

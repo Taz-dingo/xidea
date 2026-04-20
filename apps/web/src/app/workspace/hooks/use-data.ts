@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { learnerProfiles, learningUnits, sourceAssets } from "@/data/demo";
+import { learnerProfiles, learningUnits } from "@/data/demo";
 import {
   initialKnowledgePoints,
   initialProjects,
@@ -14,6 +14,7 @@ import {
   getSelectedProjectMaterials,
   getSelectedProjectSessions,
 } from "@/app/workspace/model/selectors";
+import { useWorkspaceBackendHydration } from "@/app/workspace/hooks/data/use-backend-hydration";
 import { useWorkspaceDrafts } from "@/app/workspace/hooks/data/use-drafts";
 import { useWorkspaceStores } from "@/app/workspace/hooks/data/use-stores";
 
@@ -57,8 +58,8 @@ export function useWorkspaceData() {
     [selectedProjectKnowledgePoints, stores.selectedKnowledgePointId],
   );
   const selectedKnowledgePointAssets = useMemo(
-    () => getSelectedKnowledgePointAssets(sourceAssets, selectedKnowledgePoint),
-    [selectedKnowledgePoint],
+    () => getSelectedKnowledgePointAssets(stores.sourceAssets, selectedKnowledgePoint),
+    [selectedKnowledgePoint, stores.sourceAssets],
   );
   const selectedProjectSessions = useMemo(
     () => getSelectedProjectSessions(stores.sessions, selectedProject.id),
@@ -79,10 +80,10 @@ export function useWorkspaceData() {
   const selectedProjectMaterials = useMemo(
     () =>
       getSelectedProjectMaterials(
-        sourceAssets,
+        stores.sourceAssets,
         stores.projectMaterialIdsByProject[selectedProject.id] ?? [],
       ),
-    [selectedProject.id, stores.projectMaterialIdsByProject],
+    [selectedProject.id, stores.projectMaterialIdsByProject, stores.sourceAssets],
   );
   const drafts = useWorkspaceDrafts({
     initialKnowledgePoint,
@@ -94,8 +95,7 @@ export function useWorkspaceData() {
     setIsEditingKnowledgePoint: stores.setIsEditingKnowledgePoint,
     setIsEditingProjectMeta: stores.setIsEditingProjectMeta,
   });
-
-  return {
+  const data = {
     initialKnowledgePoint,
     initialProfile,
     initialProject,
@@ -108,11 +108,17 @@ export function useWorkspaceData() {
     selectedProject,
     selectedProjectKnowledgePoints,
     selectedProjectMaterials,
-    selectedProjectSessions,
     selectedSession,
     sessionEntryModesSetter: stores.setSessionEntryModes,
     ...drafts,
     ...stores,
+  };
+
+  useWorkspaceBackendHydration(data);
+
+  return {
+    ...data,
+    selectedProjectSessions,
   };
 }
 

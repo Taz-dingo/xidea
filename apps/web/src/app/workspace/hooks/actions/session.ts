@@ -3,6 +3,9 @@ import type {
   SessionType,
 } from "@/domain/project-workspace";
 import { getDefaultSourceAssetIds } from "@/domain/project-session-runtime";
+import { getAgentBaseUrl } from "@/lib/agent-client";
+import { createWorkspaceSession } from "@/lib/agent-workspace-client";
+import { hydrateWorkspaceFromBackend } from "@/app/workspace/hooks/data/backend-hydration";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 export function useSessionActions(data: WorkspaceData) {
@@ -56,12 +59,12 @@ export function useSessionActions(data: WorkspaceData) {
     data.setScreen("workspace");
   }
 
-  function handleCreateSession(
+  async function handleCreateSession(
     projectId: string,
     type: SessionType = "project",
     knowledgePointId: string | null = null,
     initialSourceAssetIds: ReadonlyArray<string> = getDefaultSourceAssetIds(),
-  ): SessionItem | null {
+  ): Promise<SessionItem | null> {
     const targetProject =
       data.projects.find((project) => project.id === projectId) ??
       data.selectedProject ??
@@ -69,6 +72,42 @@ export function useSessionActions(data: WorkspaceData) {
 
     if (targetProject === undefined) {
       return null;
+    }
+
+    if (getAgentBaseUrl() !== null) {
+      try {
+        const detail = await createWorkspaceSession(targetProject.id, {
+          type,
+          entry_mode: "chat-question",
+          focus_knowledge_point_ids:
+            knowledgePointId === null ? [] : [knowledgePointId],
+          project_material_ids: [...initialSourceAssetIds],
+        });
+
+        await hydrateWorkspaceFromBackend(data, {
+          preferredKnowledgePointId: knowledgePointId ?? data.selectedKnowledgePointId,
+          preferredProjectId: targetProject.id,
+          preferredSessionId: detail.session.id,
+        });
+        data.setDraftPrompt("");
+        data.setIsEditingProjectMeta(false);
+        data.setIsProjectMetaOpen(false);
+        data.setPendingSessionIntent(null);
+        data.setScreen("workspace");
+
+        return {
+          id: detail.session.id,
+          projectId: detail.session.project_id,
+          type: detail.session.type,
+          knowledgePointId: detail.session.focus_knowledge_point_ids[0] ?? null,
+          title: detail.session.title,
+          summary: "",
+          updatedAt: "刚刚",
+          status: "空白",
+        };
+      } catch {
+        return null;
+      }
     }
 
     const nextIndex =

@@ -25,6 +25,8 @@ export function SessionThreadPane({
   displayMessages,
   draftPrompt,
   errorMessage,
+  activityInputDisabled,
+  composerDisabled,
   hasPendingActivity,
   hasStructuredRuntime,
   isAgentRunning,
@@ -42,7 +44,6 @@ export function SessionThreadPane({
   selectedSessionId,
   selectedSessionType,
   selectedSourceAssetIds,
-  submitDisabled,
 }: {
   activeRuntime: RuntimeSnapshot;
   activeSourceAssets: ReadonlyArray<SourceAsset>;
@@ -53,6 +54,8 @@ export function SessionThreadPane({
   displayMessages: ReadonlyArray<UIMessage>;
   draftPrompt: string;
   errorMessage: string | null;
+  activityInputDisabled: boolean;
+  composerDisabled: boolean;
   hasPendingActivity: boolean;
   hasStructuredRuntime: boolean;
   isAgentRunning: boolean;
@@ -70,7 +73,6 @@ export function SessionThreadPane({
   selectedSessionId: string;
   selectedSessionType: "project" | "study" | "review";
   selectedSourceAssetIds: ReadonlyArray<string>;
-  submitDisabled: boolean;
 }): ReactElement {
   return (
     <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
@@ -230,7 +232,7 @@ export function SessionThreadPane({
                       <div className="w-full max-w-[82%] pl-1">
                         <LearningActivityStack
                           activities={currentActivities}
-                          disabled={submitDisabled}
+                          disabled={activityInputDisabled}
                           key={`${selectedSessionId}-${currentActivityKey ?? currentActivity.id}`}
                           onSkip={onSkipActivity}
                           onSubmit={onSubmitActivity}
@@ -252,7 +254,7 @@ export function SessionThreadPane({
             <div className="relative">
               <Textarea
                 className="min-h-28 rounded-[1rem] border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] pr-28 pb-12 text-sm leading-7 text-[var(--xidea-charcoal)] shadow-none focus-visible:ring-[var(--xidea-selection-border)]"
-                disabled={submitDisabled}
+                disabled={composerDisabled}
                 onChange={(event) => onChangeDraftPrompt(event.target.value)}
                 placeholder={
                   hasPendingActivity
@@ -266,7 +268,7 @@ export function SessionThreadPane({
 
               <Button
                 className="absolute bottom-3 right-3 rounded-full bg-[var(--xidea-terracotta)] px-4 text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                disabled={submitDisabled}
+                disabled={composerDisabled}
                 onClick={onSubmitPrompt}
                 type="button"
               >
