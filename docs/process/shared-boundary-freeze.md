@@ -360,9 +360,10 @@ payload 结构固定为：
 
 当前只冻结演示策略：
 
-- 手动触发优先
-- 可预留模拟定时入口
-- 暂不做复杂 UI，只保留接口和最小触发点
+- 进入 `Project` 时默认展示数据库里上一版 `Consolidation` 结果
+- 前端同时后台刷新最新结果，并给出轻量刷新状态
+- 展示位固定在 `Project Workspace` 主区顶部、知识点列表上方
+- `Consolidation` 是结构化 project-level checkpoint，不是普通 `AI summary`
 
 ## Final Freeze
 

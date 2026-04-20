@@ -27,7 +27,7 @@
 - 允许 project chat 在讨论过程中建议新增知识点，但新增建议必须由 agent 基于 project context 做判断，默认需要用户确认；前端不自行做启发式新增判断
 - 用显式的 `LearnerState` 与 project-level learning profile 同时表达局部状态和项目级聚合判断
 - 用受约束的单 agent 表达系统如何选择训练动作与更新项目状态
-- 允许同一系统支持多种学习形式，但比赛版学习/复习 session 先只做选择题
+- 允许同一系统支持多种学习形式，但比赛版学习/复习 session 先只做少量高信号题卡类型：选择题、定义澄清、边界辨析与误解纠偏
 - 区分 `Review Engine`、`Agent Memory` 和 `Consolidation` 三层能力
 - 用 React 前端展示 Project 首页、知识点工作台、session workspace 和知识点详情页
 - 第一版优先讲清楚 why this action now，而不是把某一种学习形式做成产品本体
@@ -56,7 +56,7 @@
 2. 系统基于主题和材料理解项目范围，生成第一批扁平知识点、项目级 memory 和学习画像
 3. 用户进入 Project 工作台，默认先看到知识点池，而不是一条无限延长的聊天记录
 4. 用户可以继续 project chat、补材料、编辑知识点，或发起一次学习 / 复习 session
-5. 学习与复习都围绕知识点进行；第一版先通过选择题 session 组织一轮学习动作和短反馈
+5. 学习与复习都围绕知识点进行；第一版先通过少量高信号题卡组织一轮学习动作和短反馈，让人看懂系统会因知识状态切换训练形式
 6. 页面必须把“当前 project 在学什么、有哪些知识点、为什么这轮学这个、作答后如何回写状态”讲清楚
 
 ## Success Criteria
@@ -81,8 +81,9 @@
 - 第一版优先证明一次高价值判断：系统能区分哪些知识点还没学、哪些该复习、哪些已经稳定
 - 第一版就接入 LangChain + LangGraph，但不追求复杂多 agent 和复杂 graph
 - 第一版 Project 页默认展示知识点工作台；只有在用户明确进入 project / study / review session 时才展开 session workspace
+- 第一版 Project Workspace 主区顶部增加无感刷新的 `System Checkpoint / Consolidation` 卡片：先展示数据库里的上一版 project-level 收口结果，再后台刷新最新结果
 - 用户侧默认不直出内部编排证据；主区优先展示知识点与动作反馈，画像、规则和设置放在辅助位置
-- 允许轻量卡片状态、选择题 session、提交后短反馈和 archive 建议，但这些都只是项目型学习编排的承载方式，不是产品目标本身
+- 允许轻量卡片状态、少量高信号题卡、提交后短反馈和 archive 建议，但这些都只是项目型学习编排的承载方式，不是产品目标本身
 - `special rules` 可以由 LLM 在创建 Project 时生成，并在二级菜单中供用户后续编辑
 - 比赛版暂不实现真实多模态解析链路和完整 SRS 算法，但叙事上要保留“多模态输入 + 多类型学习 + SRS”这条长期主线
 
