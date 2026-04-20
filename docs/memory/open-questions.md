@@ -9,7 +9,7 @@
 
 ## Learning Engine
 
-- 中转站 API 单次请求 27-33s（3 次串行调用），是否需要优化模型选择或调用并行度
+- 当前首轮回复时延仍偏长；下一步是优先继续优化模型选择 / provider，还是优先继续压低 `needs_tool=true` 与 split path 命中率
   - owner: 学习引擎 owner
 
 ## Frontend

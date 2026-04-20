@@ -1,11 +1,12 @@
 ---
 name: pr-description
-description: Project-level PR description skill for Xidea. Use when the user asks to prepare, fill, draft, polish, or update a pull request description, especially for requests like "提个 PR", "填一下 PR desc", "帮我写 PR 描述", "PR 写详细一点", or "准备合并". Produces a detailed Chinese PR description using the repo's default sections: 摘要、演示 / 验证、风险 / 待确认项.
+description: Project-level PR description skill for Xidea. Use when the user asks to prepare, open, fill, draft, polish, or update a pull request description, especially for requests like "提个 PR", "开 PR", "填一下 PR desc", "帮我写 PR 描述", "PR 写详细一点", or "准备合并". Produces a detailed Chinese PR description using the repo's default sections: 摘要、演示 / 验证、风险 / 待确认项.
 ---
 
 # PR Description
 
 Use this skill when preparing PR text in this repository.
+If the user asks to open a PR, do not wait for a second prompt about the description; this skill should already be active.
 
 ## Goal
 
@@ -95,6 +96,7 @@ Read only what you need, in this order:
 - for agent / API PRs, mention endpoint or contract changes
 - for docs-only PRs, explain what shared understanding or workflow rule was updated, not just "updated docs"
 - when the user says "提 PR", assume they want the PR description drafted in chat unless they explicitly ask to open the PR too
+- when the user says "提 PR" or "开 PR", default to Chinese PR body text even if the agent is also creating the PR immediately
 - if the branch is dirty or not pushed yet, say that briefly before drafting the final description
 
 ## Reviewer Checklist

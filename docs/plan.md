@@ -2,46 +2,33 @@
 
 ## Current Sprint
 
-### Current Parallel Split
+### Current Focus
 
-当前前端默认先不作为并行主线。
-本轮两人拆分先集中在 `apps/agent`，目标是先把 backend contract / storage 与 agent runtime / writeback 分开推进，减少共享热点文件冲突。
+当前主链已经打通，`Current Sprint` 不再以“大块基础建设”推进，而是集中收尾剩余缺口。
 
-#### Backend owner
-
-- 主目录：`apps/agent/src/xidea_agent`
-- 主文件：`state.py`、`repository.py`、`api.py`
-- 本轮 checklist：
-  - [ ] 收敛对外 request / response / stream schema，统一向 `Project / Session / KnowledgePoint` 命名靠拢
-  - [ ] 扩 `projects` 持久化字段，补齐 `title / description / special_rules`
-  - [ ] 补 `project_materials / session_attachments` 的表结构、repository 方法和最小读取接口
-  - [ ] 收敛 `project / study / review` 三类 session 的基础字段与创建 contract
-  - [ ] 补 Project 创建 / bootstrap 最小链路：topic、description、materials、special rules、初始 memory、learning profile、knowledge points、project session
-
-#### Agent owner
+#### Learning Engine owner
 
 - 主目录：`apps/agent/src/xidea_agent`
-- 主文件：`runtime.py`、`llm.py`、`tools.py`、`activity_results.py`、`review_engine.py`、`knowledge_points.py`
-- 本轮 checklist：
-  - [ ] 继续把主链路收敛到“预取证据上下文 -> 单次主决策 -> 少量动态 tool loop -> writeback”
-  - [ ] 将 `project / study / review` 三类 session 的行为差异落实到 runtime / prompt / activity 决策
-    - 当前进展：`AgentRequest` 已显式带 `session_type`，`project session` 不再默认塞 fallback `target_unit_id`
-    - 当前进展：`project session` 才会产出 knowledge point suggestion，且不再直接下发 learning activity；`review session` 会优先保持回忆校准语义
-  - [ ] 收敛知识点生命周期：bootstrap、project chat create suggestion、archive suggestion、confirm 后状态变化
-  - [ ] 将 project materials、project memory、learning profile、review context 进一步收口为同一主决策证据包
+- 当前重点：
+  - [ ] 继续把主路径收敛到“预取证据上下文 -> 单次主决策 -> 少量动态 tool loop -> writeback”
+  - [ ] 清掉残留 `needs_tool=true` 场景与 split path 额外 activity 调用
+  - [ ] 把新知识卡继续沉淀成更厚的教学对象，提升 `study / review` 对动态知识卡的上下文支撑
+  - [ ] 将多张 card 的 `activity_result` 进一步拆成更细粒度的 backend writeback
   - [ ] 定出当前 `Consolidation` 的最小演示路径，优先手动触发
 
-#### Shared Hotspots
+#### Frontend owner
 
-- `state.py` 是当前并行热点文件，由 backend owner 主改；agent owner 如需加字段，先对齐字段清单再合入
-- `docs/process/shared-boundary-freeze.md` 是共享 contract source of truth；先改文档，再改实现
-- 前端后续只消费稳定 contract，不反向定义 backend / agent 语义
+- 主目录：`apps/web/src/app`、`apps/web/src/components`
+- 当前重点：
+  - [ ] 继续验证 project chat 默认续写链路，重点检查跨项目切换、切 session、挂材后多轮追问时是否还有旧上下文泄漏
+  - [ ] 补齐“创建 Project 时直接上传本地文件”这条创建流
 
-#### Suggested Sequence
+#### Product / Demo owner
 
-1. backend owner 先落 schema / repository / API 基础层
-2. agent owner 基于稳定 schema 并行推进 runtime / prompt / writeback
-3. 两块合流后，再由前端切 `typed activity_result`
+- 主目录：`docs/spec.md`、`docs/status.md`、`docs/plan.md`、答辩材料
+- 当前重点：
+  - [ ] 决定 `Consolidation` 的 demo 形态：手动触发演示，还是模拟定时入口
+  - [ ] 准备答辩素材和竞品对比摘要
 
 ### P0
 
@@ -101,16 +88,20 @@
     - 已把 `material-import` 的结构化知识点落库链修正成多 suggestion 路径：assistant 文本里明确提到的多条知识点会逐条写入 suggestion / knowledge point，而不是只落首条
     - 已将材料导入后知识卡的 `description / reason` 改成 LLM 补全，模板只保留为 fallback；历史模板 desc 已做一次性回刷
     - 当前剩余缺口集中在三处：一是 LLM 仍主动返回 `needs_tool=true` 的少数场景；二是 split path 下如果 bundled response 没带 `activities`，runtime 仍可能多一次 activity 生成调用；三是新知识卡仍缺少更完整的“教学化沉淀对象”，study / review 对用户动态知识卡的上下文支撑还不够厚
-- [ ] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
+- [x] 定义 Project 创建流程 schema：topic、description、initial materials、special rules、bootstrap output
   - owner: 学习引擎 owner / 产品 owner
-- [ ] 定义 Project 最小持久化对象：project memory、learning profile、knowledge points、sessions
+- [x] 定义 Project 最小持久化对象：project memory、learning profile、knowledge points、sessions
   - owner: 学习引擎 owner
-- [ ] 定义 Knowledge Point 最小 schema 与生命周期
+- [x] 定义 Knowledge Point 最小 schema 与生命周期
   - owner: 学习引擎 owner / 前端 owner
   - 范围：
     - 标题、描述、来源材料、origin session
     - 掌握度、学习/复习状态、下次复习信号
     - archive 建议与确认
+  - 当前进展：
+    - backend 已补 `knowledge_points / knowledge_point_state / knowledge_point_suggestions`、详情读取与轻量编辑接口
+    - archive 已收口为“系统建议 -> 用户确认”，confirm / dismiss API 已落地
+    - 当前剩余缺口已从“schema 未定义”转为“动态知识卡的教学化沉淀对象还不够厚”
 - [x] 定义 knowledge point suggestion contract：由 agent 在 project chat 中输出结构化新增 / archive 建议，前端只负责渲染与确认
   - owner: 学习引擎 owner / 前端 owner
   - 范围：
@@ -127,15 +118,17 @@
     - 新鲜度 / 最近更新时间
 - [x] 让学习资料、project memory、learning profile、review context 在主决策前完成预取，并进入同一证据上下文
   - owner: 学习引擎 owner
-  - [ ] 定义 `project / study / review` 三类 session 的职责与状态转换
+- [ ] 收敛 `project / study / review` 三类 session 的职责与状态转换
   - owner: 产品 owner / 学习引擎 owner / 前端 owner
   - 当前进展：
     - request contract 已显式带 `session_type`
-    - `project session` / `review session` 的最小运行时差异已开始落到 agent
+    - `project session` / `review session` 的最小运行时差异已落到 agent
     - `project session` 已不再发题，且前端只在 project session 暴露材料入口 / project inspector
-    - `project session` 的低信息 turn 已不再误触学习回复；下一步重点转到更细的 project-chat judgment 质量和 `needs_tool=true` 残留路径
-    - study / review session 已切到整组 `activities[]` 卡组，并在本地做完整组后再统一进入下一轮 agent loop
-    - 剩余缺口主要在 session create/bootstrap contract、持久化字段和更完整的状态转换
+    - `study / review session` 已切到整组 `activities[]` 卡组，并在本地做完整组后再统一进入下一轮 agent loop
+    - backend 已补 session 基础字段、Project bootstrap 和最小 create/read/update 链路
+  - 当前剩余缺口：
+    - 继续收口 session create/bootstrap contract 的边界
+    - 明确更完整的状态转换与 project chat 默认续写规则
 - [x] 将 Project Workspace 改成默认知识点工作台，只有进入 session 时才展开 session workspace
   - owner: 前端 owner
   - 参考：`docs/reference/project-workspace-ui.md`
@@ -146,15 +139,17 @@
   - owner: 前端 owner / 学习引擎 owner
   - 当前进展：
     - 点击 `研讨 / 学习 / 复习` 已统一先进入待开始态，只有首条真实消息后才创建 thread
+    - project chat 的知识点建议、topic/rules 快捷入口、知识点轻量编辑路径都已接通
     - 当前仍需继续检查跨项目切换、切 session 和挂材后多轮追问时，是否还有旧 thread 上下文或旧草稿泄漏
-- [ ] 支持 project chat 中的新增材料、知识点建议新增、知识点轻量编辑、topic/rules 修改入口
+- [ ] 补齐 project chat / Project 创建流的最后入口缺口
   - owner: 前端 owner / 学习引擎 owner
-  - 说明：
-    - 前端入口可先完成，但知识点建议新增的最终判断权归 agent；当前前端本地启发式已移除，等待 backend suggestion 事件
   - 当前进展：
     - backend 已补 `project_materials` 持久化与 `list / upload` API
     - frontend 已在 `Edit Project Meta` 和 `project session` 材料 tray 接入真实本地文件上传；上传结果会回流到当前 project materials，并可直接附着到当前 `project session`
-    - 当前剩余缺口是“创建 Project 时直接上传本地文件”这条创建流；第一版仍沿用 demo seed 材料选择
+    - frontend 已移除知识点建议新增的本地 heuristic，当前以 backend suggestion 事件为准
+    - topic/rules 修改入口与知识点轻量编辑入口已接通
+  - 当前剩余缺口：
+    - “创建 Project 时直接上传本地文件”这条创建流仍未补齐；第一版当前仍沿用 demo seed 材料选择
 - [x] 将学习 / 复习 session 第一版限制为选择题，不先接入简答题与开放式对练
   - owner: 产品 owner / 前端 owner / 学习引擎 owner
 - [ ] 打通 `exercise-result / review-result` 的回传与状态回写闭环，让学习/复习结果真正影响知识点状态与 project learning profile
@@ -179,10 +174,8 @@
 ### V1
 
 - [x] 接真实模型 API（已默认接到智谱 OpenAI-compatible / `glm-5`，保留 OpenAI 兼容）
-- 增加上传材料入口
-- 增加更可信的内容摘要或结构化提炼结果
-- 将 project memory、learning profile、knowledge point pool 做成稳定持久化对象
-- 将展示型 plan 收敛为 session 内可执行 activity，并支持学习 / 复习结果回写
+- 增强动态知识卡的“教学化沉淀对象”，让 `study / review` 更稳定复用用户新建知识卡
+- 将学习 / 复习结果写回从整组聚合进一步细化到单卡表现
 - 增加 1 到 2 个次级 demo surface
 - 增加 evaluation 和答辩支撑材料
 
@@ -198,54 +191,28 @@
 
 ## Implementation Checklist
 
-当前已经可以进入实现阶段。建议按以下顺序落地：
+当前已经从“基础搭建”进入“收尾与答辩准备”阶段。建议按以下顺序推进：
 
-1. `apps/agent` 定义 typed schema
-   - `Project`
-   - `Session`
-   - `KnowledgePoint`
-   - `KnowledgePointSuggestion`
-   - `ProjectLearningProfile`
-   - `Activity`
-   - `StatePatch`
-2. `apps/agent` 搭 SQLite 与 repository 骨架
-   - `projects`
-   - `sessions`
-   - `session_messages`
-   - `knowledge_points`
-   - `project_learning_profiles`
-   - `project_memories`
-   - `review_state`
-3. `apps/agent` 搭 LangGraph 最小主链路
-   - `load_project_context`
-   - `resolve_session_intent`
-   - `maybe_tool`
-   - `compose_session_output`
-   - `writeback`
-4. `apps/agent` 实现 `Review Engine`
-   - 基于启发式规则更新 `memoryStrength / nextReviewAt`
-   - 不实现完整 SRS / FSRS 算法
-5. `apps/agent` 暴露 FastAPI streaming endpoint
-  - 过渡态可继续兼容 `diagnosis / text-delta / plan / state-patch / done`
-  - 下一步补结构化 `activity / tool-result / knowledge-point-suggestion / state-patch / done` 事件，逐步替代固定 `plan` 展示
-  - 参考：`docs/reference/learning-engine-backend-integration.md`
-6. `apps/web` 接入真实 agent API
-   - 使用 Vercel AI SDK 管理 message stream
-   - 当前已能消费 diagnosis、plan、state-patch；activity 现已停止由前端归一化补齐，后续以 session-aware backend event contract 为准
-   - 当前有未完成 activity 时，主输入区已切到“完成当前动作 / 跳过当前动作”的受约束交互
-   - 当前前端已支持“随时加材料”的附加上下文 tray，不再要求先切到单独材料模式
-   - 当前前端已支持多张学习卡的 deck 视觉，但真实后端仍需补稳定的多 activity contract
-   - 下一步由 backend 补稳定的 `activity` 事件；前端不再从 `diagnosis / plan` 推导伪 activity contract
-   - 当前 project chat 里的知识点新增建议已不再由前端本地启发式生成；下一步改为消费 agent 结构化 suggestion 事件，并通过确认 API 写回 project knowledge point pool
-   - Project 首页前端叙事壳已完成，当前重点从“接通真实 `/runs/v0` 数据”转到“减少 fallback / fixture 依赖”
-7. `apps/web` 重构信息架构
-   - 首页先收成 `App Home -> Project Workspace -> Knowledge Point Detail`
-   - Project Workspace 默认优先展示 knowledge points
-   - 只有进入某个 session 时才展开 session workspace
-8. `apps/web` 接 project-level state
-   - 学习画像改为 project-level 聚合画像摘要
-   - 复习信号改为围绕 knowledge points 与 project review 状态展示
-   - 材料状态改为 project-level materials + session-level attachments 的组合视图
+1. `apps/agent` 继续收敛主决策链路
+   - 清掉残留 `needs_tool=true` 场景
+   - 避免 split path 下额外多一次 activity 生成调用
+   - 参考：`docs/reference/learning-engine-backend-integration.md`
+2. `apps/agent` 增强动态知识卡沉淀对象
+   - 继续补厚知识卡的教学化 detail/context
+   - 让 `study / review` 对用户新建知识卡的上下文支撑更稳定
+3. `apps/web` 与 `apps/agent` 继续收口 session 生命周期
+   - 验证 project chat 默认续写链路
+   - 明确 session create/bootstrap 的边界和状态转换
+4. `apps/web` 补齐创建 Project 时的真实本地文件上传
+   - 消掉当前仍依赖 demo seed 材料的创建流
+5. `apps/agent` 细化 `activity_result` writeback
+   - 从整组聚合结果继续拆到单卡表现
+6. 产品 / 学习引擎共同确定 `Consolidation` 演示形态
+   - 手动触发演示，或模拟定时入口
+7. 产品 owner 准备答辩支撑材料
+   - demo 讲述顺序
+   - 竞品对比摘要
+   - evaluation / 风险说明
 
 ## Ready To Build
 
