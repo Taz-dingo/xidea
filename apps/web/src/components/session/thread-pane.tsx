@@ -12,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { getMessageText, sanitizeVisibleAssistantText } from "@/domain/chat-message";
+import { parseSessionOrchestrationMessage } from "@/domain/session-orchestration";
 import {
   ACTIVITY_BATCH_SUMMARY_PREFIX,
   type ActivityResolution,
@@ -51,6 +52,51 @@ function SessionStreamingStatus({
         ))}
       </span>
     </div>
+  );
+}
+
+function SessionOrchestrationCard({
+  change,
+}: {
+  change: NonNullable<ReturnType<typeof parseSessionOrchestrationMessage>>;
+}): ReactElement {
+  const nextSteps = change.plan_snapshot.steps.slice(0, 3);
+
+  return (
+    <Card className="w-full max-w-[82%] rounded-[1rem] border-[var(--xidea-selection-border)] bg-[#fff7f1] shadow-none">
+      <CardContent className="space-y-3 px-4 py-4">
+        <div className="space-y-1">
+          <p className="xidea-kicker text-[var(--xidea-selection-text)]">{change.title}</p>
+          <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+            {change.plan_snapshot.objective}
+          </p>
+          <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">{change.summary}</p>
+          {change.reason ? (
+            <p className="text-[12px] leading-5 text-[var(--xidea-stone)]">原因：{change.reason}</p>
+          ) : null}
+        </div>
+        <div className="space-y-2">
+          {nextSteps.map((step) => (
+            <div
+              className="rounded-[0.85rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2"
+              key={`${change.kind}-${step.knowledge_point_id}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[13px] font-medium text-[var(--xidea-near-black)]">{step.title}</p>
+                <span className="text-[11px] text-[var(--xidea-stone)]">
+                  {step.status === "active"
+                    ? "当前"
+                    : step.status === "completed"
+                      ? "已完成"
+                      : "待推进"}
+                </span>
+              </div>
+              <p className="mt-1 text-[12px] leading-5 text-[var(--xidea-charcoal)]">{step.reason}</p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -195,6 +241,7 @@ export function SessionThreadPane({
       ) : (
         displayMessages.map((message) => {
           const isAssistant = message.role === "assistant";
+          const orchestrationChange = parseSessionOrchestrationMessage(message);
           const rawText = getMessageText(message);
           const isSyntheticBatchMessage =
             !isAssistant && isSyntheticActivityBatchMessage(rawText);
@@ -213,14 +260,18 @@ export function SessionThreadPane({
             <div className="space-y-3" key={message.id}>
               <div
                 className={
-                  isAssistant
+                  orchestrationChange
+                    ? "flex justify-start"
+                    : isAssistant
                     ? "flex justify-start"
                     : isSyntheticBatchMessage
                       ? "flex justify-center"
                       : "flex justify-end"
                 }
               >
-                {isAssistant ? (
+                {orchestrationChange ? (
+                  <SessionOrchestrationCard change={orchestrationChange} />
+                ) : isAssistant ? (
                   <div className="w-full max-w-[82%] py-0.5">
                     <MarkdownContent content={rawText} />
                   </div>

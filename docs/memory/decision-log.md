@@ -11,6 +11,31 @@
 - `docs/plan.md` 负责回答“接下来做什么”
 - 本文只记录“为什么必须这么定，以及这条结论会约束后续哪些实现或协作”
 
+## 2026-04-20 — `study / review` 必须是多卡编排 session，而不是单卡 focus 容器
+
+### 决策
+
+- `study / review session` 不再以单个 `knowledgePointId` 作为主语义
+- 点击 `学习 / 复习` 后先进入待开始态；用户首句参与首次编排，首次编排完成后才创建真实 session
+- session 的核心对象改为：
+  - `candidate pool`
+  - `current plan snapshot`
+  - `current focus`
+  - `plan events`
+- 右栏固定展示 `当前学习计划`，会话流只在首次编排和关键改排时显示专门的编排事件卡
+
+### 原因
+
+- 如果继续用单卡 focus 作为 session 主语义，产品心智会持续漂回“当前知识卡详情页”，证明不了“系统会决定你接下来怎么学”
+- 首句参与首次编排，能把用户意图真正纳入学习决策，而不是让 session 先空落库再事后补语义
+- 右栏显示当前 plan、timeline 只显示关键变化，才能同时兼顾“可解释”和“界面不失控”
+
+### 影响
+
+- learning-engine owner 负责产出正式 orchestration object / event，而不是让前端从文本里猜测计划变化
+- frontend owner 只消费 orchestration contract，不能自己脑补“哪些卡应该在这一轮、这次是否算改排”
+- 后续如果要继续增强动态性，应优先在受控 candidate pool 内演进，而不是重新退回全项目自由选卡
+
 ## 2026-04-20 — `Consolidation` 作为无感 `System Checkpoint` 固定内嵌进 Project 总览卡，而不是手动工具入口
 
 ### 决策

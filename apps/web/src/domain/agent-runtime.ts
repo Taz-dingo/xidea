@@ -107,6 +107,33 @@ export interface AgentPlan {
   readonly steps: ReadonlyArray<AgentPlanStep>;
 }
 
+export interface AgentSessionOrchestrationStep {
+  readonly knowledge_point_id: string;
+  readonly title: string;
+  readonly reason: string;
+  readonly status: "pending" | "active" | "completed";
+}
+
+export interface AgentSessionOrchestration {
+  readonly objective: string;
+  readonly summary: string;
+  readonly status: "planned" | "adjusted" | "completed";
+  readonly candidate_pool_ids: ReadonlyArray<string>;
+  readonly current_focus_id: string | null;
+  readonly steps: ReadonlyArray<AgentSessionOrchestrationStep>;
+  readonly last_change_reason: string | null;
+}
+
+export interface AgentSessionOrchestrationEventRecord {
+  readonly kind: "plan_created" | "plan_adjusted" | "plan_step_completed" | "session_completed";
+  readonly title: string;
+  readonly summary: string;
+  readonly reason: string | null;
+  readonly visibility: "silent" | "sidebar_only" | "timeline";
+  readonly created_at: string | null;
+  readonly plan_snapshot: AgentSessionOrchestration;
+}
+
 interface AgentActivityChoice {
   readonly id: string;
   readonly label: string;
@@ -258,6 +285,10 @@ export type AgentStreamEvent =
       readonly suggestions: ReadonlyArray<AgentKnowledgePointSuggestion>;
     }
   | { readonly event: "plan"; readonly plan: AgentPlan }
+  | {
+      readonly event: "session-orchestration";
+      readonly change: AgentSessionOrchestrationEventRecord;
+    }
   | { readonly event: "state-patch"; readonly state_patch: AgentStatePatch }
   | { readonly event: "done"; readonly final_message: string | null };
 
@@ -271,6 +302,8 @@ export interface AgentRunResult {
     readonly activities: ReadonlyArray<AgentActivity>;
     readonly assistant_message: string | null;
     readonly state_patch: AgentStatePatch | null;
+    readonly session_orchestration: AgentSessionOrchestration | null;
+    readonly orchestration_events: ReadonlyArray<AgentSessionOrchestrationEventRecord>;
     readonly rationale: ReadonlyArray<string>;
   };
   readonly events: ReadonlyArray<AgentStreamEvent>;
@@ -280,6 +313,8 @@ export interface AgentThreadContext {
   readonly thread_id: string;
   readonly entry_mode: AgentEntryMode;
   readonly source_asset_ids: ReadonlyArray<string>;
+  readonly session_orchestration: AgentSessionOrchestration | null;
+  readonly orchestration_events: ReadonlyArray<AgentSessionOrchestrationEventRecord>;
   readonly updated_at: string;
 }
 
@@ -401,6 +436,11 @@ export interface RuntimeSnapshot {
     | null;
   readonly streamStatusLabel: string | null;
   readonly rationale: ReadonlyArray<string>;
+  readonly orchestration: {
+    readonly current: AgentSessionOrchestration | null;
+    readonly latestEvent: AgentSessionOrchestrationEventRecord | null;
+    readonly timeline: ReadonlyArray<AgentSessionOrchestrationEventRecord>;
+  };
 }
 
 const SIGNAL_COPY: Record<AgentSignalKind, { label: string; implication: string }> = {
@@ -671,6 +711,54 @@ function getLatestStreamStatus(
   );
 }
 
+function getSessionOrchestrationEvents(
+  events: ReadonlyArray<AgentStreamEvent>,
+): ReadonlyArray<AgentSessionOrchestrationEventRecord> {
+  return events
+    .filter(
+      (event): event is Extract<AgentStreamEvent, { event: "session-orchestration" }> =>
+        event.event === "session-orchestration",
+    )
+    .map((event) => event.change);
+}
+
+function mergeOrchestrationTimeline(
+  previous: ReadonlyArray<AgentSessionOrchestrationEventRecord>,
+  next: ReadonlyArray<AgentSessionOrchestrationEventRecord>,
+): ReadonlyArray<AgentSessionOrchestrationEventRecord> {
+  if (previous.length === 0) {
+    return next;
+  }
+  if (next.length === 0) {
+    return previous;
+  }
+
+  const merged = [...previous];
+  for (const event of next) {
+    const eventKey = `${event.kind}:${event.created_at ?? "unknown"}:${event.plan_snapshot.current_focus_id ?? "none"}`;
+    const hasEvent = merged.some(
+      (candidate) =>
+        `${candidate.kind}:${candidate.created_at ?? "unknown"}:${candidate.plan_snapshot.current_focus_id ?? "none"}` ===
+        eventKey,
+    );
+    if (!hasEvent) {
+      merged.push(event);
+    }
+  }
+  return merged;
+}
+
+function buildOrchestrationState(input: {
+  readonly current: AgentSessionOrchestration | null;
+  readonly timeline: ReadonlyArray<AgentSessionOrchestrationEventRecord>;
+}) {
+  return {
+    current: input.current,
+    latestEvent: input.timeline.at(-1) ?? null,
+    timeline: input.timeline,
+  };
+}
+
 export function buildDefaultAgentPrompt(
   unit: LearningUnit,
   project: ProjectContext,
@@ -817,6 +905,7 @@ export function buildMockRuntimeSnapshot(
     streamStatusPhase: null,
     streamStatusLabel: null,
     rationale: [],
+    orchestration: buildOrchestrationState({ current: null, timeline: [] }),
   });
 }
 
@@ -856,7 +945,21 @@ export function hydrateRuntimeSnapshotFromLearnerState(
     activities: fallbackSnapshot.activities,
     streamStatusPhase: null,
     streamStatusLabel: null,
+    orchestration: fallbackSnapshot.orchestration,
   });
+}
+
+export function hydrateRuntimeSnapshotFromThreadContext(
+  threadContext: AgentThreadContext,
+  fallbackSnapshot: RuntimeSnapshot,
+): RuntimeSnapshot {
+  return {
+    ...fallbackSnapshot,
+    orchestration: buildOrchestrationState({
+      current: threadContext.session_orchestration,
+      timeline: threadContext.orchestration_events,
+    }),
+  };
 }
 
 export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot {
@@ -883,6 +986,10 @@ export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot
         ? [normalizeAgentActivity(result.graph_state.activity)]
         : [];
   const activity = activities[0] ?? null;
+  const orchestrationTimeline =
+    result.graph_state.orchestration_events.length > 0
+      ? result.graph_state.orchestration_events
+      : getSessionOrchestrationEvents(result.events);
 
   return {
     source: "live-agent",
@@ -921,6 +1028,10 @@ export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot
     streamStatusPhase: null,
     streamStatusLabel: null,
     rationale: result.graph_state.rationale,
+    orchestration: buildOrchestrationState({
+      current: result.graph_state.session_orchestration,
+      timeline: orchestrationTimeline,
+    }),
   };
 }
 
@@ -949,6 +1060,11 @@ export function normalizeAgentStreamResult(input: {
       event.event === "state-patch",
   );
   const streamStatus = getLatestStreamStatus(input.events);
+  const orchestrationTimeline = getSessionOrchestrationEvents(input.events);
+  const mergedOrchestrationTimeline = mergeOrchestrationTimeline(
+    input.fallbackSnapshot.orchestration.timeline,
+    orchestrationTimeline,
+  );
 
   const diagnosis = diagnosisEvent?.diagnosis;
   const plan = planEvent?.plan;
@@ -1013,6 +1129,10 @@ export function normalizeAgentStreamResult(input: {
     streamStatusPhase: streamStatus?.phase ?? null,
     streamStatusLabel: streamStatus?.message ?? null,
     rationale: diagnosis.explanation?.evidence ?? [],
+    orchestration: buildOrchestrationState({
+      current: orchestrationTimeline.at(-1)?.plan_snapshot ?? input.fallbackSnapshot.orchestration.current,
+      timeline: mergedOrchestrationTimeline,
+    }),
   });
 }
 
@@ -1040,6 +1160,11 @@ export function normalizePartialAgentStreamResult(input: {
       event.event === "state-patch",
   );
   const streamStatus = getLatestStreamStatus(input.events);
+  const orchestrationTimeline = getSessionOrchestrationEvents(input.events);
+  const mergedOrchestrationTimeline = mergeOrchestrationTimeline(
+    input.fallbackSnapshot.orchestration.timeline,
+    orchestrationTimeline,
+  );
 
   const diagnosis = diagnosisEvent?.diagnosis;
   const plan = planEvent?.plan;
@@ -1053,6 +1178,10 @@ export function normalizePartialAgentStreamResult(input: {
       assistantMessage: buildAssistantMessageFromStreamEvents(input.events),
       streamStatusPhase: streamStatus?.phase ?? null,
       streamStatusLabel: streamStatus?.message ?? null,
+      orchestration: buildOrchestrationState({
+        current: orchestrationTimeline.at(-1)?.plan_snapshot ?? input.fallbackSnapshot.orchestration.current,
+        timeline: mergedOrchestrationTimeline,
+      }),
     };
   }
 
@@ -1135,5 +1264,9 @@ export function normalizePartialAgentStreamResult(input: {
     streamStatusPhase: streamStatus?.phase ?? null,
     streamStatusLabel: streamStatus?.message ?? null,
     rationale: diagnosis?.explanation?.evidence ?? input.fallbackSnapshot.rationale,
+    orchestration: buildOrchestrationState({
+      current: orchestrationTimeline.at(-1)?.plan_snapshot ?? input.fallbackSnapshot.orchestration.current,
+      timeline: mergedOrchestrationTimeline,
+    }),
   });
 }

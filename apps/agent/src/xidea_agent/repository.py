@@ -19,6 +19,8 @@ from xidea_agent.state import (
     ProjectLearningProfile,
     ProjectMemory,
     ReviewPatch,
+    SessionOrchestration,
+    SessionOrchestrationEventRecord,
     SourceAsset,
     StatePatch,
 )
@@ -60,6 +62,8 @@ CREATE TABLE IF NOT EXISTS thread_context (
   thread_id TEXT PRIMARY KEY,
   entry_mode TEXT NOT NULL,
   source_asset_ids TEXT NOT NULL,
+  session_orchestration TEXT,
+  orchestration_events TEXT NOT NULL DEFAULT '[]',
   updated_at TEXT NOT NULL,
   FOREIGN KEY(thread_id) REFERENCES threads(thread_id)
 );
@@ -207,6 +211,11 @@ THREAD_COLUMN_MIGRATIONS: dict[str, str] = {
     "status": "ALTER TABLE threads ADD COLUMN status TEXT NOT NULL DEFAULT '活跃'",
 }
 
+THREAD_CONTEXT_COLUMN_MIGRATIONS: dict[str, str] = {
+    "session_orchestration": "ALTER TABLE thread_context ADD COLUMN session_orchestration TEXT",
+    "orchestration_events": "ALTER TABLE thread_context ADD COLUMN orchestration_events TEXT NOT NULL DEFAULT '[]'",
+}
+
 KNOWLEDGE_POINT_SUGGESTION_COLUMN_MIGRATIONS: dict[str, str] = {
     "origin_message_id": "ALTER TABLE knowledge_point_suggestions ADD COLUMN origin_message_id INTEGER",
 }
@@ -225,6 +234,7 @@ class SQLiteRepository:
     def save_run(self, request: AgentRequest, run_result: AgentRunResult) -> None:
         self.initialize()
         state = run_result.graph_state
+        effective_request = state.request
         now = state.learner_unit_state.updated_at if state.learner_unit_state else None
         now_value = now.isoformat() if now else _utc_now()
 
@@ -238,18 +248,22 @@ class SQLiteRepository:
                 (request.thread_id,),
             ).fetchone()
             thread_title = _resolve_thread_title(
-                request,
+                effective_request,
                 state=state,
                 connection=connection,
                 existing_title=existing_thread["title"] if existing_thread is not None else None,
             )
             thread_summary = _resolve_thread_summary(
-                request,
+                effective_request,
                 state.assistant_message,
                 existing_summary=existing_thread["summary"] if existing_thread is not None else None,
             )
             thread_status = _resolve_thread_status(state.assistant_message)
-            knowledge_point_id = request.knowledge_point_id or request.target_unit_id
+            knowledge_point_id = (
+                state.session_orchestration.current_focus_id
+                if state.session_orchestration is not None
+                else effective_request.knowledge_point_id or effective_request.target_unit_id
+            )
             connection.execute(
                 """
                 INSERT INTO projects(project_id, topic, created_at, updated_at)
@@ -258,7 +272,7 @@ class SQLiteRepository:
                   topic = excluded.topic,
                   updated_at = excluded.updated_at
                 """,
-                (request.project_id, request.topic, now_value, now_value),
+                (effective_request.project_id, effective_request.topic, now_value, now_value),
             )
             connection.execute(
                 """
@@ -278,33 +292,35 @@ class SQLiteRepository:
                   updated_at = excluded.updated_at
                 """,
                 (
-                    request.thread_id,
-                    request.project_id,
-                    request.topic,
-                    request.session_type,
+                    effective_request.thread_id,
+                    effective_request.project_id,
+                    effective_request.topic,
+                    effective_request.session_type,
                     knowledge_point_id,
                     thread_title,
                     thread_summary,
                     thread_status,
-                    request.entry_mode,
+                    effective_request.entry_mode,
                     now_value,
                     now_value,
                 ),
             )
 
-            self._append_messages(connection, request.thread_id, request.messages, now_value)
+            self._append_messages(connection, effective_request.thread_id, effective_request.messages, now_value)
             self._upsert_thread_context(
                 connection,
-                request.thread_id,
-                request.entry_mode,
-                request.source_asset_ids,
+                effective_request.thread_id,
+                effective_request.entry_mode,
+                effective_request.source_asset_ids,
+                state.session_orchestration,
+                state.orchestration_events,
                 now_value,
             )
             assistant_message_id: int | None = None
             if state.assistant_message:
                 assistant_message_ids = self._append_messages(
                     connection,
-                    request.thread_id,
+                    effective_request.thread_id,
                     [Message(role="assistant", content=state.assistant_message)],
                     now_value,
                 )
@@ -314,20 +330,28 @@ class SQLiteRepository:
                 return
 
             if state.learner_unit_state:
-                self._upsert_learner_unit_state(connection, request.thread_id, state.learner_unit_state)
+                self._upsert_learner_unit_state(
+                    connection,
+                    effective_request.thread_id,
+                    state.learner_unit_state,
+                )
 
             if state.state_patch and state.state_patch.review_patch:
                 self._upsert_review_state(
                     connection,
-                    request.thread_id,
-                    state.learner_unit_state.unit_id if state.learner_unit_state else request.target_unit_id,
+                    effective_request.thread_id,
+                    state.learner_unit_state.unit_id
+                    if state.learner_unit_state
+                    else effective_request.target_unit_id,
                     state.state_patch.review_patch,
                     now_value,
                 )
                 self._append_review_events(
                     connection,
-                    request.thread_id,
-                    state.learner_unit_state.unit_id if state.learner_unit_state else request.target_unit_id,
+                    effective_request.thread_id,
+                    state.learner_unit_state.unit_id
+                    if state.learner_unit_state
+                    else effective_request.target_unit_id,
                     state.state_patch,
                     now_value,
                 )
@@ -1215,6 +1239,12 @@ class SQLiteRepository:
             "thread_id": row["thread_id"],
             "entry_mode": row["entry_mode"],
             "source_asset_ids": json.loads(row["source_asset_ids"]),
+            "session_orchestration": (
+                json.loads(row["session_orchestration"])
+                if row["session_orchestration"]
+                else None
+            ),
+            "orchestration_events": json.loads(row["orchestration_events"] or "[]"),
             "updated_at": row["updated_at"],
         }
 
@@ -1278,6 +1308,15 @@ class SQLiteRepository:
                 connection.execute(statement)
                 suggestion_columns.add(column_name)
 
+        thread_context_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(thread_context)").fetchall()
+        }
+        for column_name, statement in THREAD_CONTEXT_COLUMN_MIGRATIONS.items():
+            if column_name not in thread_context_columns:
+                connection.execute(statement)
+                thread_context_columns.add(column_name)
+
     def _append_messages(
         self,
         connection: sqlite3.Connection,
@@ -1324,21 +1363,37 @@ class SQLiteRepository:
         thread_id: str,
         entry_mode: str,
         source_asset_ids: list[str],
+        session_orchestration: SessionOrchestration | None,
+        orchestration_events: list[SessionOrchestrationEventRecord],
         updated_at: str,
     ) -> None:
         connection.execute(
             """
-            INSERT INTO thread_context(thread_id, entry_mode, source_asset_ids, updated_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO thread_context(
+              thread_id, entry_mode, source_asset_ids, session_orchestration, orchestration_events, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(thread_id) DO UPDATE SET
               entry_mode = excluded.entry_mode,
               source_asset_ids = excluded.source_asset_ids,
+              session_orchestration = excluded.session_orchestration,
+              orchestration_events = excluded.orchestration_events,
               updated_at = excluded.updated_at
             """,
             (
                 thread_id,
                 entry_mode,
                 json.dumps(source_asset_ids, ensure_ascii=False),
+                json.dumps(
+                    session_orchestration.model_dump(mode="json"),
+                    ensure_ascii=False,
+                )
+                if session_orchestration is not None
+                else None,
+                json.dumps(
+                    [event.model_dump(mode="json") for event in orchestration_events],
+                    ensure_ascii=False,
+                ),
                 updated_at,
             ),
         )

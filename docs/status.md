@@ -11,13 +11,23 @@
 
 - 学习引擎主路径还要继续收敛到更稳定的“单次主决策 + 少量 tool loop + writeback”，重点清掉残留 `needs_tool=true` 场景和 split path 额外 activity 调用
 - 新知识卡虽然已经能真实落库并带 `description / reason`，但仍缺更厚的“教学化沉淀对象”，`study / review` 对动态知识卡的上下文支撑还不够强
-- `project / study / review` 三类 session 的基础合同已经落地，但状态转换、create/bootstrap 边界和 project chat 默认续写行为还需要继续收口
+- `project / study / review` 三类 session 的基础合同已经落地；当前剩余缺口主要变成多卡编排质量、改排规则细化和更细粒度 writeback，而不是 session 是否单卡
 - 题卡主路径仍以选择题为主；当前还没补齐定义澄清、边界辨析、误解纠偏这几类高信号真实题卡
 - `activity_result` 已能回写知识点状态、review state、project memory 和 learning profile；当前剩余缺口是把多张 card 的表现进一步拆成更细粒度的 backend writeback
 - 演示级 `RSR / Review Engine` 还没收成稳定展示；当前仍缺 `why now / next review / due summary` 这一层答辩友好输出
 - 产品 / demo 侧仍需补答辩素材与竞品对比摘要
 
 ### Done
+
+#### 多卡编排 session v0（2026-04-20）
+
+- `apps/agent` 已把 `study / review session` 从单卡 focus 启动改成多卡 orchestration 语义：当前会基于 session 类型、用户首句、主题邻近和知识卡状态生成 `candidate pool / current plan / current focus`
+- `apps/agent` 已在 runtime 主链中预加载 session orchestration，并在首次编排后把 `current_focus` 回写到真实 `target_unit_id / knowledge_point_id`，避免前端继续单卡脑补
+- `apps/agent` 已将 orchestration 持久化进 `thread_context`，包括当前 plan snapshot 和 `plan_created / plan_adjusted / session_completed` 事件历史
+- `apps/web` 已把 runtime snapshot 扩到 `orchestration` 维度，并改成优先跟随后端 `current_focus` 驱动当前学习 session，而不是只看本地选中知识卡
+- `apps/web` 已把 session 右栏重新定义成 `当前学习计划`：展示目标、当前小计划、焦点、状态和最近一次调整原因；完整历史走详情态，不在右栏无限拉长
+- `apps/web` 已在会话流中补专门的编排事件卡：首次编排和关键改排不再只藏在 assistant 回复里，而是以独立系统卡显式出现
+- `apps/agent` 已补 orchestration 构建与持久化测试，当前 `apps/agent/tests/test_session_orchestration.py` 与相关 repository 回归通过；`apps/web` 生产构建通过
 
 #### 真实学习主链与前端主路径收口（2026-04-20）
 

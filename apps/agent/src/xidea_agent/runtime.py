@@ -16,6 +16,7 @@ from xidea_agent.knowledge_points import (
 )
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.review_engine import ReviewDecision, should_enter_review, schedule_next_review
+from xidea_agent.session_orchestration import prepare_session_orchestration
 from xidea_agent.state import (
     Activity,
     ActivityChoice,
@@ -41,6 +42,7 @@ from xidea_agent.state import (
     PlanEvent,
     PrimaryIssue,
     ReviewPatch,
+    SessionOrchestrationEvent,
     Signal,
     StatePatch,
     StatePatchEvent,
@@ -2264,12 +2266,15 @@ def build_events(
     activity: Activity | None = None,
     activities: list[Activity] | None = None,
     knowledge_point_suggestions: list[KnowledgePointSuggestion] | None = None,
+    orchestration_event: SessionOrchestrationEvent | None = None,
 ):
     events = [
         DiagnosisEvent(event="diagnosis", diagnosis=diagnosis),
         TextDeltaEvent(event="text-delta", delta=message),
         PlanEvent(event="plan", plan=plan),
     ]
+    if orchestration_event is not None:
+        events.append(orchestration_event)
     normalized_activities = activities or ([activity] if activity is not None else [])
     if normalized_activities:
         events.append(ActivitiesEvent(event="activities", activities=normalized_activities))
@@ -2388,6 +2393,12 @@ def _build_run_result(state: GraphState) -> AgentRunResult:
             state.activity,
             state.activities,
             state.knowledge_point_suggestions,
+            SessionOrchestrationEvent(
+                event="session-orchestration",
+                change=state.orchestration_events[-1],
+            )
+            if state.orchestration_events
+            else None,
         ),
     )
 
@@ -2412,6 +2423,13 @@ def iter_agent_v0_events(
         diagnosis_event = DiagnosisEvent(event="diagnosis", diagnosis=state.diagnosis)
         events.append(diagnosis_event)
         yield diagnosis_event
+        if state.orchestration_events:
+            orchestration_event = SessionOrchestrationEvent(
+                event="session-orchestration",
+                change=state.orchestration_events[-1],
+            )
+            events.append(orchestration_event)
+            yield orchestration_event
         for chunk in _chunk_text_for_ui_local(state.assistant_message or state.off_topic_reason or ""):
             text_event = TextDeltaEvent(event="text-delta", delta=chunk)
             events.append(text_event)
@@ -2435,6 +2453,13 @@ def iter_agent_v0_events(
         diagnosis_event = DiagnosisEvent(event="diagnosis", diagnosis=state.diagnosis)
         events.append(diagnosis_event)
         yield diagnosis_event
+        if state.orchestration_events:
+            orchestration_event = SessionOrchestrationEvent(
+                event="session-orchestration",
+                change=state.orchestration_events[-1],
+            )
+            events.append(orchestration_event)
+            yield orchestration_event
         for chunk in _chunk_text_for_ui_local(state.assistant_message):
             text_event = TextDeltaEvent(event="text-delta", delta=chunk)
             events.append(text_event)
@@ -2630,6 +2655,13 @@ def iter_agent_v0_events(
     plan_event = PlanEvent(event="plan", plan=state.plan)
     events.append(plan_event)
     yield plan_event
+    if state.orchestration_events:
+        orchestration_event = SessionOrchestrationEvent(
+            event="session-orchestration",
+            change=state.orchestration_events[-1],
+        )
+        events.append(orchestration_event)
+        yield orchestration_event
 
     state.activities, activity_source = resolve_activities(
         state.diagnosis,
@@ -2708,6 +2740,25 @@ def load_context_step(
 ) -> GraphState:
     if repository is not None:
         repository.initialize()
+    existing_thread_context = (
+        repository.get_thread_context(state.request.thread_id)
+        if repository is not None
+        else None
+    )
+    orchestration, orchestration_events, focus_unit_id = prepare_session_orchestration(
+        request=state.request,
+        repository=repository,
+        existing_context=existing_thread_context,
+    )
+    if focus_unit_id is not None and focus_unit_id != state.request.target_unit_id:
+        state.request = state.request.model_copy(
+            update={
+                "target_unit_id": focus_unit_id,
+                "knowledge_point_id": focus_unit_id,
+            }
+        )
+    state.session_orchestration = orchestration
+    state.orchestration_events = orchestration_events
     state.project_context = build_project_context(state.request, repository=repository)
 
     if repository is not None:
@@ -2775,6 +2826,10 @@ def load_context_step(
         repository=repository,
         project_id=state.request.project_id,
     )
+    if state.session_orchestration is not None:
+        state.rationale.append(
+            "load_context prepared session orchestration before selecting the active focus unit."
+        )
     state.rationale.append(f"load_context selected learning unit {state.learning_unit.id}.")
     return state
 

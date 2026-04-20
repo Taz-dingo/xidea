@@ -6,7 +6,11 @@ import {
   getReviewInspector,
   getThreadContext,
 } from "@/lib/agent-client";
-import { hydrateRuntimeSnapshotFromLearnerState } from "@/domain/agent-runtime";
+import {
+  hydrateRuntimeSnapshotFromLearnerState,
+  hydrateRuntimeSnapshotFromThreadContext,
+} from "@/domain/agent-runtime";
+import { buildSessionOrchestrationMessage } from "@/domain/session-orchestration";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 function isAbortError(error: unknown): boolean {
@@ -67,11 +71,49 @@ export function useSessionDataSync({
     void getInspectorBootstrap(selectedSessionKey, selectedSessionKnowledgePointId, { signal: abortController.signal })
       .then(({ learner_state, review_inspector, thread_context }) => {
         if (abortController.signal.aborted) return;
+        if (thread_context !== null) {
+          setSessionSnapshots((current) => {
+            const baseSnapshot = current[selectedSessionKey] ?? seedRuntime;
+            return {
+              ...current,
+              [selectedSessionKey]: hydrateRuntimeSnapshotFromThreadContext(
+                thread_context,
+                learner_state !== null
+                  ? hydrateRuntimeSnapshotFromLearnerState(learner_state, baseSnapshot)
+                  : baseSnapshot,
+              ),
+            };
+          });
+          if (thread_context.orchestration_events.length > 0) {
+            data.setSessionMessagesById((current) => {
+              const currentMessages = current[selectedSessionKey] ?? [];
+              const nextMessages = [
+                ...currentMessages,
+                ...thread_context.orchestration_events.map((change) =>
+                  buildSessionOrchestrationMessage({ sessionId: selectedSessionKey, change }),
+                ),
+              ];
+              return {
+                ...current,
+                [selectedSessionKey]: nextMessages.filter(
+                  (message, index, array) =>
+                    array.findIndex((candidate) => candidate.id === message.id) === index,
+                ),
+              };
+            });
+          }
+        }
         if (learner_state !== null) {
-          setSessionSnapshots((current) => ({
-            ...current,
-            [selectedSessionKey]: hydrateRuntimeSnapshotFromLearnerState(learner_state, seedRuntime),
-          }));
+          setSessionSnapshots((current) => {
+            const baseSnapshot = current[selectedSessionKey] ?? seedRuntime;
+            return {
+              ...current,
+              [selectedSessionKey]: hydrateRuntimeSnapshotFromLearnerState(
+                learner_state,
+                baseSnapshot,
+              ),
+            };
+          });
         }
         setSessionReviewInspectors((current) =>
           current[selectedSessionKey] === review_inspector
@@ -212,6 +254,13 @@ export function useSessionDataSync({
     void getThreadContext(selectedSessionKey, { signal: abortController.signal })
       .then((threadContext) => {
         if (!abortController.signal.aborted && threadContext !== null) {
+          setSessionSnapshots((current) => ({
+            ...current,
+            [selectedSessionKey]: hydrateRuntimeSnapshotFromThreadContext(
+              threadContext,
+              current[selectedSessionKey] ?? seedRuntime,
+            ),
+          }));
           if (sessionEntryModes[selectedSessionKey] !== threadContext.entry_mode) {
             sessionEntryModesSetter((current) => ({
               ...current,

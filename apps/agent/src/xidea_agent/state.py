@@ -131,10 +131,39 @@ class SessionAttachment(StrictModel):
     attached_at: datetime | None = None
 
 
+class SessionOrchestrationStep(StrictModel):
+    knowledge_point_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    status: Literal["pending", "active", "completed"]
+
+
+class SessionOrchestration(StrictModel):
+    objective: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    status: Literal["planned", "adjusted", "completed"]
+    candidate_pool_ids: list[str] = Field(min_length=1, max_length=3)
+    current_focus_id: str | None = None
+    steps: list[SessionOrchestrationStep] = Field(min_length=1, max_length=3)
+    last_change_reason: str | None = None
+
+
+class SessionOrchestrationEventRecord(StrictModel):
+    kind: Literal["plan_created", "plan_adjusted", "plan_step_completed", "session_completed"]
+    title: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    reason: str | None = None
+    visibility: Literal["silent", "sidebar_only", "timeline"] = "timeline"
+    created_at: datetime | None = None
+    plan_snapshot: SessionOrchestration
+
+
 class ThreadContextRecord(StrictModel):
     thread_id: str = Field(min_length=1)
     entry_mode: EntryMode
     source_asset_ids: list[str] = Field(default_factory=list)
+    session_orchestration: SessionOrchestration | None = None
+    orchestration_events: list[SessionOrchestrationEventRecord] = Field(default_factory=list)
     updated_at: datetime | None = None
 
 
@@ -477,6 +506,8 @@ class GraphState(StrictModel):
     off_topic_reason: str | None = None
     source_assets: list[SourceAsset] = Field(default_factory=list)
     learning_unit: LearningUnit | None = None
+    session_orchestration: SessionOrchestration | None = None
+    orchestration_events: list[SessionOrchestrationEventRecord] = Field(default_factory=list)
     signals: list[Signal] = Field(default_factory=list)
     prior_learner_unit_state: LearnerUnitState | None = None
     prior_next_review_at: datetime | None = None
@@ -540,6 +571,11 @@ class StatePatchEvent(StrictModel):
     state_patch: StatePatch
 
 
+class SessionOrchestrationEvent(StrictModel):
+    event: Literal["session-orchestration"]
+    change: SessionOrchestrationEventRecord
+
+
 class DoneEvent(StrictModel):
     event: Literal["done"]
     final_message: str | None = None
@@ -554,6 +590,7 @@ StreamEvent = Annotated[
     | ActivitiesEvent
     | KnowledgePointSuggestionEvent
     | StatePatchEvent
+    | SessionOrchestrationEvent
     | DoneEvent,
     Field(discriminator="event"),
 ]

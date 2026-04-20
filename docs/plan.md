@@ -137,9 +137,11 @@
     - `project session` 已不再发题，且前端只在 project session 暴露材料入口 / project inspector
     - `study / review session` 已切到整组 `activities[]` 卡组，并在本地做完整组后再统一进入下一轮 agent loop
     - backend 已补 session 基础字段、Project bootstrap 和最小 create/read/update 链路
+    - `study / review` 已补多卡 orchestration v0：用户首句参与首次编排，后端持久化 `candidate pool / current plan / current focus / plan events`，右栏与会话流都已开始消费这套 contract
   - 当前剩余缺口：
-    - 继续收口 session create/bootstrap contract 的边界
-    - 明确更完整的状态转换与 project chat 默认续写规则
+    - 继续收口半动态改排规则与 candidate pool 质量
+    - 把多卡 session 的 writeback 从整组聚合继续拆到更细粒度
+    - 继续明确 project chat 默认续写规则与跨 session 切换细节
 - [x] 将 Project Workspace 改成默认知识点工作台，只有进入 session 时才展开 session workspace
   - owner: 前端 owner
   - 参考：`docs/reference/project-workspace-ui.md`
@@ -252,6 +254,7 @@
 - 技术栈分层
 - `Project / Knowledge Point / Session / Learning Profile` 四个主对象
 - `project / study / review` 三类 session 边界
+- `study / review` 的多卡 orchestration session 语义：待开始态、首句参与首次编排、小候选池、当前学习计划、关键改排事件
 - `App Home -> Project Workspace -> Knowledge Point Detail` 页面主结构
 - Project Workspace 默认知识点工作台、session 按需展开的产品心智
 - 学习 / 复习第一版只做少量高信号题卡类型，而不是单一选择题或大而全题型
