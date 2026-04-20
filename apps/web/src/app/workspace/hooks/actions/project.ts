@@ -1,10 +1,17 @@
-import { sourceAssets } from "@/data/demo";
-import { uploadProjectMaterial } from "@/lib/agent-client";
+import {
+  deleteProjectMaterial,
+  uploadProjectMaterial,
+} from "@/lib/agent-client";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
+
+function buildProjectDraftId(): string {
+  return `project-${Date.now()}`;
+}
 
 export function useProjectActions(data: WorkspaceData) {
   function handleStartCreatingProject(): void {
     data.setProjectDraft({
+      id: buildProjectDraftId(),
       name: "",
       topic: "",
       description: "",
@@ -14,6 +21,43 @@ export function useProjectActions(data: WorkspaceData) {
     data.setIsCreatingProject(true);
     data.setIsProjectMetaOpen(false);
     data.setPendingSessionIntent(null);
+  }
+
+  function handleCancelCreatingProject(): void {
+    const draftProjectId = data.projectDraft.id;
+    const draftAssets = data.projectAssetsByProject[draftProjectId] ?? [];
+    if (draftProjectId !== "" && !data.projects.some((project) => project.id === draftProjectId)) {
+      if (draftAssets.length > 0) {
+        void Promise.allSettled(
+          draftAssets.map((asset) =>
+            deleteProjectMaterial({
+              projectId: draftProjectId,
+              materialId: asset.id,
+            }),
+          ),
+        );
+      }
+      data.setProjectAssetsByProject((current) => {
+        if (!(draftProjectId in current)) {
+          return current;
+        }
+
+        const nextState = { ...current };
+        delete nextState[draftProjectId];
+        return nextState;
+      });
+      data.setProjectMaterialIdsByProject((current) => {
+        if (!(draftProjectId in current)) {
+          return current;
+        }
+
+        const nextState = { ...current };
+        delete nextState[draftProjectId];
+        return nextState;
+      });
+    }
+
+    data.setIsCreatingProject(false);
   }
 
   function handleSaveProject(): void {
@@ -29,8 +73,9 @@ export function useProjectActions(data: WorkspaceData) {
       return;
     }
 
+    const draftProjectId = data.projectDraft.id || buildProjectDraftId();
     const createdProject = {
-      id: `project-${Date.now()}`,
+      id: draftProjectId,
       name: nextName,
       topic: nextTopic,
       description: nextDescription,
@@ -40,14 +85,12 @@ export function useProjectActions(data: WorkspaceData) {
           : ["先收敛主题和材料，再开始学习编排。"],
       updatedAt: "刚刚",
     };
-    const initialProjectAssets = sourceAssets.filter((asset) =>
-      data.projectDraft.initialMaterialIds.includes(asset.id),
-    );
+    const nextProjectAssets = data.projectAssetsByProject[draftProjectId] ?? [];
 
     data.setProjects((current) => [createdProject, ...current]);
     data.setProjectAssetsByProject((current) => ({
       ...current,
-      [createdProject.id]: initialProjectAssets,
+      [createdProject.id]: nextProjectAssets,
     }));
     data.setProjectMaterialIdsByProject((current) => ({
       ...current,
@@ -163,6 +206,68 @@ export function useProjectActions(data: WorkspaceData) {
     await uploadAndStoreProjectMaterial(file);
   }
 
+  async function handleUploadProjectDraftMaterial(file: File): Promise<void> {
+    const draftProjectId = data.projectDraft.id || buildProjectDraftId();
+    if (data.projectDraft.id !== draftProjectId) {
+      data.setProjectDraft((current) => ({
+        ...current,
+        id: draftProjectId,
+      }));
+    }
+
+    const uploadedAsset = await uploadProjectMaterial({
+      projectId: draftProjectId,
+      file,
+      topic:
+        data.projectDraft.topic.trim() ||
+        data.projectDraft.name.trim() ||
+        "待整理项目材料",
+    });
+
+    data.setProjectAssetsByProject((current) => {
+      const currentAssets = current[draftProjectId] ?? [];
+      if (currentAssets.some((asset) => asset.id === uploadedAsset.id)) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [draftProjectId]: [uploadedAsset, ...currentAssets],
+      };
+    });
+    data.setProjectDraft((current) => ({
+      ...current,
+      id: draftProjectId,
+      initialMaterialIds: current.initialMaterialIds.includes(uploadedAsset.id)
+        ? current.initialMaterialIds
+        : [uploadedAsset.id, ...current.initialMaterialIds],
+    }));
+  }
+
+  async function handleDeleteProjectDraftMaterial(materialId: string): Promise<void> {
+    const draftProjectId = data.projectDraft.id;
+    if (draftProjectId === "") {
+      return;
+    }
+
+    await deleteProjectMaterial({
+      projectId: draftProjectId,
+      materialId,
+    });
+
+    data.setProjectAssetsByProject((current) => {
+      const currentAssets = current[draftProjectId] ?? [];
+      return {
+        ...current,
+        [draftProjectId]: currentAssets.filter((asset) => asset.id !== materialId),
+      };
+    });
+    data.setProjectDraft((current) => ({
+      ...current,
+      initialMaterialIds: current.initialMaterialIds.filter((id) => id !== materialId),
+    }));
+  }
+
   async function handleUploadProjectMaterialAndAttach(file: File): Promise<void> {
     const selectedSessionId = data.selectedSession?.id ?? null;
     const selectedSessionType = data.selectedSession?.type ?? null;
@@ -198,11 +303,13 @@ export function useProjectActions(data: WorkspaceData) {
   }
 
   return {
-    handleCancelCreatingProject: () => data.setIsCreatingProject(false),
+    handleCancelCreatingProject,
     handleCancelEditingProjectMeta,
+    handleDeleteProjectDraftMaterial,
     handleOpenProjectMetaEditor,
     handleSaveProject,
     handleSaveProjectMeta,
+    handleUploadProjectDraftMaterial,
     handleUploadProjectMaterial,
     handleUploadProjectMaterialAndAttach,
     handleStartCreatingProject,

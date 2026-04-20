@@ -1,12 +1,13 @@
 import type { ReactElement } from "react";
-import { sourceAssets } from "@/data/demo";
 import { buildPendingSessionId } from "@/domain/project-workspace";
 import { WorkspaceHeader } from "@/app/workspace/ui/header";
 import { ProjectInsightsStrip } from "@/app/workspace/ui/project-insights";
 import { ProjectOverviewPanel } from "@/app/workspace/ui/project-overview";
+import { SystemCheckpointCard } from "@/app/workspace/ui/system-checkpoint";
 import { useSessionAgent } from "@/app/workspace/agent/use-session-agent";
 import { useWorkspaceActions } from "@/app/workspace/hooks/use-actions";
 import { useWorkspaceData } from "@/app/workspace/hooks/use-data";
+import { useProjectConsolidation } from "@/app/workspace/hooks/data/use-project-consolidation";
 import { useWorkspacePageModel } from "@/app/workspace/hooks/use-page-model";
 import { KnowledgePointDetailScreen } from "@/components/workspace/detail";
 import { SessionWorkspace } from "@/components/session/workspace";
@@ -25,6 +26,11 @@ export function WorkspacePage(): ReactElement {
   const model = useWorkspacePageModel({
     activeRuntime: session.activeRuntime,
     data,
+  });
+  const projectConsolidation = useProjectConsolidation({
+    agentConnectionState: data.agentConnectionState,
+    enabled: data.screen === "workspace",
+    projectId: data.selectedProject.id,
   });
   const pendingWorkspaceSession =
     data.pendingSessionIntent === null
@@ -54,6 +60,7 @@ export function WorkspacePage(): ReactElement {
           status: "待开始",
         };
   const activeWorkspaceSession = data.selectedSession ?? pendingWorkspaceSession;
+  const createProjectAssets = data.projectAssetsByProject[data.projectDraft.id] ?? [];
 
   return (
     <main className="xidea-shell min-h-screen bg-[var(--xidea-parchment)] text-[var(--xidea-near-black)]">
@@ -101,6 +108,13 @@ export function WorkspacePage(): ReactElement {
               {activeWorkspaceSession === null ? (
                 <>
                   <ProjectOverviewPanel
+                    checkpoint={
+                      <SystemCheckpointCard
+                        checkpoint={projectConsolidation.snapshot}
+                        compact
+                        status={projectConsolidation.status}
+                      />
+                    }
                     insights={
                       <ProjectInsightsStrip
                         isEditingProjectMeta={data.isEditingProjectMeta}
@@ -325,11 +339,13 @@ export function WorkspacePage(): ReactElement {
                 onClick={(event) => event.stopPropagation()}
               >
                 <CreateProjectPanel
-                  assets={sourceAssets}
+                  assets={createProjectAssets}
                   draft={data.projectDraft}
                   onCancel={actions.handleCancelCreatingProject}
                   onChange={data.setProjectDraft}
+                  onDeleteMaterial={actions.handleDeleteProjectDraftMaterial}
                   onSave={actions.handleSaveProject}
+                  onUploadMaterial={actions.handleUploadProjectDraftMaterial}
                 />
               </div>
             </div>

@@ -219,6 +219,30 @@ def test_project_material_upload_and_list_endpoint(persisted_client: TestClient)
     assert "retrieval 和 reranking" in summary_payload["assets"][0]["contentExcerpt"]
 
 
+def test_delete_project_material_endpoint(persisted_client: TestClient) -> None:
+    encoded = base64.b64encode("先上传再删除".encode("utf-8")).decode("utf-8")
+
+    upload_response = persisted_client.post(
+        "/projects/rag-demo/materials/upload",
+        json={
+            "filename": "temporary-note.md",
+            "content_base64": encoded,
+            "topic": "临时材料",
+        },
+    )
+    assert upload_response.status_code == 200
+    material_id = upload_response.json()["id"]
+
+    delete_response = persisted_client.delete(f"/projects/rag-demo/materials/{material_id}")
+
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {"ok": True}
+
+    list_response = persisted_client.get("/projects/rag-demo/materials")
+    assert list_response.status_code == 200
+    assert list_response.json() == []
+
+
 def test_delete_project_knowledge_point_endpoint(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "agent.db")
     repository.initialize()
@@ -804,6 +828,87 @@ def test_consolidation_preview_returns_404_without_project_state(tmp_path: Path)
     response = client.get("/projects/missing/consolidation-preview")
 
     assert response.status_code == 404
+
+
+def test_cached_consolidation_endpoint_returns_404_before_first_refresh(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.create_or_update_project_memory(
+        ProjectMemory(
+            project_id="rag-demo",
+            summary="最近 project chat 反复暴露 retrieval 与 reranking 的边界问题。",
+            updated_at=now,
+        )
+    )
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
+
+    response = client.get("/projects/rag-demo/consolidation")
+
+    assert response.status_code == 404
+
+
+def test_refresh_consolidation_persists_snapshot_for_future_reads(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.create_or_update_project_memory(
+        ProjectMemory(
+            project_id="rag-demo",
+            summary="最近 project chat 反复暴露 retrieval 与 reranking 的边界问题。",
+            updated_at=now,
+        )
+    )
+    repository.create_or_update_project_learning_profile(
+        ProjectLearningProfile(
+            project_id="rag-demo",
+            current_stage="正在把 RAG 基础概念压成稳定判断",
+            primary_weaknesses=["retrieval / reranking 边界", "query routing"],
+            learning_preferences=["先辨析再练习"],
+            freshness="fresh",
+            updated_at=now,
+        )
+    )
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-rag-boundary",
+                project_id="rag-demo",
+                title="retrieval 与 reranking 的边界",
+                description="说明 retrieval 与 reranking 在 RAG 里的职责边界。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            )
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-rag-boundary",
+                mastery=52,
+                learning_status="learning",
+                review_status="scheduled",
+                next_review_at=now - timedelta(days=1),
+                archive_suggested=False,
+                updated_at=now,
+            )
+        ],
+    )
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm()))
+
+    refresh_response = client.post("/projects/rag-demo/consolidation/refresh")
+
+    assert refresh_response.status_code == 200
+    refreshed_payload = refresh_response.json()
+    assert refreshed_payload["project_id"] == "rag-demo"
+    assert refreshed_payload["knowledge_point_stats"]["due_for_review"] == 1
+
+    cached_response = client.get("/projects/rag-demo/consolidation")
+
+    assert cached_response.status_code == 200
+    cached_payload = cached_response.json()
+    assert cached_payload == refreshed_payload
 
 
 def test_thread_context_returns_no_content_before_first_persist(

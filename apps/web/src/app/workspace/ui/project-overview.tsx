@@ -24,6 +24,7 @@ function ProjectInfoPill({
 }
 
 export function ProjectOverviewPanel({
+  checkpoint,
   insights,
   isEditing,
   onCancelEditing,
@@ -39,6 +40,7 @@ export function ProjectOverviewPanel({
   selectedProjectTopic,
   selectedProjectUpdatedAt,
 }: {
+  checkpoint?: ReactNode;
   insights?: ReactNode;
   isEditing: boolean;
   onCancelEditing: () => void;
@@ -203,6 +205,8 @@ export function ProjectOverviewPanel({
                     <ProjectInfoPill label="最近更新" value={selectedProjectUpdatedAt} />
                   </div>
                 </div>
+
+                {checkpoint ? <div className="pt-1">{checkpoint}</div> : null}
               </div>
 
               {insights ? <div className="min-w-0 self-start">{insights}</div> : null}

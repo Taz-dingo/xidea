@@ -81,7 +81,7 @@
 - 第一版优先证明一次高价值判断：系统能区分哪些知识点还没学、哪些该复习、哪些已经稳定
 - 第一版就接入 LangChain + LangGraph，但不追求复杂多 agent 和复杂 graph
 - 第一版 Project 页默认展示知识点工作台；只有在用户明确进入 project / study / review session 时才展开 session workspace
-- 第一版 Project Workspace 主区顶部增加无感刷新的 `System Checkpoint / Consolidation` 卡片：先展示数据库里的上一版 project-level 收口结果，再后台刷新最新结果
+- 第一版 `Consolidation` 内嵌在 `Project Workspace` 的项目总览卡底部：先展示数据库里的上一版 project-level 收口结果，再后台刷新最新结果
 - 用户侧默认不直出内部编排证据；主区优先展示知识点与动作反馈，画像、规则和设置放在辅助位置
 - 允许轻量卡片状态、少量高信号题卡、提交后短反馈和 archive 建议，但这些都只是项目型学习编排的承载方式，不是产品目标本身
 - `special rules` 可以由 LLM 在创建 Project 时生成，并在二级菜单中供用户后续编辑

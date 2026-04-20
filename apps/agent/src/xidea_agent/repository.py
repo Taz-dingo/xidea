@@ -165,6 +165,14 @@ CREATE TABLE IF NOT EXISTS project_learning_profiles (
   FOREIGN KEY(project_id) REFERENCES projects(project_id)
 );
 
+CREATE TABLE IF NOT EXISTS project_consolidations (
+  project_id TEXT PRIMARY KEY,
+  payload TEXT NOT NULL,
+  generated_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(project_id)
+);
+
 CREATE TABLE IF NOT EXISTS project_materials (
   material_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
@@ -714,6 +722,44 @@ class SQLiteRepository:
 
         return self._row_to_project_learning_profile(row) if row is not None else None
 
+    def get_project_consolidation(self, project_id: str) -> dict[str, Any] | None:
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT payload
+                FROM project_consolidations
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+
+        return json.loads(row["payload"]) if row is not None else None
+
+    def save_project_consolidation(self, project_id: str, snapshot: dict[str, Any]) -> None:
+        self.initialize()
+        generated_at = str(snapshot.get("generated_at") or _utc_now())
+        now_value = _utc_now()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO project_consolidations(
+                  project_id, payload, generated_at, updated_at
+                )
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(project_id) DO UPDATE SET
+                  payload = excluded.payload,
+                  generated_at = excluded.generated_at,
+                  updated_at = excluded.updated_at
+                """,
+                (
+                    project_id,
+                    json.dumps(snapshot, ensure_ascii=False),
+                    generated_at,
+                    now_value,
+                ),
+            )
+
     def get_review_state(self, thread_id: str, unit_id: str) -> ReviewPatch | None:
         with self._connect() as connection:
             row = connection.execute(
@@ -977,6 +1023,29 @@ class SQLiteRepository:
             ).fetchall()
 
         return [self._row_to_project_material(row) for row in rows]
+
+    def delete_project_material(self, project_id: str, material_id: str) -> bool:
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM project_materials
+                WHERE project_id = ? AND material_id = ?
+                """,
+                (project_id, material_id),
+            ).fetchone()
+            if row is None:
+                return False
+
+            connection.execute(
+                """
+                DELETE FROM project_materials
+                WHERE project_id = ? AND material_id = ?
+                """,
+                (project_id, material_id),
+            )
+        return True
 
     def get_project_materials_by_ids(
         self,

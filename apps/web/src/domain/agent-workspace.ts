@@ -118,6 +118,53 @@ export interface AgentWorkspaceProjectLearningProfile {
   readonly updated_at: string | null;
 }
 
+export interface AgentWorkspaceConsolidationKnowledgePointSummary {
+  readonly knowledge_point_id: string;
+  readonly title: string;
+  readonly status: string;
+  readonly mastery: number;
+  readonly learning_status: string;
+  readonly review_status: string;
+  readonly next_review_at: string | null;
+  readonly updated_at: string | null;
+  readonly archive_suggested: boolean;
+  readonly review_due: boolean;
+}
+
+export interface AgentWorkspaceConsolidationStats {
+  readonly total: number;
+  readonly active: number;
+  readonly archived: number;
+  readonly due_for_review: number;
+  readonly archive_suggested: number;
+  readonly pending_create_suggestions: number;
+  readonly pending_archive_suggestions: number;
+}
+
+export interface AgentWorkspaceConsolidationSuggestion {
+  readonly id: string;
+  readonly kind: string;
+  readonly title: string;
+  readonly knowledge_point_id: string | null;
+  readonly reason: string;
+  readonly status: string;
+  readonly created_at: string | null;
+}
+
+export interface AgentWorkspaceProjectConsolidation {
+  readonly project_id: string;
+  readonly project_topic: string | null;
+  readonly generated_at: string;
+  readonly project_memory: AgentWorkspaceProjectMemory | null;
+  readonly project_learning_profile: AgentWorkspaceProjectLearningProfile | null;
+  readonly knowledge_point_stats: AgentWorkspaceConsolidationStats;
+  readonly due_for_review: ReadonlyArray<AgentWorkspaceConsolidationKnowledgePointSummary>;
+  readonly unstable_knowledge_points: ReadonlyArray<AgentWorkspaceConsolidationKnowledgePointSummary>;
+  readonly stable_knowledge_points: ReadonlyArray<AgentWorkspaceConsolidationKnowledgePointSummary>;
+  readonly pending_suggestions: ReadonlyArray<AgentWorkspaceConsolidationSuggestion>;
+  readonly recommended_actions: ReadonlyArray<string>;
+}
+
 export interface AgentWorkspaceProjectBootstrap {
   readonly project: AgentWorkspaceProject;
   readonly sessions: ReadonlyArray<AgentWorkspaceSession>;

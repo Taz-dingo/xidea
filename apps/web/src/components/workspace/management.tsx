@@ -1,6 +1,7 @@
-import type { ReactElement, ReactNode } from "react";
-import { X } from "lucide-react";
+import { useState, type ReactElement, type ReactNode } from "react";
+import { Trash2, X } from "lucide-react";
 import type { SourceAsset } from "@/domain/types";
+import { MaterialUploadButton } from "@/components/material-upload-button";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,15 +11,18 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { AssetListItem } from "@/components/workspace/core";
+import {
+  AssetListItem,
+  getAssetKindLabel,
+} from "@/components/workspace/core";
 
-interface AssetPickerProps {
+interface DraftAssetListProps {
   readonly assets: ReadonlyArray<SourceAsset>;
-  readonly selectedAssetIds: ReadonlyArray<string>;
-  readonly onToggle: (assetId: string) => void;
+  readonly onDelete: (assetId: string) => Promise<void>;
 }
 
 interface ProjectDraftValue {
+  readonly id: string;
   readonly name: string;
   readonly topic: string;
   readonly description: string;
@@ -26,25 +30,65 @@ interface ProjectDraftValue {
   readonly initialMaterialIds: ReadonlyArray<string>;
 }
 
-function AssetPicker({
+function DraftAssetList({
   assets,
-  selectedAssetIds,
-  onToggle,
-}: AssetPickerProps): ReactElement {
-  return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {assets.map((asset) => {
-        const selected = selectedAssetIds.includes(asset.id);
+  onDelete,
+}: DraftAssetListProps): ReactElement {
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-        return (
-          <AssetListItem
-            asset={asset}
-            key={asset.id}
-            onClick={() => onToggle(asset.id)}
-            selected={selected}
-          />
-        );
-      })}
+  async function handleDelete(assetId: string): Promise<void> {
+    setDeletingAssetId(assetId);
+    setErrorMessage(null);
+    try {
+      await onDelete(assetId);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "删除材料失败。");
+    } finally {
+      setDeletingAssetId(null);
+    }
+  }
+
+  if (assets.length === 0) {
+    return (
+      <div className="rounded-[1rem] border border-dashed border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-4 py-5 text-sm leading-6 text-[var(--xidea-stone)]">
+        还没有初始材料。先上传你这次项目真正要用的材料，系统会把它们作为新项目的起始上下文。
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {assets.map((asset) => (
+          <div className="relative" key={asset.id}>
+            <AssetListItem asset={asset} />
+            <Button
+              aria-label={`删除材料 ${asset.title}`}
+              className="absolute right-3 top-3 h-8 w-8 rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] p-0 text-[var(--xidea-charcoal)] shadow-none hover:bg-[var(--xidea-parchment)]"
+              disabled={deletingAssetId === asset.id}
+              onClick={() => {
+                void handleDelete(asset.id);
+              }}
+              type="button"
+              variant="ghost"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            <div className="mt-2 flex items-center justify-between gap-2 px-1">
+              <span className="text-[12px] text-[var(--xidea-stone)]">
+                {getAssetKindLabel(asset.kind)}
+              </span>
+              <span className="text-[12px] text-[var(--xidea-selection-text)]">
+                默认加入项目材料
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+      {errorMessage ? (
+        <p className="text-[12px] leading-5 text-[#b95e39]">{errorMessage}</p>
+      ) : null}
     </div>
   );
 }
@@ -82,12 +126,16 @@ export function CreateProjectPanel({
   onCancel,
   onChange,
   onSave,
+  onDeleteMaterial,
+  onUploadMaterial,
 }: {
   assets: ReadonlyArray<SourceAsset>;
   draft: ProjectDraftValue;
   onCancel: () => void;
   onChange: (draft: ProjectDraftValue) => void;
   onSave: () => void;
+  onDeleteMaterial: (assetId: string) => Promise<void>;
+  onUploadMaterial: (file: File) => Promise<void>;
 }): ReactElement {
   const isDisabled =
     draft.name.trim() === "" ||
@@ -153,19 +201,19 @@ export function CreateProjectPanel({
         />
       </label>
 
-      <div className="space-y-2 text-sm text-[var(--xidea-charcoal)]">
-        <span className="font-medium text-[var(--xidea-near-black)]">初始材料</span>
-        <AssetPicker
+      <div className="space-y-3 text-sm text-[var(--xidea-charcoal)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <span className="font-medium text-[var(--xidea-near-black)]">初始材料</span>
+            <p className="text-xs leading-5 text-[var(--xidea-stone)]">
+              默认从空开始。这里只展示你刚刚为这个项目真实上传的材料，并支持继续添加或删除。
+            </p>
+          </div>
+          <MaterialUploadButton label="上传本地材料" onUpload={onUploadMaterial} />
+        </div>
+        <DraftAssetList
           assets={assets}
-          onToggle={(assetId) =>
-            onChange({
-              ...draft,
-              initialMaterialIds: draft.initialMaterialIds.includes(assetId)
-                ? draft.initialMaterialIds.filter((id) => id !== assetId)
-                : [...draft.initialMaterialIds, assetId],
-            })
-          }
-          selectedAssetIds={draft.initialMaterialIds}
+          onDelete={onDeleteMaterial}
         />
       </div>
 

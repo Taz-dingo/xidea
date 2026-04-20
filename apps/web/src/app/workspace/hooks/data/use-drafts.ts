@@ -29,6 +29,7 @@ export function useWorkspaceDrafts({
   setIsEditingProjectMeta: (value: boolean) => void;
 }) {
   const [projectDraft, setProjectDraft] = useState<ProjectDraft>({
+    id: "",
     name: "",
     topic: "",
     description: "",

@@ -164,6 +164,23 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project consolidation state not found")
         return preview
 
+    @app.get("/projects/{project_id}/consolidation")
+    def get_project_consolidation(project_id: str) -> dict[str, object]:
+        repo = _require_repository(repository)
+        snapshot = repo.get_project_consolidation(project_id)
+        if snapshot is None:
+            raise HTTPException(status_code=404, detail="Project consolidation snapshot not found")
+        return snapshot
+
+    @app.post("/projects/{project_id}/consolidation/refresh")
+    def refresh_project_consolidation(project_id: str, limit: int = 5) -> dict[str, object]:
+        repo = _require_repository(repository)
+        preview = build_consolidation_preview(project_id, repo, limit=max(1, min(limit, 20)))
+        if preview is None:
+            raise HTTPException(status_code=404, detail="Project consolidation state not found")
+        repo.save_project_consolidation(project_id, preview)
+        return preview
+
     @app.get("/projects/{project_id}/materials", response_model=list[SourceAsset])
     def list_project_materials(project_id: str) -> list[SourceAsset]:
         repo = _require_repository(repository)
@@ -240,6 +257,14 @@ def create_app(
         )
         repo.save_project_material(material, project_id=project_id)
         return material
+
+    @app.delete("/projects/{project_id}/materials/{material_id}")
+    def delete_project_material(project_id: str, material_id: str) -> dict[str, bool]:
+        repo = _require_repository(repository)
+        deleted = repo.delete_project_material(project_id, material_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Project material not found")
+        return {"ok": True}
 
     @app.get("/assets/summary")
     def asset_summary(asset_ids: str = "", project_id: str | None = None) -> dict[str, object]:

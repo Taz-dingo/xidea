@@ -199,7 +199,6 @@ export function WorkspaceBrowseScreen({
             </CardContent>
           </Card>
         ) : null}
-
         {filteredKnowledgePoints.length > 0 ? (
           <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
             <CardContent className="space-y-4 p-5">

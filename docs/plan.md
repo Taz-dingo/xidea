@@ -8,7 +8,7 @@
 
 ### Demo Priorities
 
-- `P0`: 稳主链与主区无感 `Consolidation`，先保证 demo 全链路稳、快、可讲
+- `P0`: 稳主链与项目卡内嵌的无感 `Consolidation`，先保证 demo 全链路稳、快、可讲
 - `P1`: 扩真实题卡类型，但只做少量高信号卡片，不扩成题型超市
 - `P2`: 补演示级 `RSR / Review Engine` 展示，讲清 `why now`
 - `P3`: 语音模式只保留为录屏或口头展望，不进入主线阻塞项
@@ -29,8 +29,8 @@
 - 主目录：`apps/web/src/app`、`apps/web/src/components`
 - 当前重点：
   - [ ] 继续验证 project chat 默认续写链路，重点检查跨项目切换、切 session、挂材后多轮追问时是否还有旧上下文泄漏
-  - [ ] 补齐“创建 Project 时直接上传本地文件”这条创建流
-  - [ ] 在 `Project Workspace` 主区顶部落地无感 `System Checkpoint / Consolidation`：先进库里旧结果，再后台刷新并更新 UI
+  - [x] 补齐“创建 Project 时直接上传本地文件”这条创建流
+  - [x] 在 `Project Workspace` 项目总览卡底部落地无感 `System Checkpoint / Consolidation`：先进库里旧结果，再后台刷新并更新 UI
   - [ ] 为少量高信号题卡类型补统一展示组件与状态反馈
 
 #### Product / Demo owner
@@ -152,15 +152,14 @@
     - 点击 `研讨 / 学习 / 复习` 已统一先进入待开始态，只有首条真实消息后才创建 thread
     - project chat 的知识点建议、topic/rules 快捷入口、知识点轻量编辑路径都已接通
     - 当前仍需继续检查跨项目切换、切 session 和挂材后多轮追问时，是否还有旧 thread 上下文或旧草稿泄漏
-- [ ] 补齐 project chat / Project 创建流的最后入口缺口
+- [x] 补齐 project chat / Project 创建流的最后入口缺口
   - owner: 前端 owner / 学习引擎 owner
   - 当前进展：
     - backend 已补 `project_materials` 持久化与 `list / upload` API
     - frontend 已在 `Edit Project Meta` 和 `project session` 材料 tray 接入真实本地文件上传；上传结果会回流到当前 project materials，并可直接附着到当前 `project session`
+    - frontend 已在 `Create Project` 弹层接入真实本地文件上传；上传材料会直接进入新项目的材料池，并默认加入初始材料选择
     - frontend 已移除知识点建议新增的本地 heuristic，当前以 backend suggestion 事件为准
     - topic/rules 修改入口与知识点轻量编辑入口已接通
-  - 当前剩余缺口：
-    - “创建 Project 时直接上传本地文件”这条创建流仍未补齐；第一版当前仍沿用 demo seed 材料选择
 - [ ] 收敛学习 / 复习 session 第一版题卡类型为少量高信号卡片，而不是只做选择题或扩成题型超市
   - owner: 产品 owner / 前端 owner / 学习引擎 owner
   - 范围：
@@ -181,10 +180,10 @@
   - owner: 学习引擎 owner
 - [x] 定义 knowledge point archive 建议规则：多次复习稳定后由系统建议，用户确认执行
   - owner: 学习引擎 owner / 产品 owner
-- [ ] 落地无感 `Consolidation` 展示：进入 `Project` 时先展示上一次结果，再后台刷新最新 project-level checkpoint
+- [x] 落地无感 `Consolidation` 展示：进入 `Project` 时先展示上一次结果，再后台刷新最新 project-level checkpoint
   - owner: 学习引擎 owner / 前端 owner / 产品 owner
   - 当前要求：
-    - 展示位固定在 `Project Workspace` 主区顶部、知识点列表上方
+    - 展示位固定在 `Project Workspace` 顶部项目卡片内部、项目状态区下方
     - 不是普通 `AI summary`，而是结构化 project-level 收口卡片
     - 默认 lazy-load 旧结果，同时显示刷新中的状态；刷新失败时保留旧结果
 - [ ] 补演示级 `RSR / Review Engine` 展示，不追完整 `FSRS`
@@ -233,17 +232,12 @@
 3. `apps/web` 与 `apps/agent` 继续收口 session 生命周期
    - 验证 project chat 默认续写链路
    - 明确 session create/bootstrap 的边界和状态转换
-4. `apps/web` 补齐创建 Project 时的真实本地文件上传
-   - 消掉当前仍依赖 demo seed 材料的创建流
-5. `apps/web` 与 `apps/agent` 落地无感 `Consolidation`
-   - `Project Workspace` 主区顶部展示 `System Checkpoint`
-   - 先展示上一版结果，再后台刷新
-6. 收敛少量高信号题卡类型
+4. 收敛少量高信号题卡类型
    - 选择题、定义澄清、边界辨析、误解纠偏
    - 不扩成题型超市
-7. `apps/agent` 细化 `activity_result` writeback
+5. `apps/agent` 细化 `activity_result` writeback
    - 从整组聚合结果继续拆到单卡表现
-8. 补演示级 `RSR / Review Engine` 展示
+6. 补演示级 `RSR / Review Engine` 展示
    - `due / upcoming / stable`
    - `why now / next review`
 9. 产品 owner 准备答辩支撑材料
