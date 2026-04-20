@@ -13,6 +13,11 @@ MessageRole = Literal["system", "user", "assistant"]
 ActivityKind = Literal["quiz", "recall", "coach-followup"]
 ActivityResultType = Literal["exercise", "review"]
 ActivityResultAction = Literal["submit", "skip"]
+ProjectStatus = Literal["active", "archived"]
+SessionType = Literal["project", "study", "review"]
+SessionStatus = Literal["active", "closed"]
+ProjectMaterialKind = Literal["pdf", "web", "note", "audio", "video", "image"]
+ProjectMaterialStatus = Literal["active", "archived"]
 KnowledgePointStatus = Literal["active", "archived"]
 KnowledgePointSuggestionKind = Literal["create", "archive"]
 KnowledgePointSuggestionStatus = Literal["pending", "accepted", "dismissed"]
@@ -72,7 +77,7 @@ class Message(StrictModel):
 class SourceAsset(StrictModel):
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
-    kind: Literal["pdf", "web", "note", "audio", "video", "image"]
+    kind: ProjectMaterialKind
     topic: str = Field(min_length=1)
     summary: str | None = None
     source_uri: str | None = None
@@ -80,6 +85,66 @@ class SourceAsset(StrictModel):
     status: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class Project(StrictModel):
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    topic: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    special_rules: list[str] = Field(default_factory=list)
+    status: ProjectStatus = "active"
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class Session(StrictModel):
+    id: str = Field(min_length=1)
+    project_id: str = Field(min_length=1)
+    type: SessionType
+    title: str = Field(min_length=1)
+    status: SessionStatus = "active"
+    focus_knowledge_point_ids: list[str] = Field(default_factory=list)
+    current_activity_id: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ProjectMaterial(StrictModel):
+    id: str = Field(min_length=1)
+    project_id: str = Field(min_length=1)
+    kind: ProjectMaterialKind
+    title: str = Field(min_length=1)
+    source_uri: str | None = None
+    content_ref: str | None = None
+    summary: str | None = None
+    status: ProjectMaterialStatus = "active"
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class SessionAttachment(StrictModel):
+    id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    project_material_id: str = Field(min_length=1)
+    role: str = Field(min_length=1)
+    attached_at: datetime | None = None
+
+
+class ThreadContextRecord(StrictModel):
+    thread_id: str = Field(min_length=1)
+    entry_mode: EntryMode
+    source_asset_ids: list[str] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+
+class ProjectMaterialInput(StrictModel):
+    id: str | None = None
+    kind: ProjectMaterialKind
+    title: str = Field(min_length=1)
+    source_uri: str | None = None
+    content_ref: str | None = None
+    summary: str | None = None
 
 
 class LearningUnit(StrictModel):
@@ -233,6 +298,11 @@ class KnowledgePointState(StrictModel):
     updated_at: datetime | None = None
 
 
+class KnowledgePointRecord(StrictModel):
+    knowledge_point: KnowledgePoint
+    knowledge_point_state: KnowledgePointState | None = None
+
+
 class KnowledgePointSuggestion(StrictModel):
     id: str = Field(min_length=1)
     kind: KnowledgePointSuggestionKind
@@ -258,12 +328,16 @@ class KnowledgePointSuggestionResolution(StrictModel):
 
 
 class ProjectMemory(StrictModel):
+    id: str | None = None
     project_id: str = Field(min_length=1)
     summary: str = Field(min_length=1)
+    key_facts: list[str] = Field(default_factory=list)
+    open_threads: list[str] = Field(default_factory=list)
     updated_at: datetime | None = None
 
 
 class ProjectLearningProfile(StrictModel):
+    id: str | None = None
     project_id: str = Field(min_length=1)
     current_stage: str = Field(min_length=1)
     primary_weaknesses: list[str] = Field(default_factory=list)
@@ -314,6 +388,63 @@ class StatePatch(StrictModel):
     learner_state_patch: LearnerStatePatch | None = None
     last_action: LastActionRecord | None = None
     review_patch: ReviewPatch | None = None
+
+
+class CreateProjectRequest(StrictModel):
+    project_id: str | None = None
+    title: str = Field(min_length=1)
+    topic: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    special_rules: list[str] = Field(default_factory=list)
+    initial_materials: list[ProjectMaterialInput] = Field(default_factory=list)
+
+
+class UpdateProjectRequest(StrictModel):
+    title: str | None = None
+    topic: str | None = None
+    description: str | None = None
+    special_rules: list[str] | None = None
+    initial_materials: list[ProjectMaterialInput] | None = None
+
+
+class CreateSessionRequest(StrictModel):
+    session_id: str | None = None
+    type: SessionType
+    title: str | None = Field(default=None, min_length=1)
+    entry_mode: EntryMode = "chat-question"
+    focus_knowledge_point_ids: list[str] = Field(default_factory=list)
+    project_material_ids: list[str] = Field(default_factory=list)
+
+
+class UpdateSessionRequest(StrictModel):
+    title: str | None = Field(default=None, min_length=1)
+    status: SessionStatus | None = None
+    focus_knowledge_point_ids: list[str] | None = None
+    project_material_ids: list[str] | None = None
+
+
+class UpdateKnowledgePointRequest(StrictModel):
+    title: str | None = Field(default=None, min_length=1)
+    description: str | None = Field(default=None, min_length=1)
+    source_material_refs: list[str] | None = None
+
+
+class ProjectBootstrap(StrictModel):
+    project: Project
+    sessions: list[Session] = Field(default_factory=list)
+    project_materials: list[ProjectMaterial] = Field(default_factory=list)
+    session_attachments: list[SessionAttachment] = Field(default_factory=list)
+    knowledge_points: list[KnowledgePoint] = Field(default_factory=list)
+    knowledge_point_states: list[KnowledgePointState] = Field(default_factory=list)
+    project_memory: ProjectMemory | None = None
+    project_learning_profile: ProjectLearningProfile | None = None
+
+
+class SessionDetail(StrictModel):
+    session: Session
+    thread_context: ThreadContextRecord | None = None
+    session_attachments: list[SessionAttachment] = Field(default_factory=list)
+    recent_messages: list[Message] = Field(default_factory=list)
 
 
 class ToolResult(StrictModel):

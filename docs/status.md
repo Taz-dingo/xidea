@@ -243,12 +243,21 @@
 - 已补 preloaded tool context 回归测试：`material-import` 会复用前置 `asset-summary`，review 请求会复用前置 `review-context`，常规问答中的 `unit-detail` 也会在 `needs_tool=true` 时复用，不再重复拉取
 - 已同步修正文档漂移：`docs/plan.md` 中的 suggestion contract / off-topic / archive rule 已改成完成态，避免继续把已做完的项当成下一步
 - 已补 activity result / bundled response / project memory / learning profile / dynamic tool preload 回归测试；当前 mock 主套件为 `138 passed, 4 deselected`，`real_llm` 套件为 `4 passed`
+- backend owner 已补 `Project / Session / ProjectMaterial / SessionAttachment` 的正式 schema、SQLite 表结构与 migration；当前 `projects` 扩成 `title / description / special_rules / status`，`threads` 扩成 session 基础字段，并新增 `project_materials / session_attachments`、project memory/profile 的正式持久化字段
+- backend owner 已补最小 `POST /projects`、`GET /projects/{project_id}`、`PATCH /projects/{project_id}`，Project 创建时会同步 bootstrap 初始 project session、materials、session attachments、project memory、learning profile 与第一版 knowledge points
+- backend owner 已补 `GET /projects` 轻量列表接口，并把 project bootstrap 的 id 生成、初始知识点与 memory helper 从 `repository.py` 抽到独立模块，避免 repository 继续吸收 domain 规则
+- backend owner 已补 `GET /projects/{project_id}/knowledge-points`、`GET /projects/{project_id}/knowledge-points/{knowledge_point_id}`、`PATCH /projects/{project_id}/knowledge-points/{knowledge_point_id}`；当前 backend 已接住知识点详情读取与 `title / description / source_material_refs` 轻量编辑，并在 repository 层校验 material 引用合法性
+- backend owner 已补 `POST /projects/{project_id}/sessions`、`GET /projects/{project_id}/sessions`、`GET /projects/{project_id}/sessions/{session_id}`、`PATCH /projects/{project_id}/sessions/{session_id}`；当前新 session 会正式落库，session patch 已支持 `title / status / focus_knowledge_point_ids / project_material_ids` 更新，并同步 `session_attachments + thread_context.source_asset_ids + project_memory.open_threads`；session 列表也已改成按最近更新时间倒序
+- backend owner 已补 session-scoped 读取 alias：`/projects/{project_id}/sessions/{session_id}/recent-messages`、`/context`、`/inspector-bootstrap`、`/units/{unit_id}`、`/units/{unit_id}/review-inspector`；当前旧 `/threads/*` 路由仍保留兼容，但 API 对外口径已可以先向 `project/session` 收敛
+- frontend / backend 已打通第一版真实连调：`apps/web` 当前会优先从 `/projects` + `/projects/{project_id}` + `/projects/{project_id}/sessions/{session_id}` hydrate project / knowledge point / material / session 实体，并把 `create project`、`edit project meta`、`create session`、`edit knowledge point` 接到真实 backend；当前 `/runs/v0` 里的 `target_unit_id` 也已改成跟随后端 knowledge point id，而不是继续绑 demo `learningUnits`
+- 当前前端仍保留 2 个临时降级：project material 可选池仍会合并 demo assets 作为 seed catalog；knowledge point archive 仍是本地切换，尚未接正式 backend archive/confirm 流程
+- 已补 backend bootstrap / update / list / session create / session patch / session alias read / knowledge point edit / legacy schema migration 回归测试，并补跑 `apps/agent` 非 `real_llm` 全量回归；当前 mock 套件为 `158 passed, 4 deselected`
 
 ### In Progress
 
 #### 当前两人并行拆分（2026-04-18）
 
-- 当前前端默认先不作为并行主线；前端 UI 侧已接近完成，等待 backend / agent contract 进一步稳定后再集中接 `typed activity_result`
+- 当前前端已开始接真实 project/session contract，但仍不作为独立并行主线；下一阶段主要等待 backend / agent contract 继续稳定后再集中收 `typed activity_result`
 - backend owner 当前主改 `state.py / repository.py / api.py`，负责对外 schema、持久化对象、Project 创建 / bootstrap 与 session / material contract
 - agent owner 当前主改 `runtime.py / llm.py / tools.py / activity_results.py / review_engine.py / knowledge_points.py`，负责主决策链路、tool loop、知识点生命周期与 writeback
 - `state.py` 是当前共享热点文件，默认只由 backend owner 主改；agent owner 通过字段清单或小 PR 配合，避免两人同时大改 contract
@@ -277,8 +286,6 @@
 
 ### Next
 
-- backend owner：补 `Project / Session / ProjectMaterial / SessionAttachment` 的正式 schema、表结构、repository 方法与最小 API
-- backend owner：打通 Project 创建 / bootstrap 最小链路，稳定初始 memory、learning profile、knowledge points 与 project session
 - agent owner：继续收敛“预取证据 -> 单次主决策 -> 少量动态 tool loop -> writeback”的主路径，优先减少仍需 `needs_tool=true` 的场景
 - agent owner：把 `project / study / review` 三类 session 的行为差异和知识点 lifecycle 真正落到 runtime
 - 定义 Project 创建与初始化编排所需的最小 schema：topic、description、materials、special rules、initial memory

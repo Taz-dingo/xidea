@@ -54,6 +54,8 @@ export function SessionWorkspace({
   displayMessages,
   draftPrompt,
   errorMessage,
+  activityInputDisabled,
+  composerDisabled,
   hasPendingActivity,
   hasPersistedState,
   hasStructuredRuntime,
@@ -115,6 +117,8 @@ export function SessionWorkspace({
   displayMessages: ReadonlyArray<UIMessage>;
   draftPrompt: string;
   errorMessage: string | null;
+  activityInputDisabled: boolean;
+  composerDisabled: boolean;
   hasPendingActivity: boolean;
   hasPersistedState: boolean;
   hasStructuredRuntime: boolean;
@@ -325,6 +329,8 @@ export function SessionWorkspace({
           displayMessages={displayMessages}
           draftPrompt={draftPrompt}
           errorMessage={errorMessage}
+          activityInputDisabled={activityInputDisabled}
+          composerDisabled={composerDisabled}
           hasPendingActivity={hasPendingActivity}
           hasStructuredRuntime={hasStructuredRuntime}
           isAgentRunning={isAgentRunning}

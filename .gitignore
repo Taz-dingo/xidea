@@ -22,3 +22,5 @@ uv.lock
 apps/agent/output/
 output/
 output/playwright
+apps/agent/output/
+apps/web/package-lock.json
