@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import { PenSquare, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { getKnowledgePointAccent } from "@/components/workspace/core";
 import { CompactNote, MonitorSection } from "@/components/workspace/monitor";
 import type {
   AgentAssetSummary,
@@ -17,7 +16,6 @@ import type {
 } from "@/domain/project-session-runtime";
 import {
   getSessionTypeLabel,
-  type KnowledgePointItem,
   type ProjectItem,
 } from "@/domain/project-workspace";
 
@@ -262,15 +260,11 @@ export function SessionInspector({
   isBlankSession,
   latestReviewedLabel,
   nextReviewLabel,
-  onEditKnowledgePoint,
-  onOpenKnowledgePoint,
-  relatedKnowledgePoints,
   requestSourceAssetIds,
   selectedProject,
   selectedSessionStatus,
   selectedSessionType,
   selectedSourceAssetIds,
-  selectedUnitTitle,
 }: {
   activeAssetSummary: AgentAssetSummary | null;
   activeReviewInspector: AgentReviewInspector | null;
@@ -281,15 +275,11 @@ export function SessionInspector({
   isBlankSession: boolean;
   latestReviewedLabel: string;
   nextReviewLabel: string;
-  onEditKnowledgePoint: (pointId: string) => void;
-  onOpenKnowledgePoint: (pointId: string) => void;
-  relatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
   requestSourceAssetIds: ReadonlyArray<string>;
   selectedProject: ProjectItem;
   selectedSessionStatus: string;
   selectedSessionType: "project" | "study" | "review";
   selectedSourceAssetIds: ReadonlyArray<string>;
-  selectedUnitTitle: string | null;
 }): ReactElement {
   const [openDeckKey, setOpenDeckKey] = useState<string | null>(null);
   const previewDecks = useMemo(
@@ -302,62 +292,6 @@ export function SessionInspector({
   return (
     <>
       <div className="space-y-4">
-        {selectedSessionType !== "project" ? (
-          <MonitorSection title="当前知识卡">
-            <div className="space-y-3">
-              {relatedKnowledgePoints.map((point) => (
-                <Card
-                  className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none"
-                  key={point.id}
-                >
-                  <CardContent className="space-y-3 px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                        {point.title}
-                      </p>
-                      <Badge
-                        className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
-                        variant="outline"
-                      >
-                        {point.stageLabel}
-                      </Badge>
-                    </div>
-                    <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                      {point.description}
-                    </p>
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[12px] text-[var(--xidea-stone)]">
-                        {point.nextReviewLabel ?? "等待下一次调度"}
-                      </p>
-                      <div className="flex gap-2">
-                        <Button
-                          className="h-8 rounded-full px-3"
-                          onClick={() => onOpenKnowledgePoint(point.id)}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          查看
-                        </Button>
-                        <Button
-                          className="h-8 rounded-full px-3"
-                          onClick={() => onEditKnowledgePoint(point.id)}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          <PenSquare className="h-3.5 w-3.5" />
-                          编辑
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </MonitorSection>
-        ) : null}
-
         <MonitorSection title="本轮上下文">
           <CompactNote label="项目" value={selectedProject.name} />
           <CompactNote label="会话" value={selectedSessionStatus} />
@@ -371,9 +305,6 @@ export function SessionInspector({
                   : `${getSessionTypeLabel(selectedSessionType)}编排`
             }
           />
-          {selectedSessionType !== "project" ? (
-            <CompactNote label="知识卡" value={selectedUnitTitle ?? "未指定"} />
-          ) : null}
           <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
             {hasPersistedState
               ? activeRuntime.stateSource

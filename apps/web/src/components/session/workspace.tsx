@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactElement } from "react";
-import { FileInput, GraduationCap, MessageSquareText, RefreshCcw, X } from "lucide-react";
+import type { ReactElement } from "react";
+import { ArrowLeft, GraduationCap, MessageSquareText, RefreshCcw } from "lucide-react";
 import { CompletedDeckRail } from "@/components/session/deck-rail";
 import { SessionThreadPane } from "@/components/session/thread-pane";
 import { SessionInspector } from "@/components/session/inspector";
@@ -61,9 +61,8 @@ export function SessionWorkspace({
   nextReviewLabel,
   onChangeDraftPrompt,
   onDeleteSession,
-  onEditKnowledgePoint,
+  onExitSession,
   onOpenKnowledgePoint,
-  onOpenProjectMetaEditor,
   onOpenSession,
   onStartProjectSession,
   onStartReview,
@@ -77,7 +76,6 @@ export function SessionWorkspace({
   onUnsetSourceAsset,
   onWorkspaceSectionChange,
   projectStats,
-  relatedKnowledgePoints,
   sessionCreatedKnowledgePoints,
   reviewDisabled,
   requestSourceAssetIds,
@@ -85,7 +83,6 @@ export function SessionWorkspace({
   selectedProjectMaterials,
   selectedSession,
   selectedSourceAssetIds,
-  selectedUnitTitle,
   selectedProjectSessions,
   studyDisabled,
   workspaceSection,
@@ -114,10 +111,9 @@ export function SessionWorkspace({
   latestReviewedLabel: string;
   nextReviewLabel: string;
   onChangeDraftPrompt: (value: string) => void;
-  onDeleteSession: () => void;
-  onEditKnowledgePoint: (pointId: string) => void;
+  onDeleteSession: (sessionId: string) => void;
+  onExitSession: () => void;
   onOpenKnowledgePoint: (pointId: string) => void;
-  onOpenProjectMetaEditor: () => void;
   onOpenSession: (sessionId: string) => void;
   onStartProjectSession: () => void;
   onStartReview: () => void;
@@ -131,7 +127,6 @@ export function SessionWorkspace({
   onUnsetSourceAsset: (assetId: string) => void;
   onWorkspaceSectionChange: (section: WorkspaceSection) => void;
   projectStats: ProjectStats;
-  relatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
   sessionCreatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
   reviewDisabled: boolean;
   requestSourceAssetIds: ReadonlyArray<string>;
@@ -139,28 +134,13 @@ export function SessionWorkspace({
   selectedProjectMaterials: ReadonlyArray<SourceAsset>;
   selectedSession: SessionItem;
   selectedSourceAssetIds: ReadonlyArray<string>;
-  selectedUnitTitle: string | null;
   selectedProjectSessions: ReadonlyArray<SessionItem>;
   studyDisabled: boolean;
   workspaceSection: WorkspaceSection;
 }): ReactElement {
   const projectSessions = selectedProjectSessions.filter((session) => session.type === "project");
   const learningSessions = selectedProjectSessions.filter((session) => session.type !== "project");
-  const [deleteArmed, setDeleteArmed] = useState(false);
   const isPendingSession = selectedSession.status === "待开始";
-
-  useEffect(() => {
-    if (!deleteArmed) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => setDeleteArmed(false), 2200);
-    return () => window.clearTimeout(timeoutId);
-  }, [deleteArmed]);
-
-  useEffect(() => {
-    setDeleteArmed(false);
-  }, [selectedSession.id]);
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[292px_minmax(0,1fr)_320px]">
@@ -201,6 +181,7 @@ export function SessionWorkspace({
             }
             description={getSessionTypeDescription("project")}
             emptyText="当前还没有研讨会话。"
+            onDeleteSession={onDeleteSession}
             onOpenSession={onOpenSession}
             selectedSessionId={selectedSession.id}
             sessions={projectSessions}
@@ -234,6 +215,7 @@ export function SessionWorkspace({
             }
             description="学习负责推进，复习负责校准。"
             emptyText="当前还没有学习或复习会话。"
+            onDeleteSession={onDeleteSession}
             onOpenSession={onOpenSession}
             selectedSessionId={selectedSession.id}
             sessions={learningSessions}
@@ -245,35 +227,27 @@ export function SessionWorkspace({
       <Card className="xidea-card-motion flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none">
         <CardHeader className="gap-3 border-b border-[var(--xidea-border)] px-5 pb-4 pt-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <CardTitle className="truncate text-sm font-medium text-[var(--xidea-near-black)]">
-                {getSessionDisplayTitle(selectedSession.title, selectedSession.type)}
-              </CardTitle>
-              <CardDescription className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--xidea-stone)]">
-                <SessionTypeBadge type={selectedSession.type} />
-                <span>{selectedSession.status}</span>
-              </CardDescription>
+            <div className="flex min-w-0 items-start gap-3">
+              <Button
+                aria-label="返回项目工作台"
+                className="mt-0.5 h-9 w-9 shrink-0 rounded-full border-[var(--xidea-border)] p-0 text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-parchment)]"
+                onClick={onExitSession}
+                type="button"
+                variant="ghost"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div className="min-w-0">
+                <CardTitle className="truncate text-sm font-medium text-[var(--xidea-near-black)]">
+                  {getSessionDisplayTitle(selectedSession.title, selectedSession.type)}
+                </CardTitle>
+                <CardDescription className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--xidea-stone)]">
+                  <SessionTypeBadge type={selectedSession.type} />
+                  <span>{selectedSession.status}</span>
+                </CardDescription>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              {!isPendingSession ? (
-                <Button
-                  aria-label={deleteArmed ? "确认删除会话" : "删除会话"}
-                  className="h-10 w-10 rounded-full p-0"
-                  onClick={() => {
-                    if (deleteArmed) {
-                      onDeleteSession();
-                      return;
-                    }
-                    setDeleteArmed(true);
-                  }}
-                  title={deleteArmed ? "再点一次删除" : "删除会话"}
-                  type="button"
-                  variant="outline"
-                >
-                  <X className={deleteArmed ? "h-4 w-4 text-red-600" : "h-4 w-4"} />
-                </Button>
-              ) : null}
-            </div>
+            {isPendingSession ? <div className="shrink-0" /> : null}
           </div>
         </CardHeader>
 
@@ -299,7 +273,6 @@ export function SessionWorkspace({
           isMaterialsTrayOpen={isMaterialsTrayOpen}
           latestAssistantMessageId={latestAssistantMessageId}
           onChangeDraftPrompt={onChangeDraftPrompt}
-          onOpenProjectMetaEditor={onOpenProjectMetaEditor}
           onOpenKnowledgePoint={onOpenKnowledgePoint}
           onSkipActivity={onSkipActivity}
           onSubmitActivity={onSubmitActivity}
@@ -326,15 +299,11 @@ export function SessionWorkspace({
         isBlankSession={isBlankSession}
         latestReviewedLabel={latestReviewedLabel}
         nextReviewLabel={nextReviewLabel}
-        onEditKnowledgePoint={onEditKnowledgePoint}
-        onOpenKnowledgePoint={onOpenKnowledgePoint}
-        relatedKnowledgePoints={relatedKnowledgePoints}
         requestSourceAssetIds={requestSourceAssetIds}
         selectedProject={selectedProject}
         selectedSessionStatus={selectedSession.status}
         selectedSessionType={selectedSession.type}
         selectedSourceAssetIds={selectedSourceAssetIds}
-        selectedUnitTitle={selectedUnitTitle}
       />
     </div>
   );

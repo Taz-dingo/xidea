@@ -1,4 +1,4 @@
-import { useState, type ReactElement, type ReactNode } from "react";
+import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { SessionItem } from "@/domain/project-workspace";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ export function SessionListSection({
   actions,
   description,
   emptyText,
+  onDeleteSession,
   onOpenSession,
   selectedSessionId = null,
   sessions,
@@ -22,6 +23,7 @@ export function SessionListSection({
   actions?: ReactNode;
   description: string;
   emptyText: string;
+  onDeleteSession?: (sessionId: string) => void;
   onOpenSession: (sessionId: string) => void;
   selectedSessionId?: string | null;
   sessions: ReadonlyArray<SessionItem>;
@@ -29,14 +31,37 @@ export function SessionListSection({
   title: string;
 }): ReactElement {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [deleteArmedSessionId, setDeleteArmedSessionId] = useState<string | null>(null);
   const canExpand = sessions.length > SESSION_LIST_EXPAND_THRESHOLD;
+
+  useEffect(() => {
+    if (deleteArmedSessionId === null) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setDeleteArmedSessionId(null), 2200);
+    return () => window.clearTimeout(timeoutId);
+  }, [deleteArmedSessionId]);
 
   const cards = (
     <div className="space-y-2">
       {sessions.map((session) => (
         <SessionCard
           active={session.id === selectedSessionId}
+          deleteArmed={deleteArmedSessionId === session.id}
           key={session.id}
+          onDelete={
+            onDeleteSession
+              ? () => {
+                  if (deleteArmedSessionId === session.id) {
+                    setDeleteArmedSessionId(null);
+                    onDeleteSession(session.id);
+                    return;
+                  }
+                  setDeleteArmedSessionId(session.id);
+                }
+              : undefined
+          }
           onClick={() => onOpenSession(session.id)}
           showTypeBadge={showTypeBadge}
           title={session.title}

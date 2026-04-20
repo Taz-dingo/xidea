@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import {
   FileImage,
   FileText,
@@ -6,6 +6,7 @@ import {
   GraduationCap,
   MessagesSquare,
   RotateCcw,
+  Trash2,
   Video,
   Volume2,
 } from "lucide-react";
@@ -149,64 +150,87 @@ export function SessionTypeBadge({
 
 export function SessionCard({
   active,
+  deleteArmed = false,
+  onDelete,
   showTypeBadge = true,
   title,
   type,
   updatedAt,
   onClick,
+  trailingAction,
 }: {
   active: boolean;
+  deleteArmed?: boolean;
+  onDelete?: () => void;
   showTypeBadge?: boolean;
   title: string;
   type: SessionType;
   updatedAt: string;
   onClick: () => void;
+  trailingAction?: ReactNode;
 }): ReactElement {
   const visibleTitle = getSessionDisplayTitle(title, type);
+  const cardClassName = active
+    ? "flex items-center gap-2 rounded-[0.9rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-2 py-2 transition-colors"
+    : "flex items-center gap-2 rounded-[0.9rem] border border-transparent bg-transparent px-2 py-2 transition-colors hover:border-[var(--xidea-border)] hover:bg-[var(--xidea-white)]";
 
   return (
-    <button
-      className={
-        active
-          ? "flex w-full items-center justify-between gap-3 rounded-[0.9rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
-          : "flex w-full items-center justify-between gap-3 rounded-[0.9rem] border border-transparent bg-transparent px-3 py-2 text-left transition-colors hover:border-[var(--xidea-border)] hover:bg-[var(--xidea-white)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
-      }
-      onClick={onClick}
-      type="button"
-    >
-      <div className="min-w-0 flex-1">
-        {showTypeBadge ? (
-          <>
-            <p className="truncate text-sm font-medium">{visibleTitle}</p>
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <SessionTypeBadge compact type={type} />
+    <div className={cardClassName}>
+      <button
+        className="min-w-0 flex-1 rounded-[0.75rem] px-1 py-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-parchment)]"
+        onClick={onClick}
+        type="button"
+      >
+        <div className="min-w-0 flex-1">
+          {showTypeBadge ? (
+            <>
+              <p className="truncate text-sm font-medium">{visibleTitle}</p>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <SessionTypeBadge compact type={type} />
+                <span
+                  className={
+                    active
+                      ? "shrink-0 text-[11px] text-[var(--xidea-selection-text)]"
+                      : "shrink-0 text-[11px] text-[var(--xidea-stone)]"
+                  }
+                >
+                  {updatedAt}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-start justify-between gap-3">
+              <p className="min-w-0 flex-1 truncate text-sm font-medium">{visibleTitle}</p>
               <span
                 className={
                   active
-                    ? "shrink-0 text-[11px] text-[var(--xidea-selection-text)]"
-                    : "shrink-0 text-[11px] text-[var(--xidea-stone)]"
+                    ? "shrink-0 pt-0.5 text-[11px] text-[var(--xidea-selection-text)]"
+                    : "shrink-0 pt-0.5 text-[11px] text-[var(--xidea-stone)]"
                 }
               >
                 {updatedAt}
               </span>
             </div>
-          </>
-        ) : (
-          <div className="flex items-start justify-between gap-3">
-            <p className="min-w-0 flex-1 truncate text-sm font-medium">{visibleTitle}</p>
-            <span
-              className={
-                active
-                  ? "shrink-0 pt-0.5 text-[11px] text-[var(--xidea-selection-text)]"
-                  : "shrink-0 pt-0.5 text-[11px] text-[var(--xidea-stone)]"
-              }
-            >
-              {updatedAt}
-            </span>
-          </div>
-        )}
-      </div>
-    </button>
+          )}
+        </div>
+      </button>
+      {trailingAction}
+      {onDelete ? (
+        <Button
+          aria-label={deleteArmed ? "确认删除会话" : "删除会话"}
+          className="h-8 w-8 shrink-0 rounded-full border-[var(--xidea-border)] p-0 text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-parchment)]"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+          title={deleteArmed ? "再点一次删除" : "删除会话"}
+          type="button"
+          variant="ghost"
+        >
+          <Trash2 className={deleteArmed ? "h-4 w-4 text-red-600" : "h-4 w-4"} />
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

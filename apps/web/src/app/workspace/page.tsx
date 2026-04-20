@@ -67,6 +67,8 @@ export function WorkspacePage(): ReactElement {
             screen={data.screen}
             searchQuery={data.searchQuery}
             selectedProjectName={data.selectedProject.name}
+            selectedSessionTitle={activeWorkspaceSession?.title ?? null}
+            selectedSessionType={activeWorkspaceSession?.type ?? null}
           />
 
           {data.screen === "home" ? (
@@ -148,6 +150,7 @@ export function WorkspacePage(): ReactElement {
                       data.setPendingSessionIntent(null);
                       data.setSelectedSessionId(sessionId);
                     }}
+                    onDeleteSession={actions.handleDeleteSession}
                     onStartProjectSession={() =>
                       actions.handlePrepareSessionStart(data.selectedProject.id, "project")
                     }
@@ -200,14 +203,9 @@ export function WorkspacePage(): ReactElement {
                   latestReviewedLabel={session.latestReviewedLabel}
                   nextReviewLabel={session.nextReviewLabel}
                   onChangeDraftPrompt={session.handleChangeDraftPrompt}
-                  onDeleteSession={() => {
-                    if (data.selectedSession !== undefined) {
-                      actions.handleDeleteSession();
-                    }
-                  }}
-                  onEditKnowledgePoint={actions.handleOpenKnowledgePointEditor}
+                  onDeleteSession={actions.handleDeleteSession}
+                  onExitSession={actions.handleCloseSession}
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
-                  onOpenProjectMetaEditor={actions.handleOpenProjectMetaEditor}
                   onOpenSession={(sessionId) => {
                     data.setPendingSessionIntent(null);
                     data.setSelectedSessionId(sessionId);
@@ -238,7 +236,6 @@ export function WorkspacePage(): ReactElement {
                   onUnsetSourceAsset={session.handleUnsetSourceAsset}
                   onWorkspaceSectionChange={actions.handleSessionWorkspaceSectionChange}
                   projectStats={model.projectStats}
-                  relatedKnowledgePoints={model.relatedKnowledgePoints}
                   reviewDisabled={model.reviewTargetPoint === null}
                   requestSourceAssetIds={session.requestSourceAssetIds}
                   sessionCreatedKnowledgePoints={model.sessionCreatedKnowledgePoints}
@@ -247,7 +244,6 @@ export function WorkspacePage(): ReactElement {
                   selectedProjectSessions={data.selectedProjectSessions}
                   selectedSession={activeWorkspaceSession}
                   selectedSourceAssetIds={session.selectedSourceAssetIds}
-                  selectedUnitTitle={session.selectedUnitTitle}
                   activityInputDisabled={session.activityInputDisabled}
                   composerDisabled={session.composerDisabled}
                   studyDisabled={model.studyTargetPoint === null}

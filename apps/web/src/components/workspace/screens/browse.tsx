@@ -24,6 +24,7 @@ export function WorkspaceBrowseScreen({
   normalizedSearchQuery,
   onCancelPendingSession,
   onChangePendingPrompt,
+  onDeleteSession,
   onOpenKnowledgePoint,
   onOpenSession,
   onStartProjectSession,
@@ -44,6 +45,7 @@ export function WorkspaceBrowseScreen({
   normalizedSearchQuery: string;
   onCancelPendingSession: () => void;
   onChangePendingPrompt: (value: string) => void;
+  onDeleteSession: (sessionId: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
   onOpenSession: (sessionId: string) => void;
   onStartProjectSession: () => void;
@@ -104,6 +106,7 @@ export function WorkspaceBrowseScreen({
             }
             description={getSessionTypeDescription("project")}
             emptyText="当前还没有研讨会话。"
+            onDeleteSession={onDeleteSession}
             onOpenSession={onOpenSession}
             sessions={projectSessions}
             showTypeBadge={false}
@@ -136,6 +139,7 @@ export function WorkspaceBrowseScreen({
             }
             description="学习负责推进新知识，复习负责回拉和校准。"
             emptyText="当前还没有学习或复习会话。"
+            onDeleteSession={onDeleteSession}
             onOpenSession={onOpenSession}
             sessions={learningSessions}
             title="学习与复习"
