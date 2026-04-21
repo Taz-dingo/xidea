@@ -24,6 +24,7 @@ export interface BackendWorkspaceSnapshot {
   readonly sessions: ReadonlyArray<SessionItem>;
   readonly sourceAssets: ReadonlyArray<SourceAsset>;
   readonly projectMaterialIdsByProject: Record<string, ReadonlyArray<string>>;
+  readonly projectAssetsByProject: Record<string, ReadonlyArray<SourceAsset>>;
   readonly sessionEntryModes: Record<string, AgentEntryMode>;
   readonly sessionSourceAssetIds: Record<string, ReadonlyArray<string>>;
   readonly sessionMessagesById: Record<string, UIMessage[]>;
@@ -359,6 +360,7 @@ export function buildBackendWorkspaceSnapshot(input: {
   const knowledgePoints: KnowledgePointItem[] = [];
   const sessions: SessionItem[] = [];
   const projectMaterialIdsByProject: Record<string, ReadonlyArray<string>> = {};
+  const projectAssetsByProject: Record<string, ReadonlyArray<SourceAsset>> = {};
   const sessionEntryModes: Record<string, AgentEntryMode> = {};
   const sessionSourceAssetIds: Record<string, ReadonlyArray<string>> = {};
   const sessionMessagesById: Record<string, UIMessage[]> = {};
@@ -368,6 +370,9 @@ export function buildBackendWorkspaceSnapshot(input: {
     projectMaterialIdsByProject[bootstrap.project.id] = bootstrap.project_materials
       .filter((material) => material.status === "active")
       .map((material) => material.id);
+    projectAssetsByProject[bootstrap.project.id] = bootstrap.project_materials
+      .filter((material) => material.status === "active")
+      .map((material) => mapProjectMaterial(material));
 
     for (const material of bootstrap.project_materials) {
       sourceAssetById.set(material.id, mapProjectMaterial(material));
@@ -405,6 +410,7 @@ export function buildBackendWorkspaceSnapshot(input: {
     sessions,
     sourceAssets: [...sourceAssetById.values()],
     projectMaterialIdsByProject,
+    projectAssetsByProject,
     sessionEntryModes,
     sessionSourceAssetIds,
     sessionMessagesById,

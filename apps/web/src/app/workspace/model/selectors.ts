@@ -61,7 +61,7 @@ export function getKnowledgePointRelatedSessions(
       );
 }
 
-export function getKnowledgePointReviewInspectors(
+export function getSessionReviewInspectors(
   sessions: ReadonlyArray<SessionItem>,
   sessionReviewInspectors: Record<string, AgentReviewInspector | null>,
 ): ReadonlyArray<AgentReviewInspector> {
@@ -251,5 +251,5 @@ export function getKnowledgePointReviewHistorySummary({
 }: KnowledgeReviewSummaryParams): string {
   return knowledgePointReviewInspectors.length > 0
     ? "热力图汇总这个知识点在相关 sessions 里的复习安排与完成记录。"
-    : "当前还没有回读到这个知识点的真实复习记录；打开相关 session 后会回填热力图。";
+    : "当前还没有这个知识点的真实复习记录；后续复习安排和完成记录会直接回填到这里。";
 }

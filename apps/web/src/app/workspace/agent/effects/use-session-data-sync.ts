@@ -7,9 +7,11 @@ import {
   getThreadContext,
 } from "@/lib/agent-client";
 import {
+  mergeReviewInspector,
   hydrateRuntimeSnapshotFromLearnerState,
   hydrateRuntimeSnapshotFromThreadContext,
 } from "@/domain/agent-runtime";
+import { REVIEW_HEATMAP_LOOKBACK_DAYS } from "@/domain/review-heatmap";
 import { buildSessionOrchestrationMessage } from "@/domain/session-orchestration";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
@@ -24,7 +26,7 @@ export function useSessionDataSync({
   messagesLength,
   projectId,
   requestSourceAssetIds,
-  seedRuntime,
+  fallbackRuntime,
   selectedSessionKey,
   selectedSessionKnowledgePointId,
   selectedSessionType,
@@ -35,7 +37,7 @@ export function useSessionDataSync({
   messagesLength: number;
   projectId: string;
   requestSourceAssetIds: ReadonlyArray<string>;
-  seedRuntime: ReturnType<typeof hydrateRuntimeSnapshotFromLearnerState>;
+  fallbackRuntime: ReturnType<typeof hydrateRuntimeSnapshotFromLearnerState>;
   selectedSessionKey: string | null;
   selectedSessionKnowledgePointId: string | null;
   selectedSessionType: "project" | "study" | "review";
@@ -73,7 +75,7 @@ export function useSessionDataSync({
         if (abortController.signal.aborted) return;
         if (thread_context !== null) {
           setSessionSnapshots((current) => {
-            const baseSnapshot = current[selectedSessionKey] ?? seedRuntime;
+            const baseSnapshot = current[selectedSessionKey] ?? fallbackRuntime;
             return {
               ...current,
               [selectedSessionKey]: hydrateRuntimeSnapshotFromThreadContext(
@@ -105,7 +107,7 @@ export function useSessionDataSync({
         }
         if (learner_state !== null) {
           setSessionSnapshots((current) => {
-            const baseSnapshot = current[selectedSessionKey] ?? seedRuntime;
+            const baseSnapshot = current[selectedSessionKey] ?? fallbackRuntime;
             return {
               ...current,
               [selectedSessionKey]: hydrateRuntimeSnapshotFromLearnerState(
@@ -116,9 +118,16 @@ export function useSessionDataSync({
           });
         }
         setSessionReviewInspectors((current) =>
-          current[selectedSessionKey] === review_inspector
+          current[selectedSessionKey] ===
+            mergeReviewInspector(current[selectedSessionKey], review_inspector)
             ? current
-            : { ...current, [selectedSessionKey]: review_inspector },
+            : {
+                ...current,
+                [selectedSessionKey]: mergeReviewInspector(
+                  current[selectedSessionKey],
+                  review_inspector,
+                ),
+              },
         );
         if (thread_context !== null) {
           if (sessionEntryModes[selectedSessionKey] !== thread_context.entry_mode) {
@@ -140,7 +149,7 @@ export function useSessionDataSync({
     bootstrapLoadedKeys,
     clearBootstrapLoaded,
     markBootstrapLoaded,
-    seedRuntime,
+    fallbackRuntime,
     selectedSessionKey,
     selectedSessionKnowledgePointId,
     selectedSessionType,
@@ -240,13 +249,23 @@ export function useSessionDataSync({
       return;
     }
     const abortController = new AbortController();
-    void getReviewInspector(selectedSessionKey, selectedSessionKnowledgePointId, { signal: abortController.signal })
+    void getReviewInspector(selectedSessionKey, selectedSessionKnowledgePointId, {
+      days: REVIEW_HEATMAP_LOOKBACK_DAYS,
+      signal: abortController.signal,
+    })
       .then((reviewInspector) => {
         if (!abortController.signal.aborted) {
           setSessionReviewInspectors((current) =>
-            current[selectedSessionKey] === reviewInspector
+            current[selectedSessionKey] ===
+              mergeReviewInspector(current[selectedSessionKey], reviewInspector)
               ? current
-              : { ...current, [selectedSessionKey]: reviewInspector },
+              : {
+                  ...current,
+                  [selectedSessionKey]: mergeReviewInspector(
+                    current[selectedSessionKey],
+                    reviewInspector,
+                  ),
+                },
           );
         }
       })
@@ -258,7 +277,7 @@ export function useSessionDataSync({
             ...current,
             [selectedSessionKey]: hydrateRuntimeSnapshotFromThreadContext(
               threadContext,
-              current[selectedSessionKey] ?? seedRuntime,
+              current[selectedSessionKey] ?? fallbackRuntime,
             ),
           }));
           if (sessionEntryModes[selectedSessionKey] !== threadContext.entry_mode) {
@@ -281,5 +300,6 @@ export function useSessionDataSync({
     sessionEntryModesSetter,
     setCompletedActivityDecksBySession,
     setSessionReviewInspectors,
+    fallbackRuntime,
   ]);
 }

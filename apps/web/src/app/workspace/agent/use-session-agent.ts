@@ -1,12 +1,11 @@
 import { useChat } from "@ai-sdk/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { learningUnits } from "@/data/demo";
 import {
   type AgentActivityResult,
   type AgentEntryMode,
   type AgentKnowledgePointSuggestion,
   type AgentRequest,
-  buildMockRuntimeSnapshot,
+  buildEmptyRuntimeSnapshot,
   getRequestSourceAssetIds,
 } from "@/domain/agent-runtime";
 import { mergeMessageHistory } from "@/domain/chat-message";
@@ -36,6 +35,7 @@ import { createSessionActions } from "@/app/workspace/agent/session-actions";
 import { useAgentHealth } from "@/app/workspace/agent/effects/use-agent-health";
 import { useProjectKnowledgeSync } from "@/app/workspace/agent/effects/use-project-knowledge-sync";
 import { useProjectMaterialsSync } from "@/app/workspace/agent/effects/use-project-materials-sync";
+import { useProjectReviewInspectorsSync } from "@/app/workspace/agent/effects/use-project-review-inspectors-sync";
 import { useProjectSessionsSync } from "@/app/workspace/agent/effects/use-project-sessions-sync";
 import { useSessionDataSync } from "@/app/workspace/agent/effects/use-session-data-sync";
 import { useSessionRuntimeSync } from "@/app/workspace/agent/effects/use-session-runtime-sync";
@@ -43,7 +43,7 @@ import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 function buildKnowledgePointLearningUnit(
   point: WorkspaceData["knowledgePoints"][number],
-): typeof learningUnits[number] {
+): WorkspaceData["initialUnit"] {
   return {
     id: point.id,
     title: point.title,
@@ -79,8 +79,8 @@ export function useSessionAgent({
     data.selectedSession?.type ?? data.pendingSessionIntent?.type ?? "project";
   const sessionSnapshotsRef = useRef(data.sessionSnapshots);
   sessionSnapshotsRef.current = data.sessionSnapshots;
-  const activeRuntimeRef = useRef<ReturnType<typeof buildMockRuntimeSnapshot>>(
-    buildMockRuntimeSnapshot(data.initialProfile, data.initialUnit, fallbackSessionType),
+  const activeRuntimeRef = useRef<ReturnType<typeof buildEmptyRuntimeSnapshot>>(
+    buildEmptyRuntimeSnapshot(data.initialUnit, fallbackSessionType),
   );
   const runtimeFocusKnowledgePointId =
     data.selectedSession === undefined
@@ -93,17 +93,16 @@ export function useSessionAgent({
       ? undefined
       : data.knowledgePoints.find((point) => point.id === runtimeFocusKnowledgePointId);
   const selectedUnit = runtimeFocusKnowledgePointId
-    ? learningUnits.find((unit) => unit.id === runtimeFocusKnowledgePointId) ??
-      (selectedKnowledgePoint ? buildKnowledgePointLearningUnit(selectedKnowledgePoint) : undefined)
+    ? (selectedKnowledgePoint ? buildKnowledgePointLearningUnit(selectedKnowledgePoint) : undefined)
     : undefined;
   const runtimeUnit = selectedUnit ?? data.initialUnit;
   const selectedSourceAssetIds =
     fallbackSessionType === "project" && selectedSessionKey !== null
       ? data.sessionSourceAssetIds[selectedSessionKey] ?? []
       : [];
-  const seedRuntime = useMemo(
-    () => buildMockRuntimeSnapshot(data.initialProfile, runtimeUnit, fallbackSessionType),
-    [data.initialProfile, fallbackSessionType, runtimeUnit],
+  const emptyRuntime = useMemo(
+    () => buildEmptyRuntimeSnapshot(runtimeUnit, fallbackSessionType),
+    [fallbackSessionType, runtimeUnit],
   );
   const persistedMessageCount = data.selectedSession
     ? data.sessionMessagesById[data.selectedSession.id]?.length ?? 0
@@ -113,8 +112,8 @@ export function useSessionAgent({
     : null;
   const activeRuntime =
     data.selectedSession === undefined
-      ? seedRuntime
-      : data.sessionSnapshots[data.selectedSession.id] ?? seedRuntime;
+      ? emptyRuntime
+      : data.sessionSnapshots[data.selectedSession.id] ?? emptyRuntime;
   activeRuntimeRef.current = activeRuntime;
   const deckKey = buildActivityDeckKey(activeRuntime);
   const activityBatchState =
@@ -458,6 +457,10 @@ export function useSessionAgent({
     projectId: data.selectedProject.id,
     selectedSessionKey,
   });
+  useProjectReviewInspectorsSync({
+    data,
+    projectSessions: data.selectedProjectSessions,
+  });
 
   useEffect(() => {
     if (selectedSessionKey === null || activityBatchState === null || deckKey === null) {
@@ -558,7 +561,7 @@ export function useSessionAgent({
     messagesLength: displayMessages.length,
     projectId: data.selectedProject.id,
     requestSourceAssetIds,
-    seedRuntime,
+    fallbackRuntime: emptyRuntime,
     selectedSessionKey,
     selectedSessionKnowledgePointId: runtimeFocusKnowledgePointId,
     selectedSessionType: fallbackSessionType,

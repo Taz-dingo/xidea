@@ -16,6 +16,7 @@ from xidea_agent.state import (
     KnowledgePointSuggestionResolution,
     LearnerUnitState,
     Message,
+    Project,
     ProjectLearningProfile,
     ProjectMemory,
     ReviewPatch,
@@ -29,7 +30,11 @@ from xidea_agent.state import (
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS projects (
   project_id TEXT PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
   topic TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  special_rules TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -220,6 +225,18 @@ KNOWLEDGE_POINT_SUGGESTION_COLUMN_MIGRATIONS: dict[str, str] = {
     "origin_message_id": "ALTER TABLE knowledge_point_suggestions ADD COLUMN origin_message_id INTEGER",
 }
 
+PROJECT_COLUMN_MIGRATIONS: dict[str, str] = {
+    "title": "ALTER TABLE projects ADD COLUMN title TEXT NOT NULL DEFAULT ''",
+    "description": "ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT ''",
+    "special_rules": "ALTER TABLE projects ADD COLUMN special_rules TEXT NOT NULL DEFAULT '[]'",
+    "status": "ALTER TABLE projects ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+}
+
+REVIEW_STATE_COLUMN_MIGRATIONS: dict[str, str] = {
+    "review_count": "ALTER TABLE review_state ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0",
+    "lapse_count": "ALTER TABLE review_state ADD COLUMN lapse_count INTEGER NOT NULL DEFAULT 0",
+}
+
 
 class SQLiteRepository:
     def __init__(self, db_path: str | Path):
@@ -230,6 +247,76 @@ class SQLiteRepository:
         with self._connect() as connection:
             connection.executescript(SCHEMA_SQL)
             self._apply_schema_migrations(connection)
+
+    def save_project(self, project: Project) -> None:
+        self.initialize()
+        now_value = _utc_now()
+        created_value = (
+            project.created_at.isoformat()
+            if hasattr(project.created_at, "isoformat")
+            else project.created_at
+            or now_value
+        )
+        updated_value = (
+            project.updated_at.isoformat()
+            if hasattr(project.updated_at, "isoformat")
+            else project.updated_at
+            or now_value
+        )
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO projects(
+                  project_id, title, topic, description,
+                  special_rules, status, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id) DO UPDATE SET
+                  title = excluded.title,
+                  topic = excluded.topic,
+                  description = excluded.description,
+                  special_rules = excluded.special_rules,
+                  status = excluded.status,
+                  updated_at = excluded.updated_at
+                """,
+                (
+                    project.id,
+                    project.title,
+                    project.topic,
+                    project.description,
+                    json.dumps(project.special_rules, ensure_ascii=False),
+                    project.status,
+                    created_value,
+                    updated_value,
+                ),
+            )
+
+    def list_projects(self) -> list[Project]:
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM projects
+                ORDER BY updated_at DESC, created_at DESC, project_id DESC
+                """
+            ).fetchall()
+
+        return [self._row_to_project(row) for row in rows]
+
+    def get_project(self, project_id: str) -> Project | None:
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM projects
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+
+        return self._row_to_project(row) if row is not None else None
 
     def save_run(self, request: AgentRequest, run_result: AgentRunResult) -> None:
         self.initialize()
@@ -266,8 +353,11 @@ class SQLiteRepository:
             )
             connection.execute(
                 """
-                INSERT INTO projects(project_id, topic, created_at, updated_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO projects(
+                  project_id, title, topic, description,
+                  special_rules, status, created_at, updated_at
+                )
+                VALUES (?, '', ?, '', '[]', 'active', ?, ?)
                 ON CONFLICT(project_id) DO UPDATE SET
                   topic = excluded.topic,
                   updated_at = excluded.updated_at
@@ -1288,6 +1378,15 @@ class SQLiteRepository:
         return connection
 
     def _apply_schema_migrations(self, connection: sqlite3.Connection) -> None:
+        project_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(projects)").fetchall()
+        }
+        for column_name, statement in PROJECT_COLUMN_MIGRATIONS.items():
+            if column_name not in project_columns:
+                connection.execute(statement)
+                project_columns.add(column_name)
+
         existing_columns = {
             row["name"]
             for row in connection.execute("PRAGMA table_info(threads)").fetchall()
@@ -1317,6 +1416,15 @@ class SQLiteRepository:
                 connection.execute(statement)
                 thread_context_columns.add(column_name)
 
+        review_state_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(review_state)").fetchall()
+        }
+        for column_name, statement in REVIEW_STATE_COLUMN_MIGRATIONS.items():
+            if column_name not in review_state_columns:
+                connection.execute(statement)
+                review_state_columns.add(column_name)
+
     def _append_messages(
         self,
         connection: sqlite3.Connection,
@@ -1345,8 +1453,11 @@ class SQLiteRepository:
     ) -> None:
         connection.execute(
             """
-            INSERT INTO projects(project_id, topic, created_at, updated_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO projects(
+              project_id, title, topic, description,
+              special_rules, status, created_at, updated_at
+            )
+            VALUES (?, '', ?, '', '[]', 'active', ?, ?)
             ON CONFLICT(project_id) DO UPDATE SET
               topic = CASE
                 WHEN excluded.topic != '' THEN excluded.topic
@@ -1881,6 +1992,27 @@ class SQLiteRepository:
             origin_type=row["origin_type"],
             origin_session_id=row["origin_session_id"],
             source_material_refs=json.loads(row["source_material_refs"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def _row_to_project(self, row: sqlite3.Row) -> Project:
+        raw_special_rules = row["special_rules"] if "special_rules" in row.keys() else "[]"
+        special_rules = json.loads(raw_special_rules) if raw_special_rules else []
+        title = row["title"] if "title" in row.keys() and row["title"] else row["topic"]
+        description = (
+            row["description"]
+            if "description" in row.keys() and row["description"]
+            else row["topic"]
+        )
+        status = row["status"] if "status" in row.keys() and row["status"] else "active"
+        return Project(
+            id=row["project_id"],
+            title=title,
+            topic=row["topic"],
+            description=description,
+            special_rules=special_rules,
+            status=status,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

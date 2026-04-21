@@ -1,6 +1,6 @@
 # Status
 
-## As Of 2026-04-20
+## As Of 2026-04-21
 
 ### Current Focus
 
@@ -18,6 +18,14 @@
 - 产品 / demo 侧仍需补答辩素材与竞品对比摘要
 
 ### Done
+
+#### 运行时 mock 清理（2026-04-21）
+
+- `apps/web` 已从 session 主路径移除前端 `mock runtime snapshot`：未回读到真实 agent 结果时，workspace 现在只展示空态 runtime，不再预置 `decision / plan / activity / writeback`
+- `apps/web` 已删除比赛版主路径残留的 `demo.ts / project-workspace-demo.ts`，workspace 默认不再从前端 seed 项目、材料或知识卡启动
+- `apps/agent` 已移除 `tools.py` 里的静态 asset catalog / unit catalog：材料摘要、知识点 detail 和 source assets 现在只消费数据库真实对象，缺失时降为空而不是伪造 `asset-* / unit-rag-*`
+- `apps/agent` 已把 runtime 里的 RAG 专属题卡/标题/提示模板收回通用知识点编排逻辑，不再对 `unit-rag-retrieval / unit-rag-core / unit-rag-explain` 走隐藏 demo 分支
+- `apps/agent` 已去掉默认 `rag-core-unit` 兜底；未显式选中知识点时，learner state 与 learning unit 统一回到通用 `current-topic` 空位语义
 
 #### 多卡编排 session v0（2026-04-20）
 
@@ -208,6 +216,7 @@
 - `apps/web` 现已在页面加载时主动探测 agent `/health`，并会为已选 session 尝试回读持久化 learner state；顶部状态徽标不再把"未 hydrate 的前端 fallback"误显示成后端断连
 - `apps/web` 已将学习画像从前端角色猜测收敛为基于真实 learner state / diagnosis 的动态画像摘要，不再把预设 demo profile 注入 agent prompt
 - `apps/web` 已将复习热力图切到真实 review inspector 数据，热力图单元基于持久化 review event / scheduled review 渲染，而不再按当前 session 消息数脑补
+- `apps/web` 已补 project 级复习热力图回读：项目主页现在会按当前 project 下的真实 review sessions 预取 `review inspector`，不再只在打开某个相关 session 后才局部回填
 - `apps/web` 已将材料面板切到真实 asset summary context，右栏默认显示后端返回的材料摘要、关键概念和 excerpt，而不是只靠 fixture 文案拼接
 - `apps/web` 已补上 session 级 inspector bootstrap / thread context 读取，首屏 hydration 改为一次性拉取 `thread_context / learner_state / review_inspector`
 - `apps/web` 的 entry mode 与 source asset 选择已改成按 session 维度维护，切换 session 时不会再串用上一个 thread 的材料选择

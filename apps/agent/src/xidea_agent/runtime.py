@@ -213,245 +213,8 @@ def _build_activity_choice_set(
     learning_unit: LearningUnit | None,
     action: PedagogicalAction,
 ):
-    unit_id = learning_unit.id if learning_unit is not None else None
     unit_title = learning_unit.title if learning_unit is not None else "当前知识点"
     summary_statement = _normalize_activity_summary(learning_unit)
-
-    if unit_id == "unit-rag-retrieval":
-        if mode == "contrast-drill":
-            return _build_choice_input(
-                {
-                    "choice_id": "rerank-when-candidates-exist",
-                    "label": "top-k 里已经有相关文档，但排在前面的常是语义相近却答非所问的片段。",
-                    "detail": "候选基本找到了，问题更像排序没把真正对口的证据顶到前面。",
-                    "is_correct": True,
-                    "feedback_layers": [
-                        "对，这更像“候选已在集合里，但顺序没把最该看的证据排前面”，所以该补重排。",
-                        "关键不是继续扩大召回，而是让已有候选按任务相关性重新排序，把真正回答问题的片段顶上来。",
-                    ],
-                    "analysis": "这条回答准确抓住了“召回基本够、但前排排序不对”的信号，最符合这轮要辨析的边界。",
-                },
-                {
-                    "choice_id": "recall-not-enough",
-                    "label": "top-k 里经常根本找不到答案对应文档，所以优先加一个重排层。",
-                    "detail": "这更像召回覆盖不足，先该补召回或索引，而不是指望重排把不存在的候选排出来。",
-                    "is_correct": False,
-                    "feedback_layers": [
-                        "先别急着加重排。正确文档如果还没进候选集，重排也无从发挥。",
-                        "这类现象更像召回覆盖不足：该先看索引、召回策略或查询表达，而不是把问题直接归到排序。",
-                        "重排解决的是“候选已有但排序不够对口”，不是“正确文档根本没被召回进来”。这里先补重排会把问题诊断偏掉。",
-                    ],
-                    "analysis": "这条选择把“召回覆盖不足”和“排序相关性不足”混为一谈，是这轮最需要纠正的误判。",
-                },
-                {
-                    "choice_id": "stuff-more-context",
-                    "label": "把 top-k 调大、多塞一些上下文给模型，就可以替代重排。",
-                    "detail": "会把排序问题伪装成堆料问题，常常同时放大噪音和上下文污染。",
-                    "is_correct": False,
-                    "feedback_layers": [
-                        "多塞内容不等于解决排序问题，反而可能把噪音一起抬进上下文。",
-                        "如果最该看的证据没有被排到前面，单纯加大 top-k 只会让模型更难聚焦。",
-                        "这里缺的不是“更多内容”，而是“把真正对口的内容排到前面”。用堆上下文代替重排，通常会同时损失稳定性和可解释性。",
-                    ],
-                    "analysis": "这条选择把“需要更好排序”误写成“需要更多上下文”，会让系统设计继续跑偏。",
-                },
-            )
-
-        if mode in ("guided-qa", "socratic"):
-            return _build_choice_input(
-                {
-                    "choice_id": "rerank-explains-ordering-gap",
-                    "label": "重排是在“候选已经召回进来”的前提下，把最回答问题的证据排到前面。",
-                    "detail": "它补的是任务相关性排序，不是替代召回把漏掉的文档找回来。",
-                    "is_correct": True,
-                    "feedback_layers": [
-                        "对，这句解释把重排真正补的缺口说清楚了：不是补召回，而是补排序。",
-                        "只要这层边界讲清楚，后面再谈什么时候该加重排就有了稳定判断标准。",
-                    ],
-                    "analysis": "这条表述直接命中“重排补排序、不补召回”的核心边界，是当前知识点最该先说清的一句。",
-                },
-                {
-                    "choice_id": "rerank-recovers-missed-docs",
-                    "label": "重排的主要作用是把本来没召回到的正确文档重新找回来。",
-                    "detail": "这会把重排误说成召回补丁，混掉两阶段架构里的职责边界。",
-                    "is_correct": False,
-                    "feedback_layers": [
-                        "这句最大的问题是把重排说成了“补召回”。",
-                        "如果正确文档根本不在候选集里，重排没有素材可排；它能做的是在已有候选里重排相关性。",
-                        "一旦把重排误写成“找回漏召文档”，后面对系统问题的诊断就会全线偏掉：你会错把召回缺口当成排序缺口。",
-                    ],
-                    "analysis": "这条说法直接混淆了召回和重排的职责，是这轮必须排掉的典型误解。",
-                },
-                {
-                    "choice_id": "strong-embedding-removes-rerank",
-                    "label": "只要 embedding 足够强，重排基本就没有实际价值。",
-                    "detail": "embedding 决定召回语义能力，但不自动等于任务级的前排排序足够稳。",
-                    "is_correct": False,
-                    "feedback_layers": [
-                        "embedding 更强不等于前排结果已经足够对口。",
-                        "很多场景里，问题不是“能不能把相关候选找进来”，而是“前几条到底是不是最该给模型看的证据”。",
-                        "重排存在的原因正是：即使召回足够强，前排顺序仍可能把语义相近但不真正回答问题的片段放在前面。",
-                    ],
-                    "analysis": "这条选择把召回语义能力和任务相关性排序混成一层，容易让系统设计判断失焦。",
-                },
-            )
-
-        if mode == "scenario-sim" or action == "apply":
-            return _build_choice_input(
-                {
-                    "choice_id": "review-explain-relevance-order",
-                    "label": "我们先保证候选能进来，再用重排把最回答问题的证据排前面，不然生成很容易抓错上下文。",
-                    "detail": "这句先讲判断链路，再讲为什么不能偷成“只召回就行”。",
-                    "is_correct": True,
-                    "feedback_layers": [
-                        "对，这种解释先把两层职责拆开，再把“为什么需要重排”说清楚了。",
-                        "评审或同事真正需要听到的就是这层取舍：不是多做一步，而是为了减少前排证据错位。",
-                    ],
-                    "analysis": "这条回答把“候选进入”和“前排排序”拆成两层，是项目语境下最有说服力的解释方式。",
-                },
-                {
-                    "choice_id": "review-blame-model-size",
-                    "label": "加重排主要是因为模型还不够强，等模型更强就不需要这些结构了。",
-                    "detail": "会把方案取舍偷换成模型强弱问题，答不到设计边界本身。",
-                    "is_correct": False,
-                    "feedback_layers": [
-                        "这句把方案取舍偷换成了模型强弱，解释焦点跑偏了。",
-                        "别人真正要问的是“为什么当前链路需要这一步”，不是“模型什么时候会更强”。",
-                        "如果只把原因归结为模型不够强，你就没有解释清楚：即使模型更强，候选排序和证据对口性为什么仍然重要。",
-                    ],
-                    "analysis": "这条回答把结构化设计问题错误归因成模型能力问题，不利于答辩或方案讨论。",
-                },
-                {
-                    "choice_id": "review-just-stuff-more",
-                    "label": "只要把更多召回结果直接拼给模型，通常就能替代重排。",
-                    "detail": "会把“前排排序不对”的问题继续伪装成“内容还不够多”。",
-                    "is_correct": False,
-                    "feedback_layers": [
-                        "这类回答最大的问题是默认“多给内容”能替代排序判断。",
-                        "但如果前几条证据本来就不对口，多塞内容只会让模型更难聚焦，甚至把错证据一起放大。",
-                        "评审想听的是：为什么不能偷成“只召回 + 多塞上下文”。真正原因是候选进入和前排排序是两层不同的质量控制点。",
-                    ],
-                    "analysis": "这条说法会把排序缺口继续伪装成堆料问题，无法真正说明为什么需要重排。",
-                },
-            )
-
-    if unit_id == "unit-rag-core":
-        if mode in ("contrast-drill", "guided-qa", "socratic"):
-            return _build_choice_input(
-                {
-                    "choice_id": "rag-needs-context-construction",
-                    "label": "检索命中只是拿到候选；排序、截断和上下文组织决定模型最终会不会抓对证据。",
-                    "detail": "这才是“RAG 不是简单检索 + 拼接”的核心原因。",
-                    "is_correct": True,
-                    "feedback_layers": [
-                        "对，这句把“检索命中”和“上下文可用”拆开了。",
-                        "只要这层关系讲清楚，就不会再把 RAG 理解成机械地把检索结果全文塞进 prompt。",
-                    ],
-                    "analysis": "这条回答直接指出了 RAG 多出来的关键层：上下文构造，而不是单纯检索命中。",
-                },
-                {
-                    "choice_id": "rag-just-concat",
-                    "label": "只要能检索到相关文档，把全文直接拼进 prompt 就够了。",
-                    "detail": "会忽略排序、截断和噪音控制，把可用上下文误写成原始拼接。",
-                    "is_correct": False,
-                    "feedback_layers": [
-                        "问题不在“有没有文档”，而在“给模型的上下文是不是被组织成了可用证据”。",
-                        "直接全文拼接通常会把噪音、重复和无关段落一起塞进去，命中了也不代表模型能用好。",
-                        "这句把 RAG 误简化成“检索完就拼接”，正好漏掉了真正决定回答质量的那一层：上下文构造。",
-                    ],
-                    "analysis": "这条说法忽略了上下文构造这层关键决策，会把 RAG 错看成机械拼接流程。",
-                },
-                {
-                    "choice_id": "rag-more-is-better",
-                    "label": "RAG 的核心只是让模型看到更多内容，所以内容越多越好。",
-                    "detail": "会把质量控制偷换成覆盖率直觉，忽略上下文窗口和证据优先级。",
-                    "is_correct": False,
-                    "feedback_layers": [
-                        "“更多内容”不是目标，给出“更对口的证据”才是目标。",
-                        "一旦内容过多、顺序不对或噪音过高，模型反而更容易抓错线索。",
-                        "RAG 不只是扩上下文，而是在有限窗口里做证据选择和组织。把它说成“越多越好”，会直接丢掉这层设计判断。",
-                    ],
-                    "analysis": "这条选择把 RAG 错写成纯覆盖率问题，忽视了上下文构造和噪音控制。",
-                },
-            )
-
-        if mode == "scenario-sim" or action == "apply":
-            return _build_choice_input(
-                {
-                    "choice_id": "rag-explain-context-layer",
-                    "label": "检索到只是第一步，我们还要把最相关、最可回答问题的证据组织成可用上下文，RAG 才稳定。",
-                    "detail": "这句先讲链路，再讲为什么不能偷成“检索 + 拼接”。",
-                    "is_correct": True,
-                    "feedback_layers": [
-                        "对，这种解释先把“找到候选”和“组织上下文”拆开了，听起来就不是黑盒堆料。",
-                        "只要把这层讲清楚，别人就能理解为什么 RAG 不是做完检索就结束。",
-                    ],
-                    "analysis": "这条回答直指 RAG 相比“检索 + 拼接”多出的关键控制层，最适合对外解释。",
-                },
-                {
-                    "choice_id": "rag-explain-only-retrieval",
-                    "label": "RAG 的关键就是把更多相关文档检索出来，后面拼接是细节。",
-                    "detail": "会把上下文构造降成细节，解释不到最终回答质量为什么会分化。",
-                    "is_correct": False,
-                    "feedback_layers": [
-                        "这句把真正影响回答质量的一层降成了“细节”。",
-                        "别人想知道的是：为什么检索到了还可能答不好；如果不谈上下文构造，这个问题就没被回答。",
-                        "把“拼接/组织/筛选”都当成细节，会让方案听起来像只是多检索一点文档，而不是在做证据质量控制。",
-                    ],
-                    "analysis": "这条说法仍把 RAG 讲成“检索主导”，解释力不够，容易被追问打穿。",
-                },
-                {
-                    "choice_id": "rag-explain-model-magic",
-                    "label": "只要模型足够强，RAG 本质上就只是把检索结果交给模型自己消化。",
-                    "detail": "会把系统设计责任偷交给模型，绕开链路取舍。",
-                    "is_correct": False,
-                    "feedback_layers": [
-                        "这句把问题再次推回模型强弱，没解释为什么系统还要设计上下文构造。",
-                        "即使模型更强，证据顺序、噪音和窗口限制也不会自动消失。",
-                        "如果对方问“那为什么不直接全交给模型自己处理”，你还是需要回到证据组织和质量控制这层，而不是用模型能力兜底。",
-                    ],
-                    "analysis": "这条回答会把系统设计判断偷换成模型能力崇拜，不利于讲清真实取舍。",
-                },
-            )
-
-    if unit_id == "unit-rag-explain":
-        return _build_choice_input(
-            {
-                "choice_id": "explain-risk-and-tradeoff",
-                "label": "先讲业务风险和稳定性：这些步骤是在减少答非所问、证据错位和不可解释性。",
-                "detail": "先让非技术对象听懂为什么要这样设计，再展开技术实现。",
-                "is_correct": True,
-                "feedback_layers": [
-                    "对，先讲风险控制和业务影响，非技术对象才能听懂为什么这套结构有必要。",
-                    "这条开场能先建立“为什么这样设计”的心智，再往下接技术细节才不会散。",
-                ],
-                "analysis": "这条说法先把评审真正关心的取舍讲清楚，是最适合作为解释开场的一句。",
-            },
-            {
-                "choice_id": "explain-implementation-first",
-                "label": "先按顺序罗列 embedding、reranker、chunking、prompt 的实现步骤。",
-                "detail": "实现细节会让技术人点头，但不足以让评审先理解为什么需要这套方案。",
-                "is_correct": False,
-                "feedback_layers": [
-                    "实现步骤不是不能讲，但它不该是开场第一句。",
-                    "如果先列技术栈，评审或产品还没建立“为什么需要这套结构”的心智，很容易觉得你只是在堆术语。",
-                    "更有效的顺序是：先讲它解决什么风险和业务问题，再解释这些技术步骤各自承担哪层控制作用。",
-                ],
-                "analysis": "这条开场把解释重心放在实现过程，忽略了“为什么这样设计”的答辩主线。",
-            },
-            {
-                "choice_id": "explain-model-only",
-                "label": "先说如果模型再强一点，这些设计大多都可以省掉。",
-                "detail": "会把方案取舍偷换成模型强弱判断，显得整套设计只是权宜之计。",
-                "is_correct": False,
-                "feedback_layers": [
-                    "这会让整套方案听起来像“模型不够强时的临时补丁”，说服力会立刻下降。",
-                    "评审真正要听到的是：为什么这些结构本身就在控制质量和风险，而不是等更强模型来替代。",
-                    "如果开场就把原因归给模型不够强，你后面会越来越难解释：那为什么当前还值得做这些设计、ROI 又在哪里。",
-                ],
-                "analysis": "这条回答会把系统设计价值削弱成模型短板补丁，不利于评审沟通。",
-            },
-        )
 
     if mode == "contrast-drill":
         return _build_choice_input(
@@ -653,25 +416,6 @@ def _build_activity_title(
     action: PedagogicalAction,
     learning_unit: LearningUnit | None,
 ) -> str:
-    unit_id = learning_unit.id if learning_unit is not None else None
-
-    if unit_id == "unit-rag-retrieval":
-        if mode == "contrast-drill":
-            return "先判断问题出在召回还是排序"
-        if mode in ("guided-qa", "socratic"):
-            return "先讲清楚重排到底在补什么"
-        if mode == "scenario-sim" or action == "apply":
-            return "先练一次向评审解释为什么需要重排"
-
-    if unit_id == "unit-rag-core":
-        if mode in ("contrast-drill", "guided-qa", "socratic"):
-            return "先判断问题出在检索命中还是上下文构造"
-        if mode == "scenario-sim" or action == "apply":
-            return "先练一次解释为什么 RAG 不只是检索加拼接"
-
-    if unit_id == "unit-rag-explain":
-        return "先练一次对评审解释方案"
-
     if mode == "contrast-drill":
         return "先做一个边界辨析"
 
@@ -689,43 +433,7 @@ def _build_activity_prompt(
     mode: LearningMode,
     learning_unit: LearningUnit | None,
 ) -> str:
-    unit_id = learning_unit.id if learning_unit is not None else None
     unit_title = learning_unit.title if learning_unit is not None else "当前知识点"
-
-    if unit_id == "unit-rag-retrieval":
-        if mode == "contrast-drill":
-            return (
-                "围绕「什么时候需要重排，而不是只做向量召回」，选出最合理的判断："
-                "下面哪种情况最说明“候选基本找到了，但前排排序不对”，因此该补的是重排？"
-            )
-        if mode in ("guided-qa", "socratic"):
-            return (
-                "围绕「什么时候需要重排，而不是只做向量召回」，选出更准确的一句解释："
-                "重排到底是在补哪一类缺口？"
-            )
-        if mode == "scenario-sim" or action == "apply":
-            return (
-                "如果你要向同事或评审解释「什么时候需要重排，而不是只做向量召回」，"
-                "下面哪种说法最能讲清楚为什么不能偷成“只召回就行”？"
-            )
-
-    if unit_id == "unit-rag-core":
-        if mode in ("contrast-drill", "guided-qa", "socratic"):
-            return (
-                "围绕「RAG 为什么不是简单检索 + 拼接」，选出更准确的一句判断："
-                "真正多出来、而且决定回答质量的那一层是什么？"
-            )
-        if mode == "scenario-sim" or action == "apply":
-            return (
-                "如果你要向产品或评审解释「RAG 为什么不是简单检索 + 拼接」，"
-                "下面哪种说法最能先把设计取舍讲清楚？"
-            )
-
-    if unit_id == "unit-rag-explain":
-        return (
-            "如果你要把「如何把 RAG 方案解释给产品和评审」讲给非技术同事，"
-            "下面哪种开场最合适？"
-        )
 
     if mode == "contrast-drill":
         return (
@@ -1180,7 +888,7 @@ def estimate_learner_state(
     confidence = min(0.95, 0.55 + 0.06 * active_signal_count + 0.05 * source_diversity)
 
     return LearnerUnitState(
-        unit_id=target_unit_id or "rag-core-unit",
+        unit_id=target_unit_id or "current-topic",
         mastery=max(0, min(100, mastery)),
         understanding_level=max(0, min(100, understanding)),
         memory_strength=max(0, min(100, memory_strength)),
@@ -1931,6 +1639,9 @@ def _build_material_import_knowledge_point_suggestions(
         key_concepts = asset.get("keyConcepts") or []
         if not isinstance(key_concepts, list):
             key_concepts = []
+        knowledge_point_candidates = asset.get("knowledgePointCandidates") or []
+        if not isinstance(knowledge_point_candidates, list):
+            knowledge_point_candidates = []
         concept_hint = "、".join(str(item) for item in key_concepts[:3] if str(item).strip())
         topic_hint = str(asset.get("topic") or "").strip()
         candidate_titles = list(
@@ -1939,14 +1650,14 @@ def _build_material_import_knowledge_point_suggestions(
                     *(title for title in suggestion_titles if title.strip()),
                     *(
                         str(item).strip()
-                        for item in key_concepts
+                        for item in knowledge_point_candidates
                         if str(item).strip()
                     ),
                 ]
             )
         )
         if not candidate_titles:
-            candidate_titles = [_build_material_import_suggestion_title(asset)]
+            continue
 
         for title in candidate_titles[:3]:
             candidate_key = knowledge_point_identity_key(title)
@@ -2062,37 +1773,6 @@ def _build_material_import_knowledge_point_suggestions(
     return suggestions[:3]
 
 
-def _build_material_import_suggestion_title(asset_payload: dict[str, object]) -> str:
-    asset_title = str(asset_payload.get("title") or "新材料").strip()
-    normalized_title = re.sub(r"\.[^.]+$", "", asset_title)
-    title_parts = [
-        part.strip(" ：:-")
-        for part in re.split(r"[、/,，；;｜|]+", normalized_title)
-        if part.strip(" ：:-")
-    ]
-    if len(title_parts) >= 3:
-        return f"{title_parts[0]}、{title_parts[1]}、{title_parts[2]} 的关系"[:40]
-    if len(title_parts) == 2:
-        return f"{title_parts[0]} 与 {title_parts[1]}"[:40]
-    if normalized_title:
-        return normalized_title[:40]
-
-    key_concepts = asset_payload.get("keyConcepts")
-    if isinstance(key_concepts, list):
-        visible = [str(item).strip() for item in key_concepts if str(item).strip()]
-        if len(visible) >= 2:
-            combined = f"{visible[0]} 与 {visible[1]}"
-            return combined[:40]
-        if visible:
-            return visible[0][:40]
-
-    topic = str(asset_payload.get("topic") or "").strip()
-    if topic:
-        return topic[:40]
-
-    return normalized_title[:40] or "新材料要点"
-
-
 def _compose_material_import_project_reply(
     state: GraphState,
     *,
@@ -2118,23 +1798,34 @@ def _compose_material_import_project_reply(
         else []
     )
     suggestion_titles = [suggestion.title for suggestion in state.knowledge_point_suggestions]
-    primary_suggestion_title = (
-        suggestion_titles[0] if suggestion_titles else _build_material_import_suggestion_title(asset)
-    )
-    suggestion_line = (
-        f"我已经先整理出 {len(suggestion_titles)} 条候选知识点："
-        + "；".join(f"「{title}」" for title in suggestion_titles[:3])
-        + "。"
-        if len(suggestion_titles) > 1
-        else f"如果先沉淀一条知识点，我建议先收成「{primary_suggestion_title}」。"
-    )
     concept_line = (
-        f"我先抓到两个核心概念：{visible_concepts[0]}、{visible_concepts[1]}。"
+        f"我先读到几个材料线索：{visible_concepts[0]}、{visible_concepts[1]}。"
         if len(visible_concepts) >= 2
-        else f"我先抓到一个核心概念：{visible_concepts[0]}。"
+        else f"我先读到一个材料线索：{visible_concepts[0]}。"
         if visible_concepts
         else ""
     )
+
+    if suggestion_titles:
+        suggestion_line = (
+            f"我已经先整理出 {len(suggestion_titles)} 条候选知识点："
+            + "；".join(f"「{title}」" for title in suggestion_titles[:3])
+            + "。"
+            if len(suggestion_titles) > 1
+            else f"如果先沉淀一条知识点，我建议先收成「{suggestion_titles[0]}」。"
+        )
+        closing_line = (
+            "接下来我可以继续围绕这些知识点拆边界、补材料线索，或者按你的目标接着编排下一步。"
+            if len(suggestion_titles) > 1
+            else "接下来我可以继续围绕这条知识点拆边界、补材料线索，或者按你的目标接着编排下一步。"
+        )
+    else:
+        suggestion_line = (
+            "不过当前还不能只凭材料标题或一段很薄的摘要，就负责任地自动沉淀出知识点。"
+        )
+        closing_line = (
+            "你可以告诉我这份材料里最想先收住的判断，或者补一段更具体的正文，我再继续帮你提炼。"
+        )
 
     return " ".join(
         part
@@ -2142,11 +1833,7 @@ def _compose_material_import_project_reply(
             f"我能看到你这轮挂载的材料《{asset_title}》。",
             concept_line,
             suggestion_line,
-            (
-                "接下来我可以继续围绕这些知识点拆边界、补材料线索，或者按你的目标接着编排下一步。"
-                if len(suggestion_titles) > 1
-                else "接下来我可以继续围绕这条知识点拆边界、补材料线索，或者按你的目标接着编排下一步。"
-            ),
+            closing_line,
         ]
         if part
     )

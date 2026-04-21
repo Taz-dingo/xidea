@@ -100,16 +100,29 @@ def test_run_agent_v0_prefers_clarify_for_confusion() -> None:
     ]
 
 
-def test_run_agent_v0_falls_back_to_rule_diagnosis_when_llm_unavailable() -> None:
+def test_run_agent_v0_falls_back_to_rule_diagnosis_when_llm_unavailable(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-1",
+            title="uploaded-multimodal.md",
+            kind="note",
+            topic="多模态学习编排",
+            summary="为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式。",
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
     result = run_agent_v0(
         build_request(
             session_type="project",
             entry_mode="material-import",
             target_unit_id=None,
             topic="围绕材料推进多模态学习编排",
-            source_asset_ids=["asset-2"],
+            source_asset_ids=["material-1"],
             messages=[{"role": "user", "content": "请根据材料帮我沉淀一个知识点"}],
         ),
+        repository=repository,
         llm=build_mock_llm(side_effect=RuntimeError("401 auth failed")),
     )
 
@@ -117,11 +130,9 @@ def test_run_agent_v0_falls_back_to_rule_diagnosis_when_llm_unavailable() -> Non
     assert result.graph_state.diagnosis.recommended_action == "clarify"
     assert result.graph_state.plan is not None
     assert result.graph_state.activity is None
-    assert len(result.graph_state.knowledge_point_suggestions) == 3
-    assert "asset-2" in (result.graph_state.assistant_message or "") or "检索召回与重排对比笔记" in (
-        result.graph_state.assistant_message or ""
-    )
-    assert "知识点" in (result.graph_state.assistant_message or "")
+    assert result.graph_state.knowledge_point_suggestions == []
+    assert "uploaded-multimodal.md" in (result.graph_state.assistant_message or "")
+    assert "不能只凭材料标题或一段很薄的摘要" in (result.graph_state.assistant_message or "")
     assert any("rule-based fallback diagnosis" in item for item in result.graph_state.rationale)
 
 
@@ -658,6 +669,48 @@ def test_iter_agent_v0_events_reuses_existing_material_suggestion_and_reply(tmp_
     assert "LLM、音视频" in "".join(text_deltas)
     assert suggestion_event.suggestions[0].id == existing_suggestion.id
     assert suggestion_event.suggestions[0].title == existing_suggestion.title
+
+
+def test_material_import_does_not_split_filename_tokens_into_fake_knowledge_points(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "thin-material.md"
+    material_path.write_text("大模型学习", encoding="utf-8")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-thin",
+            title="LLM、音视频、具身智能.md",
+            kind="note",
+            topic="大模型学习",
+            summary="大模型学习",
+            source_uri="LLM、音视频、具身智能.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = build_request(
+        thread_id="material-thread-thin",
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-thin"],
+        messages=[{"role": "user", "content": "先根据这份材料帮我整理一下"}],
+    )
+
+    result = run_agent_v0(
+        request,
+        repository=repository,
+        llm=build_mock_llm(side_effect=RuntimeError("401 auth failed")),
+    )
+
+    assert result.graph_state.knowledge_point_suggestions == []
+    assert "不能只凭材料标题" in (result.graph_state.assistant_message or "")
+    assert "「LLM」" not in (result.graph_state.assistant_message or "")
 
 
 def test_project_session_never_emits_activity_even_with_target_unit() -> None:

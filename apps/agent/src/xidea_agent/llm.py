@@ -737,7 +737,7 @@ def _read_bool_env(name: str, default: bool) -> bool:
 
 
 def _build_http_client() -> httpx.Client:
-    # Default to direct outbound requests for local demo runs. This avoids
+    # Default to direct outbound requests for local runs. This avoids
     # accidental proxy interception causing custom-CA verification failures.
     trust_env = _read_bool_env("XIDEA_LLM_TRUST_ENV", False)
     verify: bool | str = True
@@ -2515,7 +2515,7 @@ def stream_assistant_reply(
 ) -> Iterator[str]:
     """Generate a streaming natural-language teaching reply.
 
-    Falls back to chunking a non-streaming response when the provider or mock
+    Falls back to chunking a non-streaming response when the provider or adapter
     returns a full response object instead of a streaming iterator.
     """
     if _is_provider_safety_diagnosis(diagnosis):

@@ -1,10 +1,6 @@
 import type { SetStateAction } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import {
-  initialKnowledgePoints,
-  initialProjects,
-} from "@/data/project-workspace-demo";
 import { resetLegacyWorkspaceStorage } from "@/app/workspace/store/persistence";
 import type {
   AppScreen,
@@ -16,10 +12,7 @@ import type {
   PendingSessionIntent,
 } from "@/app/workspace/model/types";
 
-function resolveState<T>(
-  nextState: SetStateAction<T>,
-  currentState: T,
-): T {
+function resolveState<T>(nextState: SetStateAction<T>, currentState: T): T {
   return typeof nextState === "function"
     ? (nextState as (value: T) => T)(currentState)
     : nextState;
@@ -66,13 +59,6 @@ interface WorkspaceUiState {
   readonly setDraftPrompt: (nextState: SetStateAction<string>) => void;
 }
 
-const initialProject = initialProjects[0];
-const initialKnowledgePoint = initialKnowledgePoints[0];
-
-if (initialProject === undefined || initialKnowledgePoint === undefined) {
-  throw new Error("Workspace UI store requires seeded project and knowledge point data.");
-}
-
 resetLegacyWorkspaceStorage();
 
 export const useWorkspaceUiStore = create<WorkspaceUiState>()(
@@ -90,9 +76,9 @@ export const useWorkspaceUiStore = create<WorkspaceUiState>()(
       archiveConfirmationPointId: null,
       pendingSessionIntent: null,
       pendingInitialPrompt: null,
-      selectedProjectId: initialProject.id,
+      selectedProjectId: "",
       selectedSessionId: "",
-      selectedKnowledgePointId: initialKnowledgePoint.id,
+      selectedKnowledgePointId: "",
       draftPrompt: "",
       setScreen: (nextState) =>
         set((state) => ({ screen: resolveState(nextState, state.screen) })),
@@ -158,7 +144,7 @@ export const useWorkspaceUiStore = create<WorkspaceUiState>()(
         set((state) => ({ draftPrompt: resolveState(nextState, state.draftPrompt) })),
     }),
     {
-      name: "xidea-workspace-ui-v2",
+      name: "xidea-workspace-ui-v3",
       partialize: (state) => ({
         homeSection: state.homeSection,
         screen: state.screen,
@@ -169,7 +155,7 @@ export const useWorkspaceUiStore = create<WorkspaceUiState>()(
         workspaceSection: state.workspaceSection,
       }),
       storage: createJSONStorage(() => localStorage),
-      version: 2,
+      version: 3,
     },
   ),
 );

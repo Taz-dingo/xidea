@@ -10,8 +10,6 @@ import type {
 } from "@/app/workspace/model/types";
 
 export function useWorkspaceDrafts({
-  initialKnowledgePoint,
-  initialProject,
   projectMaterialIdsByProject,
   selectedKnowledgePoint,
   selectedProject,
@@ -19,8 +17,6 @@ export function useWorkspaceDrafts({
   setIsEditingKnowledgePoint,
   setIsEditingProjectMeta,
 }: {
-  initialKnowledgePoint: KnowledgePointItem;
-  initialProject: ProjectItem;
   projectMaterialIdsByProject: Record<string, ReadonlyArray<string>>;
   selectedKnowledgePoint: KnowledgePointItem | null;
   selectedProject: ProjectItem;
@@ -37,16 +33,16 @@ export function useWorkspaceDrafts({
     initialMaterialIds: [],
   });
   const [projectMetaDraft, setProjectMetaDraft] = useState<ProjectMetaDraft>({
-    name: initialProject.name,
-    topic: initialProject.topic,
-    description: initialProject.description,
-    specialRulesText: initialProject.specialRules.join("\n"),
-    materialIds: initialKnowledgePoint.sourceAssetIds,
+    name: "",
+    topic: "",
+    description: "",
+    specialRulesText: "",
+    materialIds: [],
   });
   const [knowledgePointDraft, setKnowledgePointDraft] =
     useState<EditableKnowledgePointDraft>({
-      title: initialKnowledgePoint.title,
-      description: initialKnowledgePoint.description,
+      title: "",
+      description: "",
     });
 
   useEffect(() => {

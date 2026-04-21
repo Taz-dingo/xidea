@@ -35,12 +35,35 @@ def _build_request(**overrides) -> AgentRequest:
     return AgentRequest(**payload)
 
 
-def test_asset_summary_includes_enrichment() -> None:
+def test_asset_summary_includes_enrichment(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-1",
+            title="uploaded-1.md",
+            kind="note",
+            topic="RAG 检索设计",
+            summary="候选召回之后，还需要判断排序是否把真正相关的证据顶到前面。",
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-2",
+            title="uploaded-2.md",
+            kind="note",
+            topic="RAG 上下文构造",
+            summary="上下文组织和截断策略会直接影响模型是否抓对证据。",
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
     request = _build_request(
         entry_mode="material-import",
-        source_asset_ids=["asset-1", "asset-2"],
+        source_asset_ids=["material-1", "material-2"],
     )
-    result = resolve_tool_result("asset-summary", request)
+    result = resolve_tool_result("asset-summary", request, repository=repository)
 
     assert result is not None
     assert result.kind == "asset-summary"
@@ -54,16 +77,15 @@ def test_asset_summary_includes_enrichment() -> None:
     assert "核心概念" in payload["summary"]
 
 
-def test_asset_summary_handles_unknown_asset() -> None:
+def test_asset_summary_ignores_unknown_asset() -> None:
     request = _build_request(source_asset_ids=["unknown-asset"])
     result = resolve_tool_result("asset-summary", request)
 
     assert result is not None
     payload = result.payload
-    assert len(payload["assets"]) == 1
-    assert payload["assets"][0]["id"] == "unknown-asset"
-    assert "暂未提取" in payload["assets"][0]["contentExcerpt"]
-    assert payload["assets"][0]["keyConcepts"] == []
+    assert payload["assets"] == []
+    assert payload["assetIds"] == []
+    assert payload["keyConcepts"] == []
 
 
 def test_asset_summary_strips_markdown_frontmatter_from_uploaded_material(tmp_path: Path) -> None:
@@ -143,7 +165,7 @@ def test_asset_summary_prefers_knowledge_point_candidates_over_filename_slug(tmp
     assert "xidea-multimodal-demo" not in concepts
 
 
-def test_unit_detail_includes_enrichment() -> None:
+def test_unit_detail_returns_generic_structure_without_catalog() -> None:
     request = _build_request(target_unit_id="unit-rag-retrieval")
     result = resolve_tool_result("unit-detail", request)
 
@@ -152,14 +174,15 @@ def test_unit_detail_includes_enrichment() -> None:
     payload = result.payload
 
     assert payload["focusUnitId"] == "unit-rag-retrieval"
+    assert payload["title"] == "RAG retrieval design"
     assert len(payload["prerequisites"]) >= 2
     assert len(payload["commonMisconceptions"]) >= 2
     assert len(payload["coreQuestions"]) >= 2
-    assert "unit-rag-core" in payload["relatedUnits"]
+    assert payload["relatedUnits"] == []
     assert payload["difficulty"] == 3
 
 
-def test_unit_detail_all_units_have_enrichment() -> None:
+def test_unit_detail_all_units_have_generic_detail() -> None:
     for unit_id in ["unit-rag-retrieval", "unit-rag-core", "unit-rag-explain"]:
         request = _build_request(target_unit_id=unit_id)
         result = resolve_tool_result("unit-detail", request)
@@ -169,7 +192,7 @@ def test_unit_detail_all_units_have_enrichment() -> None:
         assert len(payload["prerequisites"]) > 0, f"{unit_id} missing prerequisites"
         assert len(payload["commonMisconceptions"]) > 0, f"{unit_id} missing misconceptions"
         assert len(payload["coreQuestions"]) > 0, f"{unit_id} missing core questions"
-        assert len(payload["relatedUnits"]) > 0, f"{unit_id} missing related units"
+        assert payload["relatedUnits"] == []
 
 
 def test_thread_memory_without_repository() -> None:
@@ -280,10 +303,9 @@ def test_describe_tool_registry_reflects_enriched_fields() -> None:
     assert "decayRisk" in registry["review-context"]["returns"]
 
 
-def test_retrieve_source_assets_returns_all() -> None:
+def test_retrieve_source_assets_requires_repository() -> None:
     assets = retrieve_source_assets(["asset-1", "asset-2", "asset-3"])
-    assert len(assets) == 3
-    assert all(a.id.startswith("asset-") for a in assets)
+    assert assets == []
 
 
 def test_retrieve_source_assets_reads_uploaded_project_materials(tmp_path: Path) -> None:
@@ -309,13 +331,16 @@ def test_retrieve_source_assets_reads_uploaded_project_materials(tmp_path: Path)
 
 def test_retrieve_learning_unit_fallback() -> None:
     unit = retrieve_learning_unit(None, "RAG 基础")
-    assert unit.id == "unit-rag-core"
+    assert unit.id == "current-topic"
+    assert unit.title == "RAG 基础"
 
     unit = retrieve_learning_unit(None, "重排策略")
-    assert unit.id == "unit-rag-retrieval"
+    assert unit.id == "current-topic"
+    assert unit.title == "重排策略"
 
     unit = retrieve_learning_unit(None, "答辩准备")
-    assert unit.id == "unit-rag-explain"
+    assert unit.id == "current-topic"
+    assert unit.title == "答辩准备"
 
 
 def test_retrieve_learning_unit_reads_project_knowledge_point(tmp_path: Path) -> None:

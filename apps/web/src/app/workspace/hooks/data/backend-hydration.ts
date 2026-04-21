@@ -1,6 +1,5 @@
 import { startTransition, type SetStateAction } from "react";
 import type { UIMessage } from "ai";
-import { sourceAssets as demoSourceAssets } from "@/data/demo";
 import { getAgentBaseUrl } from "@/lib/agent-client";
 import {
   getWorkspaceProjectBootstrap,
@@ -43,6 +42,9 @@ export interface WorkspaceBackendHydrationTarget {
   ) => void;
   readonly setProjectMaterialIdsByProject: (
     nextState: SetStateAction<Record<string, ReadonlyArray<string>>>,
+  ) => void;
+  readonly setProjectAssetsByProject: (
+    nextState: SetStateAction<Record<string, ReadonlyArray<SourceAsset>>>,
   ) => void;
   readonly sessionEntryModesSetter: (
     nextState: SetStateAction<Record<string, AgentEntryMode>>,
@@ -128,7 +130,7 @@ export async function fetchBackendWorkspaceSnapshot(
   return buildBackendWorkspaceSnapshot({
     bootstraps,
     sessionDetails,
-    seedSourceAssets: demoSourceAssets,
+    seedSourceAssets: [],
   });
 }
 
@@ -158,6 +160,7 @@ export function applyBackendWorkspaceSnapshot(
     target.setSessions(snapshot.sessions);
     target.setSourceAssets(snapshot.sourceAssets);
     target.setProjectMaterialIdsByProject(snapshot.projectMaterialIdsByProject);
+    target.setProjectAssetsByProject(snapshot.projectAssetsByProject);
     target.sessionEntryModesSetter(snapshot.sessionEntryModes);
     target.setSessionSourceAssetIds(snapshot.sessionSourceAssetIds);
     target.setSessionMessagesById(snapshot.sessionMessagesById);

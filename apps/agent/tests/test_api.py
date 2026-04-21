@@ -11,8 +11,10 @@ from xidea_agent.state import (
     KnowledgePoint,
     KnowledgePointState,
     KnowledgePointSuggestion,
+    Project,
     ProjectLearningProfile,
     ProjectMemory,
+    SourceAsset,
 )
 
 from conftest import build_mock_llm, build_mock_llm_for_review, build_mock_llm_for_teach
@@ -178,6 +180,123 @@ def test_persisted_run_is_queryable_from_storage_endpoints(
     assert [event["event_kind"] for event in review_payload["events"]] == ["reviewed", "scheduled"]
 
     assert asset_response.status_code == 200
+
+
+def test_workspace_project_endpoints_return_bootstrap_and_session_detail(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.save_project(
+        Project(
+            id="rag-demo",
+            title="企业知识库问答助手",
+            topic="围绕 RAG 系统设计进行项目型学习",
+            description="在现有 AI 应用里补齐 RAG 方案，并能解释为什么这样设计。",
+            special_rules=[
+                "所有学习动作都要能回到比赛 demo 的讲述场景。",
+                "优先解释设计取舍，不扩散到泛泛 AI 问答。",
+            ],
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="asset-1",
+            title="RAG 系统设计评审记录.pdf",
+            kind="pdf",
+            topic="当前项目方案",
+            summary="用于解释当前项目方案的评审材料。",
+            created_at=now,
+            updated_at=now,
+        ),
+        project_id="rag-demo",
+    )
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-rag-core",
+                project_id="rag-demo",
+                title="RAG 为什么不是简单检索 + 拼接",
+                description="理解召回、重排、上下文构造与回答质量之间的关系。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            )
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-rag-core",
+                mastery=68,
+                learning_status="learning",
+                review_status="scheduled",
+                next_review_at=now + timedelta(days=1),
+                updated_at=now,
+            )
+        ],
+    )
+    repository.create_or_update_project_memory(
+        ProjectMemory(
+            project_id="rag-demo",
+            summary="最近 project chat 反复暴露 RAG 设计边界没有讲清楚。",
+            updated_at=now,
+        )
+    )
+    repository.create_or_update_project_learning_profile(
+        ProjectLearningProfile(
+            project_id="rag-demo",
+            current_stage="正在把 RAG 基础概念压成稳定判断",
+            primary_weaknesses=["召回 / 重排边界"],
+            learning_preferences=["先辨析再练习"],
+            freshness="fresh",
+            updated_at=now,
+        )
+    )
+
+    client = TestClient(create_app(repository=repository, llm=build_mock_llm_for_review()))
+    run_response = client.post(
+        "/runs/v0",
+        json={
+            "project_id": "rag-demo",
+            "thread_id": "thread-1",
+            "entry_mode": "chat-question",
+            "topic": "RAG retrieval design",
+            "target_unit_id": "kp-rag-core",
+            "messages": [{"role": "user", "content": "我想先梳理 RAG 方案的关键取舍。"}],
+        },
+    )
+    assert run_response.status_code == 200
+
+    projects_response = client.get("/projects")
+    bootstrap_response = client.get("/projects/rag-demo")
+    session_detail_response = client.get("/projects/rag-demo/sessions/thread-1")
+
+    assert projects_response.status_code == 200
+    projects_payload = projects_response.json()
+    assert len(projects_payload) == 1
+    assert projects_payload[0]["id"] == "rag-demo"
+    assert projects_payload[0]["title"] == "企业知识库问答助手"
+
+    assert bootstrap_response.status_code == 200
+    bootstrap_payload = bootstrap_response.json()
+    assert bootstrap_payload["project"]["title"] == "企业知识库问答助手"
+    assert bootstrap_payload["project"]["special_rules"] == [
+        "所有学习动作都要能回到比赛 demo 的讲述场景。",
+        "优先解释设计取舍，不扩散到泛泛 AI 问答。",
+    ]
+    assert bootstrap_payload["project_materials"][0]["title"] == "RAG 系统设计评审记录.pdf"
+    assert bootstrap_payload["knowledge_points"][0]["title"] == "RAG 为什么不是简单检索 + 拼接"
+    assert bootstrap_payload["project_memory"]["summary"] == "最近 project chat 反复暴露 RAG 设计边界没有讲清楚。"
+    assert bootstrap_payload["project_learning_profile"]["current_stage"] == "正在把 RAG 基础概念压成稳定判断"
+
+    assert session_detail_response.status_code == 200
+    session_detail_payload = session_detail_response.json()
+    assert session_detail_payload["session"]["id"] == "thread-1"
+    assert session_detail_payload["session"]["project_id"] == "rag-demo"
+    assert session_detail_payload["thread_context"]["entry_mode"] == "chat-question"
+    assert len(session_detail_payload["recent_messages"]) == 2
     asset_payload = asset_response.json()
     assert asset_payload["assetIds"] == ["asset-1", "asset-2"]
     assert len(asset_payload["assets"]) == 2
