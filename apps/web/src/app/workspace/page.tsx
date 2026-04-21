@@ -196,6 +196,7 @@ export function WorkspacePage(): ReactElement {
               ) : (
                 <SessionWorkspace
                   activeAssetSummary={session.activeAssetSummary}
+                  activeMaterialRead={session.activeMaterialRead}
                   activeReviewInspector={session.activeReviewInspector}
                   activeRuntime={session.activeRuntime}
                   activeSourceAssets={session.activeSourceAssets}

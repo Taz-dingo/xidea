@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import {
   getAssetSummary,
+  getMaterialRead,
   getThreadActivityDecks,
   getInspectorBootstrap,
   getReviewInspector,
@@ -48,10 +49,12 @@ export function useSessionDataSync({
     bootstrapLoadedKeys,
     clearBootstrapLoaded,
     markBootstrapLoaded,
+    materialReadByKey,
     sessionEntryModes,
     sessionEntryModesSetter,
     setAssetSummaryByKey,
     setCompletedActivityDecksBySession,
+    setMaterialReadByKey,
     setSessionReviewInspectors,
     setSessionSnapshots,
   } = data;
@@ -190,6 +193,43 @@ export function useSessionDataSync({
     requestSourceAssetIds,
     selectedSessionType,
     setAssetSummaryByKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      agentConnectionState !== "ready" ||
+      selectedSessionType !== "project" ||
+      assetSummaryKey === "" ||
+      materialReadByKey[assetSummaryKey] !== undefined
+    ) {
+      return;
+    }
+    const abortController = new AbortController();
+    void getMaterialRead(requestSourceAssetIds, {
+      signal: abortController.signal,
+      projectId,
+      mode: "overview",
+      maxChunks: 4,
+    })
+      .then((materialRead) => {
+        if (!abortController.signal.aborted) {
+          setMaterialReadByKey((current) =>
+            current[assetSummaryKey] !== undefined
+              ? current
+              : { ...current, [assetSummaryKey]: materialRead },
+          );
+        }
+      })
+      .catch(() => undefined);
+    return () => abortController.abort();
+  }, [
+    agentConnectionState,
+    assetSummaryKey,
+    materialReadByKey,
+    projectId,
+    requestSourceAssetIds,
+    selectedSessionType,
+    setMaterialReadByKey,
   ]);
 
   useEffect(() => {

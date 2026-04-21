@@ -12,6 +12,7 @@ from xidea_agent.state import (
 from xidea_agent.tools import (
     build_project_context,
     describe_tool_registry,
+    build_material_read_payload,
     resolve_tool_result,
     retrieve_learning_unit,
     retrieve_source_assets,
@@ -165,6 +166,46 @@ def test_asset_summary_prefers_knowledge_point_candidates_over_filename_slug(tmp
     assert "xidea-multimodal-demo" not in concepts
 
 
+def test_material_read_returns_chunked_sections_with_citations(tmp_path: Path) -> None:
+    material_path = tmp_path / "rag-notes.md"
+    material_path.write_text(
+        "# RAG 设计笔记\n\n"
+        "第一段：检索命中不等于模型最终会用好证据。\n\n"
+        "第二段：排序、截断和上下文组织都会影响回答质量。\n\n"
+        "第三段：重排的价值在于把最回答问题的证据排到前面。\n",
+        encoding="utf-8",
+    )
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-read-1",
+            title="rag-notes.md",
+            kind="note",
+            topic="RAG 设计",
+            summary="RAG 相关笔记",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    payload = build_material_read_payload(
+        ["material-read-1"],
+        repository=repository,
+        project_id="rag-demo",
+        query="为什么重排有价值",
+        mode="targeted",
+    )
+
+    assert payload["materialIds"] == ["material-read-1"]
+    assert len(payload["materials"]) == 1
+    assert len(payload["chunks"]) >= 1
+    assert len(payload["citations"]) >= 1
+    assert payload["chunks"][0]["materialId"] == "material-read-1"
+    assert payload["chunks"][0]["text"]
+    assert "rag-notes.md" in payload["citations"][0]["label"]
+
+
 def test_unit_detail_returns_generic_structure_without_catalog() -> None:
     request = _build_request(target_unit_id="unit-rag-retrieval")
     result = resolve_tool_result("unit-detail", request)
@@ -291,6 +332,8 @@ def test_describe_tool_registry_reflects_enriched_fields() -> None:
 
     assert "assets" in registry["asset-summary"]["returns"]
     assert "keyConcepts" in registry["asset-summary"]["returns"]
+    assert "chunks" in registry["material-read"]["returns"]
+    assert "citations" in registry["material-read"]["returns"]
 
     assert "prerequisites" in registry["unit-detail"]["returns"]
     assert "commonMisconceptions" in registry["unit-detail"]["returns"]

@@ -58,6 +58,7 @@ from xidea_agent.state import (
 )
 from xidea_agent.tools import (
     build_asset_summary_payload,
+    build_material_read_payload,
     build_project_context,
     resolve_tool_result,
     retrieve_learning_unit,
@@ -161,6 +162,7 @@ SESSION_STATUS_MESSAGES = {
 TOOL_STATUS_MESSAGES: dict[ToolIntent, str] = {
     "none": SESSION_STATUS_MESSAGES["composing-response"],
     "asset-summary": "正在提炼这批材料里的关键信息",
+    "material-read": "正在阅读材料正文并定位可引用片段",
     "unit-detail": "正在补充当前知识点的结构化细节",
     "thread-memory": "正在回看这条 session 的上下文轨迹",
     "review-context": "正在拉取复习记录和记忆衰减线索",
@@ -977,7 +979,7 @@ def choose_tool_intent(entry_mode: str, diagnosis: Diagnosis) -> ToolIntent:
         return "none"
 
     if entry_mode == "material-import":
-        return "asset-summary"
+        return "material-read"
     if diagnosis.recommended_action == "review":
         return "review-context"
     if entry_mode == "coach-followup":
@@ -1588,6 +1590,35 @@ def _extract_material_import_suggestion_titles(reply: str) -> list[str]:
     return titles[:3]
 
 
+def _get_material_context_payload(
+    state: GraphState,
+    repository: SQLiteRepository | None,
+) -> dict[str, object]:
+    if state.tool_result is not None and state.tool_result.kind == "material-read":
+        return state.tool_result.payload
+    if state.tool_result is not None and state.tool_result.kind == "asset-summary":
+        return state.tool_result.payload
+    return build_material_read_payload(
+        list(state.project_context.source_asset_ids),
+        repository=repository,
+        project_id=state.request.project_id,
+        query=latest_user_message(state.request.messages),
+        mode="overview",
+    )
+
+
+def _get_material_entries(payload: dict[str, object]) -> list[dict[str, object]]:
+    materials = payload.get("materials")
+    if isinstance(materials, list):
+        return [item for item in materials if isinstance(item, dict)]
+
+    assets = payload.get("assets")
+    if isinstance(assets, list):
+        return [item for item in assets if isinstance(item, dict)]
+
+    return []
+
+
 def _build_material_import_knowledge_point_suggestions(
     state: GraphState,
     repository: SQLiteRepository | None,
@@ -1597,13 +1628,9 @@ def _build_material_import_knowledge_point_suggestions(
     if state.project_context is None or not state.project_context.source_asset_ids:
         return []
 
-    asset_summary = build_asset_summary_payload(
-        list(state.project_context.source_asset_ids),
-        repository=repository,
-        project_id=state.request.project_id,
-    )
-    assets = asset_summary.get("assets", [])
-    if not isinstance(assets, list) or not assets:
+    material_context = _get_material_context_payload(state, repository)
+    assets = _get_material_entries(material_context)
+    if not assets:
         return []
 
     existing_keys: set[str] = set()
@@ -1693,7 +1720,7 @@ def _build_material_import_knowledge_point_suggestions(
             topic=state.request.topic,
             user_message=latest_user_message(state.request.messages),
             assistant_reply=state.assistant_message or "",
-            asset_summary=asset_summary,
+            asset_summary=material_context,
             candidate_titles=[candidate["title"] for candidate in candidate_contexts],
             session_type=state.request.session_type,
         )
@@ -1778,12 +1805,12 @@ def _compose_material_import_project_reply(
     *,
     fallback_message: str,
 ) -> str:
-    if state.tool_result is None or state.tool_result.kind != "asset-summary":
+    if state.tool_result is None or state.tool_result.kind not in {"asset-summary", "material-read"}:
         return fallback_message
 
     payload = state.tool_result.payload
-    assets = payload.get("assets")
-    if not isinstance(assets, list) or not assets:
+    assets = _get_material_entries(payload)
+    if not assets:
         return fallback_message
 
     asset = assets[0] if isinstance(assets[0], dict) else None
@@ -1791,6 +1818,12 @@ def _compose_material_import_project_reply(
         return fallback_message
 
     asset_title = str(asset.get("title") or "当前材料").strip() or "当前材料"
+    visible_chunks = payload.get("chunks")
+    top_chunk = (
+        visible_chunks[0]
+        if isinstance(visible_chunks, list) and visible_chunks and isinstance(visible_chunks[0], dict)
+        else None
+    )
     key_concepts = asset.get("keyConcepts")
     visible_concepts = (
         [str(item).strip() for item in key_concepts if str(item).strip()]
@@ -1803,6 +1836,13 @@ def _compose_material_import_project_reply(
         if len(visible_concepts) >= 2
         else f"我先读到一个材料线索：{visible_concepts[0]}。"
         if visible_concepts
+        else ""
+    )
+    citation_line = (
+        f"当前最相关的正文片段来自「{str(top_chunk.get('title') or asset_title).strip()}」"
+        f"{' / ' + str(top_chunk.get('locator')).strip() if str(top_chunk.get('locator') or '').strip() else ''}："
+        f"{str(top_chunk.get('text') or '').strip()[:120]}。"
+        if isinstance(top_chunk, dict) and str(top_chunk.get("text") or "").strip()
         else ""
     )
 
@@ -1832,6 +1872,7 @@ def _compose_material_import_project_reply(
         for part in [
             f"我能看到你这轮挂载的材料《{asset_title}》。",
             concept_line,
+            citation_line,
             suggestion_line,
             closing_line,
         ]
@@ -2617,7 +2658,7 @@ def _preload_tool_context_for_main_decision(
             or (state.project_context.source_asset_ids if state.project_context is not None else [])
         )
         if asset_ids:
-            preload_intent = "asset-summary"
+            preload_intent = "material-read"
             if not state.request.source_asset_ids:
                 preload_request = state.request.model_copy(update={"source_asset_ids": list(asset_ids)})
     elif state.request.entry_mode == "coach-followup":

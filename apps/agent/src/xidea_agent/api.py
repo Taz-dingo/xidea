@@ -35,7 +35,11 @@ from xidea_agent.state import (
     Session,
     build_initial_graph_state,
 )
-from xidea_agent.tools import build_asset_summary_payload, build_review_context_payload
+from xidea_agent.tools import (
+    build_asset_summary_payload,
+    build_material_read_payload,
+    build_review_context_payload,
+)
 
 
 class ProjectMaterialUploadRequest(BaseModel):
@@ -332,6 +336,25 @@ def create_app(
             asset_id_list,
             repository=repository,
             project_id=project_id,
+        )
+
+    @app.get("/materials/read")
+    def material_read(
+        material_ids: str = "",
+        project_id: str | None = None,
+        query: str | None = None,
+        mode: str = "overview",
+        max_chunks: int = 6,
+    ) -> dict[str, object]:
+        material_id_list = [material_id.strip() for material_id in material_ids.split(",") if material_id.strip()]
+        normalized_mode = "targeted" if mode == "targeted" else "overview"
+        return build_material_read_payload(
+            material_id_list,
+            repository=repository,
+            project_id=project_id,
+            query=query,
+            mode=normalized_mode,
+            max_chunks=max(1, min(max_chunks, 12)),
         )
 
     @app.get("/threads/{thread_id}/recent-messages")

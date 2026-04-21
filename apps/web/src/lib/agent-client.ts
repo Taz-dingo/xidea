@@ -4,6 +4,7 @@ import type {
   AgentKnowledgePointRecord,
   AgentKnowledgePointSuggestion,
   AgentKnowledgePointSuggestionResolution,
+  AgentMaterialRead,
   AgentMessage,
   AgentProjectThreadRecord,
   AgentLearnerUnitState,
@@ -547,6 +548,49 @@ export async function getAssetSummary(
   }
 
   return (await response.json()) as AgentAssetSummary;
+}
+
+export async function getMaterialRead(
+  materialIds: ReadonlyArray<string>,
+  options?: {
+    signal?: AbortSignal;
+    projectId?: string;
+    mode?: "overview" | "targeted";
+    query?: string;
+    maxChunks?: number;
+  },
+): Promise<AgentMaterialRead> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    throw new Error("未配置 agent API 地址。开发环境可直接启动本地代理，或设置 VITE_AGENT_API_BASE_URL。");
+  }
+
+  const materialReadUrl = new URL(`${baseUrl}/materials/read`, window.location.origin);
+  materialReadUrl.searchParams.set("material_ids", materialIds.join(","));
+  if (options?.projectId) {
+    materialReadUrl.searchParams.set("project_id", options.projectId);
+  }
+  if (options?.mode) {
+    materialReadUrl.searchParams.set("mode", options.mode);
+  }
+  if (options?.query?.trim()) {
+    materialReadUrl.searchParams.set("query", options.query.trim());
+  }
+  if (options?.maxChunks !== undefined) {
+    materialReadUrl.searchParams.set("max_chunks", String(options.maxChunks));
+  }
+
+  const response = await fetch(materialReadUrl.toString(), {
+    method: "GET",
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Material read 请求失败（${response.status}）。`);
+  }
+
+  return (await response.json()) as AgentMaterialRead;
 }
 
 export async function listProjectMaterials(

@@ -1,12 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import { X } from "lucide-react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CompactNote, MonitorSection } from "@/components/workspace/monitor";
 import type {
   AgentAssetSummary,
+  AgentMaterialRead,
   AgentReviewInspector,
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
@@ -133,6 +134,29 @@ function CompactInlineNote({
   );
 }
 
+function buildMaterialEvidenceCards(materialRead: AgentMaterialRead): ReadonlyArray<{
+  readonly id: string;
+  readonly label: string;
+  readonly text: string;
+}> {
+  return materialRead.citations
+    .slice(0, 3)
+    .map((citation) => {
+      const chunk = materialRead.chunks.find(
+        (candidate) => candidate.chunkId === citation.chunkId,
+      );
+      if (chunk === undefined) {
+        return null;
+      }
+      return {
+        id: citation.chunkId,
+        label: citation.label,
+        text: chunk.text,
+      };
+    })
+    .filter((item): item is { readonly id: string; readonly label: string; readonly text: string } => item !== null);
+}
+
 function SessionBadgeLabel({
   sessionType,
 }: {
@@ -252,6 +276,7 @@ function DeckHistoryDialog({
 
 export function SessionInspector({
   activeAssetSummary,
+  activeMaterialRead,
   activeReviewInspector,
   activeRuntime,
   completedActivityDecks,
@@ -267,6 +292,7 @@ export function SessionInspector({
   selectedSourceAssetIds,
 }: {
   activeAssetSummary: AgentAssetSummary | null;
+  activeMaterialRead: AgentMaterialRead | null;
   activeReviewInspector: AgentReviewInspector | null;
   activeRuntime: RuntimeSnapshot;
   completedActivityDecks: ReadonlyArray<CompletedActivityDeck>;
@@ -283,10 +309,18 @@ export function SessionInspector({
 }): ReactElement {
   const [openDeckKey, setOpenDeckKey] = useState<string | null>(null);
   const [isPlanDetailOpen, setIsPlanDetailOpen] = useState(false);
+  const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const previewDecks = useMemo(
     () => completedActivityDecks.slice(0, 3),
     [completedActivityDecks],
   );
+  const materialEvidenceCards = useMemo(
+    () => (activeMaterialRead === null ? [] : buildMaterialEvidenceCards(activeMaterialRead)),
+    [activeMaterialRead],
+  );
+  useEffect(() => {
+    setIsEvidenceOpen(false);
+  }, [activeMaterialRead?.materialIds.join("|")]);
   const openDeck =
     completedActivityDecks.find((deck) => deck.deckKey === openDeckKey) ?? null;
   const activePlan = activeRuntime.orchestration.current;
@@ -410,6 +444,36 @@ export function SessionInspector({
                     {concept}
                   </Badge>
                 ))}
+              </div>
+            ) : null}
+            {materialEvidenceCards.length > 0 ? (
+              <div className="space-y-2">
+                <Button
+                  className="h-9 w-full justify-between rounded-[0.9rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 text-[13px] text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-parchment)]"
+                  onClick={() => setIsEvidenceOpen((current) => !current)}
+                  type="button"
+                  variant="outline"
+                >
+                  查看依据
+                  {isEvidenceOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+                {isEvidenceOpen ? (
+                  <div className="space-y-2">
+                    {materialEvidenceCards.map((card) => (
+                      <div
+                        className="rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-3"
+                        key={card.id}
+                      >
+                        <p className="text-[12px] font-medium text-[var(--xidea-near-black)]">
+                          {card.label}
+                        </p>
+                        <p className="mt-1 text-[12px] leading-5 text-[var(--xidea-charcoal)]">
+                          {card.text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </MonitorSection>

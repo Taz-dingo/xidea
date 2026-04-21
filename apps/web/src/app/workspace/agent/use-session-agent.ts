@@ -214,6 +214,8 @@ export function useSessionAgent({
   const assetSummaryKey = requestSourceAssetIds.join("|");
   const activeAssetSummary =
     assetSummaryKey === "" ? null : data.assetSummaryByKey[assetSummaryKey] ?? null;
+  const activeMaterialRead =
+    assetSummaryKey === "" ? null : data.materialReadByKey[assetSummaryKey] ?? null;
   const activeReviewInspector = data.selectedSession
     ? data.sessionReviewInspectors[data.selectedSession.id] ?? null
     : null;
@@ -595,6 +597,7 @@ export function useSessionAgent({
 
   return {
     activeAssetSummary,
+    activeMaterialRead,
     activeReviewInspector,
     activeRuntime,
     activeSourceAssets,

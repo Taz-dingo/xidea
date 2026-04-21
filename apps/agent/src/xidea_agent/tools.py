@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Any
 
+from xidea_agent.material_reader import (
+    MaterialReadMode,
+    build_material_chunks,
+    read_material_text,
+    select_material_chunks,
+)
 from xidea_agent.material_content import (
     extract_material_knowledge_point_candidates,
     normalize_material_text,
@@ -103,6 +108,18 @@ def resolve_tool_result(
             ),
         )
 
+    if tool_intent == "material-read":
+        return ToolResult(
+            kind=tool_intent,
+            payload=_build_material_read_payload(
+                request.source_asset_ids,
+                repository=repository,
+                project_id=request.project_id,
+                query=request.messages[-1].content if request.messages else None,
+                mode="overview" if request.entry_mode == "material-import" else "targeted",
+            ),
+        )
+
     if tool_intent == "thread-memory":
         return ToolResult(
             kind=tool_intent,
@@ -141,6 +158,17 @@ def describe_tool_registry() -> dict[str, dict[str, Any]]:
                 "assetIds",
                 "assets",
                 "keyConcepts",
+                "summary",
+            ],
+        },
+        "material-read": {
+            "description": "Read source materials as retrievable chunks with citations for overview or targeted lookup.",
+            "returns": [
+                "materialIds",
+                "materials",
+                "keyConcepts",
+                "chunks",
+                "citations",
                 "summary",
             ],
         },
@@ -196,7 +224,7 @@ def _build_asset_summary_payload(
     all_concepts: list[str] = []
 
     for asset in assets:
-        extracted_text = _read_asset_text(asset)
+        extracted_text = read_material_text(asset)
         normalized_excerpt = _normalize_asset_text(extracted_text)
         uploaded_summary = asset.summary.strip() if isinstance(asset.summary, str) else ""
         concept_source = normalized_excerpt or uploaded_summary
@@ -244,6 +272,25 @@ def build_asset_summary_payload(
         asset_ids,
         repository=repository,
         project_id=project_id,
+    )
+
+
+def build_material_read_payload(
+    asset_ids: list[str],
+    *,
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+    query: str | None = None,
+    mode: MaterialReadMode = "overview",
+    max_chunks: int = 6,
+) -> dict[str, Any]:
+    return _build_material_read_payload(
+        asset_ids,
+        repository=repository,
+        project_id=project_id,
+        query=query,
+        mode=mode,
+        max_chunks=max_chunks,
     )
 
 
@@ -391,43 +438,96 @@ def _extract_key_concepts(summary: str) -> list[str]:
     return concepts
 
 
-def _read_asset_text(asset: SourceAsset) -> str:
-    content_ref = getattr(asset, "content_ref", None)
-    if not isinstance(content_ref, str) or not content_ref.strip():
-        return asset.summary or ""
-
-    path = Path(content_ref)
-    if not path.exists() or not path.is_file():
-        return asset.summary or ""
-
-    if asset.kind in {"note", "web"}:
-        try:
-            return path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            return asset.summary or ""
-
-    if asset.kind == "pdf":
-        try:
-            from pypdf import PdfReader  # type: ignore
-        except Exception:
-            return asset.summary or ""
-
-        try:
-            reader = PdfReader(str(path))
-            page_text = []
-            for page in reader.pages[:3]:
-                extracted = page.extract_text() or ""
-                if extracted.strip():
-                    page_text.append(extracted)
-            return "\n".join(page_text) if page_text else (asset.summary or "")
-        except Exception:
-            return asset.summary or ""
-
-    return asset.summary or ""
-
-
 def _normalize_asset_text(text: str, limit: int = 900) -> str:
     return normalize_material_text(text, limit=limit)
+
+
+def _build_material_read_payload(
+    asset_ids: list[str],
+    *,
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+    query: str | None = None,
+    mode: MaterialReadMode = "overview",
+    max_chunks: int = 6,
+) -> dict[str, Any]:
+    assets = retrieve_source_assets(asset_ids, repository=repository, project_id=project_id)
+    material_details: list[dict[str, Any]] = []
+    all_chunks = []
+    all_concepts: list[str] = []
+
+    for asset in assets:
+        asset_chunks = build_material_chunks(asset)
+        excerpt_source = " ".join(chunk.text for chunk in asset_chunks[:2]) if asset_chunks else (asset.summary or "")
+        normalized_excerpt = _normalize_asset_text(excerpt_source)
+        key_concepts = _extract_key_concepts(normalized_excerpt)
+        knowledge_point_candidates = extract_material_knowledge_point_candidates(
+            excerpt_source,
+            limit=3,
+        )
+        all_concepts.extend(key_concepts)
+        material_details.append({
+            "id": asset.id,
+            "title": asset.title,
+            "kind": asset.kind,
+            "topic": asset.topic,
+            "contentExcerpt": normalized_excerpt
+            or f"材料「{asset.title}」的正文暂未成功提取，当前先回退到元信息。",
+            "keyConcepts": key_concepts,
+            "knowledgePointCandidates": knowledge_point_candidates,
+            "relevanceHint": "该材料已切成可检索片段，可用于主题判断、知识点建议和后续引用。",
+            "chunkIds": [chunk.chunk_id for chunk in asset_chunks],
+        })
+        all_chunks.extend(asset_chunks)
+
+    selected_chunks = select_material_chunks(
+        all_chunks,
+        query=query,
+        mode=mode,
+        max_chunks=max_chunks,
+    )
+    visible_titles = "、".join(material["title"] for material in material_details[:3])
+    visible_concepts = "、".join(list(dict.fromkeys(all_concepts))[:6])
+    chunk_payload = [
+        {
+            "chunkId": chunk.chunk_id,
+            "materialId": chunk.material_id,
+            "title": chunk.title,
+            "text": chunk.text,
+            "locator": chunk.locator,
+            "score": chunk.score,
+        }
+        for chunk in selected_chunks
+    ]
+    citations = [
+        {
+            "chunkId": chunk.chunk_id,
+            "materialId": chunk.material_id,
+            "title": chunk.title,
+            "locator": chunk.locator,
+            "label": (
+                f"{chunk.title} / {chunk.locator}"
+                if chunk.locator
+                else chunk.title
+            ),
+        }
+        for chunk in selected_chunks
+    ]
+
+    return {
+        "mode": mode,
+        "query": query,
+        "materialIds": [asset.id for asset in assets],
+        "materials": material_details,
+        "keyConcepts": list(dict.fromkeys(all_concepts)),
+        "chunks": chunk_payload,
+        "citations": citations,
+        "summary": (
+            f"已阅读 {len(material_details)} 份材料：{visible_titles or '暂无标题'}。"
+            f"当前返回 {len(chunk_payload)} 个可引用片段。"
+            f"{'核心概念包括：' + visible_concepts + '。' if visible_concepts else ''}"
+        ),
+    }
 
 
 def _summarize_project_memory(project_memory: object | None) -> str | None:

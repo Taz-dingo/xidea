@@ -1001,22 +1001,46 @@ def test_iter_agent_v0_events_streams_reply_in_multiple_chunks() -> None:
     assert "".join(text_deltas) == long_reply
 
 
-def test_run_agent_v0_uses_asset_summary_for_material_import() -> None:
+def test_run_agent_v0_uses_material_read_for_material_import(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-1",
+            title="rag-material.md",
+            kind="note",
+            topic="RAG 设计",
+            summary="检索、重排和上下文构造的关系。",
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-2",
+            title="rerank-material.md",
+            kind="note",
+            topic="Rerank",
+            summary="重排把最相关的证据排到前面。",
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
     request = build_request(
         entry_mode="material-import",
-        source_asset_ids=["asset-1", "asset-2"],
+        source_asset_ids=["material-1", "material-2"],
         messages=[{"role": "user", "content": "帮我先看这份材料，再判断我下一步该怎么学"}],
         target_unit_id=None,
     )
 
     llm = build_mock_llm_for_material_import()
-    result = run_agent_v0(request, llm=llm)
+    result = run_agent_v0(request, repository=repository, llm=llm)
 
     assert result.graph_state.diagnosis is not None
     assert result.graph_state.diagnosis.needs_tool is False
     assert result.graph_state.tool_intent == "none"
     assert result.graph_state.tool_result is not None
-    assert result.graph_state.tool_result.kind == "asset-summary"
+    assert result.graph_state.tool_result.kind == "material-read"
+    assert len(result.graph_state.tool_result.payload["chunks"]) >= 1
     assert llm.client.chat.completions.create.call_count == 1
 
 

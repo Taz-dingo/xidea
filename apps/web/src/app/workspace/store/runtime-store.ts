@@ -6,6 +6,7 @@ import { resetLegacyWorkspaceStorage } from "@/app/workspace/store/persistence";
 import type {
   AgentAssetSummary,
   AgentEntryMode,
+  AgentMaterialRead,
   AgentReviewInspector,
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
@@ -31,6 +32,7 @@ interface WorkspaceRuntimeState {
   readonly sessionSnapshots: Record<string, RuntimeSnapshot>;
   readonly sessionReviewInspectors: Record<string, AgentReviewInspector | null>;
   readonly assetSummaryByKey: Record<string, AgentAssetSummary>;
+  readonly materialReadByKey: Record<string, AgentMaterialRead>;
   readonly agentConnectionState: "checking" | "ready" | "offline";
   readonly sessionMessagesById: Record<string, UIMessage[]>;
   readonly activityResolutionsBySession: Record<string, Record<string, ActivityResolution>>;
@@ -55,6 +57,9 @@ interface WorkspaceRuntimeState {
   ) => void;
   readonly setAssetSummaryByKey: (
     nextState: SetStateAction<Record<string, AgentAssetSummary>>,
+  ) => void;
+  readonly setMaterialReadByKey: (
+    nextState: SetStateAction<Record<string, AgentMaterialRead>>,
   ) => void;
   readonly setAgentConnectionState: (
     nextState: SetStateAction<"checking" | "ready" | "offline">,
@@ -89,6 +94,7 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()(
       sessionSnapshots: {},
       sessionReviewInspectors: {},
       assetSummaryByKey: {},
+      materialReadByKey: {},
       agentConnectionState: "checking",
       sessionMessagesById: {},
       activityResolutionsBySession: {},
@@ -119,6 +125,10 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()(
       setAssetSummaryByKey: (nextState) =>
         set((state) => ({
           assetSummaryByKey: resolveState(nextState, state.assetSummaryByKey),
+        })),
+      setMaterialReadByKey: (nextState) =>
+        set((state) => ({
+          materialReadByKey: resolveState(nextState, state.materialReadByKey),
         })),
       setAgentConnectionState: (nextState) =>
         set((state) => ({

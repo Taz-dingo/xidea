@@ -337,6 +337,21 @@ def test_project_material_upload_and_list_endpoint(persisted_client: TestClient)
     assert summary_payload["assets"][0]["contentExcerpt"]
     assert "retrieval 和 reranking" in summary_payload["assets"][0]["contentExcerpt"]
 
+    material_read_response = persisted_client.get(
+        "/materials/read",
+        params={
+            "material_ids": upload_payload["id"],
+            "project_id": "rag-demo",
+            "query": "reranking",
+            "mode": "targeted",
+        },
+    )
+    assert material_read_response.status_code == 200
+    material_read_payload = material_read_response.json()
+    assert material_read_payload["materialIds"] == [upload_payload["id"]]
+    assert len(material_read_payload["chunks"]) >= 1
+    assert material_read_payload["citations"][0]["title"] == "rag-notes.md"
+
 
 def test_delete_project_material_endpoint(persisted_client: TestClient) -> None:
     encoded = base64.b64encode("先上传再删除".encode("utf-8")).decode("utf-8")

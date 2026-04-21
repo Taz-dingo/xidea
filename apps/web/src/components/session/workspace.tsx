@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
   AgentAssetSummary,
+  AgentMaterialRead,
   AgentReviewInspector,
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
@@ -37,6 +38,7 @@ import type { UIMessage } from "ai";
 
 export function SessionWorkspace({
   activeAssetSummary,
+  activeMaterialRead,
   activeReviewInspector,
   activeRuntime,
   activeSourceAssets,
@@ -88,6 +90,7 @@ export function SessionWorkspace({
   workspaceSection,
 }: {
   activeAssetSummary: AgentAssetSummary | null;
+  activeMaterialRead: AgentMaterialRead | null;
   activeReviewInspector: AgentReviewInspector | null;
   activeRuntime: RuntimeSnapshot;
   activeSourceAssets: ReadonlyArray<SourceAsset>;
@@ -291,6 +294,7 @@ export function SessionWorkspace({
 
       <SessionInspector
         activeAssetSummary={activeAssetSummary}
+        activeMaterialRead={activeMaterialRead}
         activeReviewInspector={activeReviewInspector}
         activeRuntime={activeRuntime}
         completedActivityDecks={completedActivityDecks}

@@ -2071,8 +2071,10 @@ def _build_tool_context_parts(tool_result: ToolResult) -> list[str]:
     if isinstance(summary, str) and summary.strip():
         context_parts.append(f"补充上下文摘要：{summary.strip()}")
 
-    if tool_result.kind == "asset-summary":
-        assets = payload.get("assets")
+    if tool_result.kind in {"asset-summary", "material-read"}:
+        assets = payload.get("materials")
+        if not isinstance(assets, list):
+            assets = payload.get("assets")
         if isinstance(assets, list) and assets:
             titles = [
                 str(asset.get("title", "")).strip()
@@ -2088,6 +2090,23 @@ def _build_tool_context_parts(tool_result: ToolResult) -> list[str]:
             ]
             if excerpts:
                 context_parts.append(f"材料摘录：{'；'.join(excerpts)}")
+        if tool_result.kind == "material-read":
+            chunks = payload.get("chunks")
+            if isinstance(chunks, list) and chunks:
+                visible_chunks = []
+                for chunk in chunks[:3]:
+                    if not isinstance(chunk, dict):
+                        continue
+                    text = str(chunk.get("text") or "").strip()
+                    if not text:
+                        continue
+                    locator = str(chunk.get("locator") or "").strip()
+                    label = str(chunk.get("title") or "").strip()
+                    visible_chunks.append(
+                        f"{label}{' / ' + locator if locator else ''}：{text}"
+                    )
+                if visible_chunks:
+                    context_parts.append(f"可引用材料片段：{'；'.join(visible_chunks)}")
         concepts = _join_prompt_items(payload.get("keyConcepts"))
         if concepts is not None:
             context_parts.append(f"材料核心概念：{concepts}")
@@ -2301,7 +2320,9 @@ def llm_enrich_material_knowledge_points(
         return None
 
     assets_payload: list[dict[str, object]] = []
-    assets = asset_summary.get("assets")
+    assets = asset_summary.get("materials")
+    if not isinstance(assets, list):
+        assets = asset_summary.get("assets")
     if isinstance(assets, list):
         for asset in assets[:3]:
             if not isinstance(asset, dict):

@@ -349,6 +349,45 @@ export interface AgentAssetSummary {
   readonly summary: string;
 }
 
+export interface AgentMaterialReadMaterial {
+  readonly id: string;
+  readonly title: string;
+  readonly kind: SourceAsset["kind"];
+  readonly topic: string;
+  readonly contentExcerpt: string;
+  readonly keyConcepts: ReadonlyArray<string>;
+  readonly relevanceHint: string;
+  readonly chunkIds: ReadonlyArray<string>;
+}
+
+export interface AgentMaterialReadChunk {
+  readonly chunkId: string;
+  readonly materialId: string;
+  readonly title: string;
+  readonly text: string;
+  readonly locator: string | null;
+  readonly score: number | null;
+}
+
+export interface AgentMaterialReadCitation {
+  readonly chunkId: string;
+  readonly materialId: string;
+  readonly title: string;
+  readonly locator: string | null;
+  readonly label: string;
+}
+
+export interface AgentMaterialRead {
+  readonly mode: "overview" | "targeted";
+  readonly query: string | null;
+  readonly materialIds: ReadonlyArray<string>;
+  readonly materials: ReadonlyArray<AgentMaterialReadMaterial>;
+  readonly keyConcepts: ReadonlyArray<string>;
+  readonly chunks: ReadonlyArray<AgentMaterialReadChunk>;
+  readonly citations: ReadonlyArray<AgentMaterialReadCitation>;
+  readonly summary: string;
+}
+
 export interface AgentReviewEvent {
   readonly event_kind: "reviewed" | "scheduled";
   readonly event_at: string;

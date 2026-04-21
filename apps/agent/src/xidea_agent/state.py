@@ -46,7 +46,7 @@ PrimaryIssue = Literal[
     "off-topic",
 ]
 PedagogicalAction = Literal["teach", "clarify", "practice", "review", "apply"]
-ToolIntent = Literal["none", "asset-summary", "unit-detail", "thread-memory", "review-context"]
+ToolIntent = Literal["none", "asset-summary", "material-read", "unit-detail", "thread-memory", "review-context"]
 LearningMode = Literal[
     "socratic",
     "guided-qa",
