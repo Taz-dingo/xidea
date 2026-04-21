@@ -31,7 +31,7 @@ export function useProjectMaterialsSync({
   } = data;
 
   useEffect(() => {
-    if (agentConnectionState !== "ready") {
+    if (agentConnectionState !== "ready" || projectId.trim() === "") {
       return;
     }
 

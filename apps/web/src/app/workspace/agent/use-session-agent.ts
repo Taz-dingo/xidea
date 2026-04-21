@@ -1,12 +1,11 @@
 import { useChat } from "@ai-sdk/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { learningUnits } from "@/data/demo";
 import {
   type AgentActivityResult,
   type AgentEntryMode,
   type AgentKnowledgePointSuggestion,
   type AgentRequest,
-  buildMockRuntimeSnapshot,
+  buildEmptyRuntimeSnapshot,
   getRequestSourceAssetIds,
 } from "@/domain/agent-runtime";
 import { mergeMessageHistory } from "@/domain/chat-message";
@@ -19,6 +18,7 @@ import {
   getLatestIsoDate,
 } from "@/domain/review-heatmap";
 import {
+  buildActivityReplayState,
   buildActivityDeckKey,
   getVisibleActivitiesForBatch,
   type SessionActivityBatchState,
@@ -36,6 +36,7 @@ import { createSessionActions } from "@/app/workspace/agent/session-actions";
 import { useAgentHealth } from "@/app/workspace/agent/effects/use-agent-health";
 import { useProjectKnowledgeSync } from "@/app/workspace/agent/effects/use-project-knowledge-sync";
 import { useProjectMaterialsSync } from "@/app/workspace/agent/effects/use-project-materials-sync";
+import { useProjectReviewInspectorsSync } from "@/app/workspace/agent/effects/use-project-review-inspectors-sync";
 import { useProjectSessionsSync } from "@/app/workspace/agent/effects/use-project-sessions-sync";
 import { useSessionDataSync } from "@/app/workspace/agent/effects/use-session-data-sync";
 import { useSessionRuntimeSync } from "@/app/workspace/agent/effects/use-session-runtime-sync";
@@ -43,7 +44,7 @@ import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
 function buildKnowledgePointLearningUnit(
   point: WorkspaceData["knowledgePoints"][number],
-): typeof learningUnits[number] {
+): WorkspaceData["initialUnit"] {
   return {
     id: point.id,
     title: point.title,
@@ -79,8 +80,8 @@ export function useSessionAgent({
     data.selectedSession?.type ?? data.pendingSessionIntent?.type ?? "project";
   const sessionSnapshotsRef = useRef(data.sessionSnapshots);
   sessionSnapshotsRef.current = data.sessionSnapshots;
-  const activeRuntimeRef = useRef<ReturnType<typeof buildMockRuntimeSnapshot>>(
-    buildMockRuntimeSnapshot(data.initialProfile, data.initialUnit, fallbackSessionType),
+  const activeRuntimeRef = useRef<ReturnType<typeof buildEmptyRuntimeSnapshot>>(
+    buildEmptyRuntimeSnapshot(data.initialUnit, fallbackSessionType),
   );
   const runtimeFocusKnowledgePointId =
     data.selectedSession === undefined
@@ -93,17 +94,16 @@ export function useSessionAgent({
       ? undefined
       : data.knowledgePoints.find((point) => point.id === runtimeFocusKnowledgePointId);
   const selectedUnit = runtimeFocusKnowledgePointId
-    ? learningUnits.find((unit) => unit.id === runtimeFocusKnowledgePointId) ??
-      (selectedKnowledgePoint ? buildKnowledgePointLearningUnit(selectedKnowledgePoint) : undefined)
+    ? (selectedKnowledgePoint ? buildKnowledgePointLearningUnit(selectedKnowledgePoint) : undefined)
     : undefined;
   const runtimeUnit = selectedUnit ?? data.initialUnit;
   const selectedSourceAssetIds =
     fallbackSessionType === "project" && selectedSessionKey !== null
       ? data.sessionSourceAssetIds[selectedSessionKey] ?? []
       : [];
-  const seedRuntime = useMemo(
-    () => buildMockRuntimeSnapshot(data.initialProfile, runtimeUnit, fallbackSessionType),
-    [data.initialProfile, fallbackSessionType, runtimeUnit],
+  const emptyRuntime = useMemo(
+    () => buildEmptyRuntimeSnapshot(runtimeUnit, fallbackSessionType),
+    [fallbackSessionType, runtimeUnit],
   );
   const persistedMessageCount = data.selectedSession
     ? data.sessionMessagesById[data.selectedSession.id]?.length ?? 0
@@ -113,10 +113,15 @@ export function useSessionAgent({
     : null;
   const activeRuntime =
     data.selectedSession === undefined
-      ? seedRuntime
-      : data.sessionSnapshots[data.selectedSession.id] ?? seedRuntime;
+      ? emptyRuntime
+      : data.sessionSnapshots[data.selectedSession.id] ?? emptyRuntime;
   activeRuntimeRef.current = activeRuntime;
-  const deckKey = buildActivityDeckKey(activeRuntime);
+  const replayState =
+    selectedSessionKey === null
+      ? null
+      : data.activityReplayStateBySession[selectedSessionKey] ?? null;
+  const deckKey =
+    replayState?.replayDeckKey ?? buildActivityDeckKey(activeRuntime);
   const activityBatchState =
     selectedSessionKey === null
       ? null
@@ -128,8 +133,9 @@ export function useSessionAgent({
       : activeRuntime.activity === null
         ? []
         : [activeRuntime.activity];
+  const visibleActivitiesSource = replayState?.activities ?? baseActivities;
   const currentActivities = getVisibleActivitiesForBatch({
-    activities: baseActivities,
+    activities: visibleActivitiesSource,
     batchState:
       deckKey !== null && activityBatchState?.deckKey === deckKey ? activityBatchState : null,
     deckKey,
@@ -138,7 +144,9 @@ export function useSessionAgent({
   const currentActivityKey =
     currentActivity === null
       ? null
-      : `${currentActivity.id}:${activeRuntime.assistantMessage || activeRuntime.decision.reason}`;
+      : replayState !== null
+        ? `${currentActivity.id}:${replayState.replayDeckKey}`
+        : `${currentActivity.id}:${activeRuntime.assistantMessage || activeRuntime.decision.reason}`;
   const currentActivityResolution =
     selectedSessionKey === null || currentActivityKey === null
       ? null
@@ -165,10 +173,6 @@ export function useSessionAgent({
     fallbackSessionType === "project" && selectedSourceAssetIds.length > 0
       ? "material-import"
       : "chat-question";
-  const isMaterialsTrayOpen =
-    fallbackSessionType !== "project" || selectedSessionKey === null
-      ? false
-      : selectedSourceAssetIds.length > 0 || data.sessionMaterialTrayOpen[selectedSessionKey] === true;
   const activeSourceAssetsRef = useRef<ReadonlyArray<SourceAsset>>(activeSourceAssets);
   activeSourceAssetsRef.current = activeSourceAssets;
   const pendingSourceAssetsRef = useRef<ReadonlyArray<SourceAsset> | null>(null);
@@ -215,6 +219,8 @@ export function useSessionAgent({
   const assetSummaryKey = requestSourceAssetIds.join("|");
   const activeAssetSummary =
     assetSummaryKey === "" ? null : data.assetSummaryByKey[assetSummaryKey] ?? null;
+  const activeMaterialRead =
+    assetSummaryKey === "" ? null : data.materialReadByKey[assetSummaryKey] ?? null;
   const activeReviewInspector = data.selectedSession
     ? data.sessionReviewInspectors[data.selectedSession.id] ?? null
     : null;
@@ -239,10 +245,10 @@ export function useSessionAgent({
     selectedSessionKey !== null && data.runningSessionIds[selectedSessionKey] === true;
   const isAwaitingActivityFollowup = activityBatchState?.awaitingAgent === true;
   const hasPendingActivity =
-    hasStructuredRuntime &&
     currentActivity !== null &&
     currentActivityResolution === null &&
-    !isAwaitingActivityFollowup;
+    !isAwaitingActivityFollowup &&
+    (hasStructuredRuntime || replayState !== null);
   const latestReviewedLabel = latestReviewedEvent?.event_at
     ? formatDateLabel(latestReviewedEvent.event_at) ?? "待回读"
     : activeRuntime.state.lastReviewedAt ?? "待回读";
@@ -260,8 +266,11 @@ export function useSessionAgent({
             ? {
                 ...session,
                 knowledgePointId:
-                  snapshot.orchestration.current?.current_focus_id ?? session.knowledgePointId,
-                status: "已更新",
+                  snapshot.orchestration.current === null
+                    ? session.knowledgePointId
+                    : snapshot.orchestration.current.current_focus_id,
+                status:
+                  snapshot.orchestration.current?.status === "completed" ? "已完成" : "已更新",
                 updatedAt: "刚刚",
               }
             : session,
@@ -458,6 +467,10 @@ export function useSessionAgent({
     projectId: data.selectedProject.id,
     selectedSessionKey,
   });
+  useProjectReviewInspectorsSync({
+    data,
+    projectSessions: data.selectedProjectSessions,
+  });
 
   useEffect(() => {
     if (selectedSessionKey === null || activityBatchState === null || deckKey === null) {
@@ -495,6 +508,21 @@ export function useSessionAgent({
     }
 
     pendingActivityResultRef.current = null;
+    data.setActivityReplayStateBySession((current) => {
+      const currentReplayState = current[selectedSessionKey];
+      if (
+        currentReplayState === undefined ||
+        currentReplayState === null ||
+        currentReplayState.replayDeckKey !== activityBatchState.deckKey
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [selectedSessionKey]: null,
+      };
+    });
     data.setActivityBatchStateBySession((current) => {
       if (current[selectedSessionKey] === undefined) {
         return current;
@@ -505,6 +533,7 @@ export function useSessionAgent({
     });
   }, [
     activityBatchState,
+    data.setActivityReplayStateBySession,
     data.setActivityBatchStateBySession,
     latestAssistantMessageId,
     selectedSessionKey,
@@ -584,7 +613,7 @@ export function useSessionAgent({
     messagesLength: displayMessages.length,
     projectId: data.selectedProject.id,
     requestSourceAssetIds,
-    seedRuntime,
+    fallbackRuntime: emptyRuntime,
     selectedSessionKey,
     selectedSessionKnowledgePointId: runtimeFocusKnowledgePointId,
     selectedSessionType: fallbackSessionType,
@@ -603,7 +632,6 @@ export function useSessionAgent({
     data,
     error,
     handleCreateSession,
-    isMaterialsTrayOpen,
     latestAssistantMessageId,
     onQueueActivityResult: (result) => {
       pendingActivityResultRef.current = result;
@@ -615,9 +643,57 @@ export function useSessionAgent({
     selectedSessionKnowledgePointId: runtimeFocusKnowledgePointId,
     sendMessage,
   });
+  const handleReplayDeck = useCallback(
+    (deck: typeof completedActivityDecks[number]) => {
+      if (
+        selectedSessionKey === null ||
+        isAgentRunning ||
+        hasPendingActivity ||
+        replayState !== null ||
+        activityBatchState?.awaitingAgent === true
+      ) {
+        return;
+      }
+
+      const nextReplayState = buildActivityReplayState(deck);
+      if (nextReplayState === null) {
+        return;
+      }
+
+      if (error !== undefined) {
+        clearError();
+      }
+
+      pendingActivityResultRef.current = null;
+      data.setActivityBatchStateBySession((current) => {
+        if (current[selectedSessionKey] === undefined) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[selectedSessionKey];
+        return next;
+      });
+      data.setActivityReplayStateBySession((current) => ({
+        ...current,
+        [selectedSessionKey]: nextReplayState,
+      }));
+    },
+    [
+      activityBatchState?.awaitingAgent,
+      clearError,
+      data.setActivityBatchStateBySession,
+      data.setActivityReplayStateBySession,
+      error,
+      hasPendingActivity,
+      isAgentRunning,
+      replayState,
+      selectedSessionKey,
+    ],
+  );
 
   return {
     activeAssetSummary,
+    activeMaterialRead,
     activeReviewInspector,
     activeRuntime,
     activeSourceAssets,
@@ -630,12 +706,13 @@ export function useSessionAgent({
     error,
     errorMessage,
     ...actions,
+    handleReplayDeck,
     hasPendingActivity,
     hasPersistedState,
     hasStructuredRuntime,
     isAgentRunning,
     isBlankSession,
-    isMaterialsTrayOpen,
+    isReplayingDeck: replayState !== null,
     latestAssistantMessageId,
     latestReviewedEvent,
     latestReviewedLabel,

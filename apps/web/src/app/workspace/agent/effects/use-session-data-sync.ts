@@ -1,15 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   getAssetSummary,
+  getMaterialRead,
   getThreadActivityDecks,
   getInspectorBootstrap,
   getReviewInspector,
   getThreadContext,
 } from "@/lib/agent-client";
 import {
+  mergeReviewInspector,
   hydrateRuntimeSnapshotFromLearnerState,
   hydrateRuntimeSnapshotFromThreadContext,
 } from "@/domain/agent-runtime";
+import { REVIEW_HEATMAP_LOOKBACK_DAYS } from "@/domain/review-heatmap";
 import { buildSessionOrchestrationMessage } from "@/domain/session-orchestration";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
@@ -24,7 +27,7 @@ export function useSessionDataSync({
   messagesLength,
   projectId,
   requestSourceAssetIds,
-  seedRuntime,
+  fallbackRuntime,
   selectedSessionKey,
   selectedSessionKnowledgePointId,
   selectedSessionType,
@@ -35,24 +38,30 @@ export function useSessionDataSync({
   messagesLength: number;
   projectId: string;
   requestSourceAssetIds: ReadonlyArray<string>;
-  seedRuntime: ReturnType<typeof hydrateRuntimeSnapshotFromLearnerState>;
+  fallbackRuntime: ReturnType<typeof hydrateRuntimeSnapshotFromLearnerState>;
   selectedSessionKey: string | null;
   selectedSessionKnowledgePointId: string | null;
   selectedSessionType: "project" | "study" | "review";
 }): void {
+  const syncedActivityDecksKeyRef = useRef<string | null>(null);
+  const syncedSessionMetaKeyRef = useRef<string | null>(null);
   const {
     agentConnectionState,
     assetSummaryByKey,
     bootstrapLoadedKeys,
     clearBootstrapLoaded,
     markBootstrapLoaded,
+    materialReadByKey,
     sessionEntryModes,
     sessionEntryModesSetter,
     setAssetSummaryByKey,
     setCompletedActivityDecksBySession,
+    setMaterialReadByKey,
     setSessionReviewInspectors,
     setSessionSnapshots,
   } = data;
+  const selectedSessionEntryMode =
+    selectedSessionKey === null ? undefined : sessionEntryModes[selectedSessionKey];
 
   useEffect(() => {
     if (
@@ -73,7 +82,7 @@ export function useSessionDataSync({
         if (abortController.signal.aborted) return;
         if (thread_context !== null) {
           setSessionSnapshots((current) => {
-            const baseSnapshot = current[selectedSessionKey] ?? seedRuntime;
+            const baseSnapshot = current[selectedSessionKey] ?? fallbackRuntime;
             return {
               ...current,
               [selectedSessionKey]: hydrateRuntimeSnapshotFromThreadContext(
@@ -105,7 +114,7 @@ export function useSessionDataSync({
         }
         if (learner_state !== null) {
           setSessionSnapshots((current) => {
-            const baseSnapshot = current[selectedSessionKey] ?? seedRuntime;
+            const baseSnapshot = current[selectedSessionKey] ?? fallbackRuntime;
             return {
               ...current,
               [selectedSessionKey]: hydrateRuntimeSnapshotFromLearnerState(
@@ -116,12 +125,19 @@ export function useSessionDataSync({
           });
         }
         setSessionReviewInspectors((current) =>
-          current[selectedSessionKey] === review_inspector
+          current[selectedSessionKey] ===
+            mergeReviewInspector(current[selectedSessionKey], review_inspector)
             ? current
-            : { ...current, [selectedSessionKey]: review_inspector },
+            : {
+                ...current,
+                [selectedSessionKey]: mergeReviewInspector(
+                  current[selectedSessionKey],
+                  review_inspector,
+                ),
+              },
         );
         if (thread_context !== null) {
-          if (sessionEntryModes[selectedSessionKey] !== thread_context.entry_mode) {
+          if (selectedSessionEntryMode !== thread_context.entry_mode) {
             sessionEntryModesSetter((current) => ({
               ...current,
               [selectedSessionKey]: thread_context.entry_mode,
@@ -140,11 +156,11 @@ export function useSessionDataSync({
     bootstrapLoadedKeys,
     clearBootstrapLoaded,
     markBootstrapLoaded,
-    seedRuntime,
+    fallbackRuntime,
     selectedSessionKey,
     selectedSessionKnowledgePointId,
     selectedSessionType,
-    sessionEntryModes,
+    selectedSessionEntryMode,
     sessionEntryModesSetter,
     setSessionReviewInspectors,
     setSessionSnapshots,
@@ -186,13 +202,54 @@ export function useSessionDataSync({
   useEffect(() => {
     if (
       agentConnectionState !== "ready" ||
+      selectedSessionType !== "project" ||
+      assetSummaryKey === "" ||
+      materialReadByKey[assetSummaryKey] !== undefined
+    ) {
+      return;
+    }
+    const abortController = new AbortController();
+    void getMaterialRead(requestSourceAssetIds, {
+      signal: abortController.signal,
+      projectId,
+      mode: "overview",
+      maxChunks: 4,
+    })
+      .then((materialRead) => {
+        if (!abortController.signal.aborted) {
+          setMaterialReadByKey((current) =>
+            current[assetSummaryKey] !== undefined
+              ? current
+              : { ...current, [assetSummaryKey]: materialRead },
+          );
+        }
+      })
+      .catch(() => undefined);
+    return () => abortController.abort();
+  }, [
+    agentConnectionState,
+    assetSummaryKey,
+    materialReadByKey,
+    projectId,
+    requestSourceAssetIds,
+    selectedSessionType,
+    setMaterialReadByKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      agentConnectionState !== "ready" ||
       selectedSessionKey === null ||
-      selectedSessionType === "project" ||
       isAgentRunning ||
       messagesLength === 0
     ) {
       return;
     }
+    const syncKey = `${selectedSessionKey}:${messagesLength}`;
+    if (syncedActivityDecksKeyRef.current === syncKey) {
+      return;
+    }
+    syncedActivityDecksKeyRef.current = syncKey;
     const abortController = new AbortController();
     void getThreadActivityDecks(selectedSessionKey, { signal: abortController.signal })
       .then((decks) => {
@@ -203,29 +260,24 @@ export function useSessionDataSync({
           const currentDecks = current[selectedSessionKey] ?? [];
           const same =
             currentDecks.length === decks.length &&
-            currentDecks.every((deck, index) => {
-              const nextDeck = decks[index];
-              return (
-                nextDeck !== undefined &&
-                deck.deckKey === nextDeck.deckKey &&
-                deck.completedAt === nextDeck.completedAt &&
-                deck.cards.length === nextDeck.cards.length
-              );
-            });
+            JSON.stringify(currentDecks) === JSON.stringify(decks);
           if (same) {
             return current;
           }
           return { ...current, [selectedSessionKey]: decks };
         });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (syncedActivityDecksKeyRef.current === syncKey) {
+          syncedActivityDecksKeyRef.current = null;
+        }
+      });
     return () => abortController.abort();
   }, [
     agentConnectionState,
     isAgentRunning,
     messagesLength,
     selectedSessionKey,
-    selectedSessionType,
     setCompletedActivityDecksBySession,
   ]);
 
@@ -233,24 +285,17 @@ export function useSessionDataSync({
     if (
       agentConnectionState !== "ready" ||
       selectedSessionKey === null ||
-      selectedSessionKnowledgePointId === null ||
       isAgentRunning ||
       messagesLength === 0
     ) {
       return;
     }
+    const syncKey = `${selectedSessionKey}:${messagesLength}`;
+    if (syncedSessionMetaKeyRef.current === syncKey) {
+      return;
+    }
+    syncedSessionMetaKeyRef.current = syncKey;
     const abortController = new AbortController();
-    void getReviewInspector(selectedSessionKey, selectedSessionKnowledgePointId, { signal: abortController.signal })
-      .then((reviewInspector) => {
-        if (!abortController.signal.aborted) {
-          setSessionReviewInspectors((current) =>
-            current[selectedSessionKey] === reviewInspector
-              ? current
-              : { ...current, [selectedSessionKey]: reviewInspector },
-          );
-        }
-      })
-      .catch(() => undefined);
     void getThreadContext(selectedSessionKey, { signal: abortController.signal })
       .then((threadContext) => {
         if (!abortController.signal.aborted && threadContext !== null) {
@@ -258,10 +303,10 @@ export function useSessionDataSync({
             ...current,
             [selectedSessionKey]: hydrateRuntimeSnapshotFromThreadContext(
               threadContext,
-              current[selectedSessionKey] ?? seedRuntime,
+              current[selectedSessionKey] ?? fallbackRuntime,
             ),
           }));
-          if (sessionEntryModes[selectedSessionKey] !== threadContext.entry_mode) {
+          if (selectedSessionEntryMode !== threadContext.entry_mode) {
             sessionEntryModesSetter((current) => ({
               ...current,
               [selectedSessionKey]: threadContext.entry_mode,
@@ -269,7 +314,41 @@ export function useSessionDataSync({
           }
         }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (syncedSessionMetaKeyRef.current === syncKey) {
+          syncedSessionMetaKeyRef.current = null;
+        }
+      });
+    if (
+      selectedSessionType === "review" &&
+      selectedSessionKnowledgePointId !== null
+    ) {
+      void getReviewInspector(selectedSessionKey, selectedSessionKnowledgePointId, {
+        days: REVIEW_HEATMAP_LOOKBACK_DAYS,
+        signal: abortController.signal,
+      })
+        .then((reviewInspector) => {
+          if (!abortController.signal.aborted) {
+            setSessionReviewInspectors((current) =>
+              current[selectedSessionKey] ===
+                mergeReviewInspector(current[selectedSessionKey], reviewInspector)
+                ? current
+                : {
+                    ...current,
+                    [selectedSessionKey]: mergeReviewInspector(
+                      current[selectedSessionKey],
+                      reviewInspector,
+                    ),
+                  },
+            );
+          }
+        })
+        .catch(() => {
+          if (syncedSessionMetaKeyRef.current === syncKey) {
+            syncedSessionMetaKeyRef.current = null;
+          }
+        });
+    }
     return () => abortController.abort();
   }, [
     agentConnectionState,
@@ -277,9 +356,10 @@ export function useSessionDataSync({
     messagesLength,
     selectedSessionKey,
     selectedSessionKnowledgePointId,
-    sessionEntryModes,
+    selectedSessionType,
+    selectedSessionEntryMode,
     sessionEntryModesSetter,
-    setCompletedActivityDecksBySession,
     setSessionReviewInspectors,
+    fallbackRuntime,
   ]);
 }

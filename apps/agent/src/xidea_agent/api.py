@@ -25,13 +25,21 @@ from xidea_agent.state import (
     KnowledgePoint,
     KnowledgePointState,
     KnowledgePointSuggestionResolution,
+    Project,
+    ProjectBootstrap,
+    ProjectMaterial,
     StatePatch,
     StreamEvent,
     StudyPlan,
     SourceAsset,
+    Session,
     build_initial_graph_state,
 )
-from xidea_agent.tools import build_asset_summary_payload, build_review_context_payload
+from xidea_agent.tools import (
+    build_asset_summary_payload,
+    build_material_read_payload,
+    build_review_context_payload,
+)
 
 
 class ProjectMaterialUploadRequest(BaseModel):
@@ -156,6 +164,61 @@ def create_app(
             "db_path": str(repository.db_path) if repository is not None else None,
         }
 
+    @app.get("/projects", response_model=list[Project])
+    def list_projects() -> list[Project]:
+        repo = _require_repository(repository)
+        return repo.list_projects()
+
+    @app.get("/projects/{project_id}", response_model=ProjectBootstrap)
+    def get_project_bootstrap(project_id: str) -> ProjectBootstrap:
+        repo = _require_repository(repository)
+        project = repo.get_project(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        project_materials = [
+            _to_workspace_project_material(project_id, material)
+            for material in repo.list_project_materials(project_id)
+        ]
+        sessions = [_to_workspace_session(record) for record in repo.list_project_threads(project_id)]
+        knowledge_points = repo.list_project_knowledge_points(project_id)
+        knowledge_point_states = [
+            state
+            for point in knowledge_points
+            if (state := repo.get_knowledge_point_state(point.id)) is not None
+        ]
+
+        return ProjectBootstrap(
+            project=project,
+            sessions=sessions,
+            project_materials=project_materials,
+            session_attachments=[],
+            knowledge_points=knowledge_points,
+            knowledge_point_states=knowledge_point_states,
+            project_memory=repo.get_project_memory(project_id),
+            project_learning_profile=repo.get_project_learning_profile(project_id),
+        )
+
+    @app.get("/projects/{project_id}/sessions/{session_id}")
+    def get_project_session_detail(project_id: str, session_id: str) -> dict[str, object]:
+        repo = _require_repository(repository)
+        session_record = next(
+            (record for record in repo.list_project_threads(project_id) if record["thread_id"] == session_id),
+            None,
+        )
+        if session_record is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        return {
+            "session": _to_workspace_session(session_record).model_dump(mode="json"),
+            "thread_context": repo.get_thread_context(session_id),
+            "session_attachments": [],
+            "recent_messages": [
+                {"role": message.role, "content": message.content}
+                for message in repo.list_recent_messages(session_id, limit=50)
+            ],
+        }
+
     @app.get("/projects/{project_id}/consolidation-preview")
     def consolidation_preview(project_id: str, limit: int = 5) -> dict[str, object]:
         repo = _require_repository(repository)
@@ -275,6 +338,25 @@ def create_app(
             project_id=project_id,
         )
 
+    @app.get("/materials/read")
+    def material_read(
+        material_ids: str = "",
+        project_id: str | None = None,
+        query: str | None = None,
+        mode: str = "overview",
+        max_chunks: int = 6,
+    ) -> dict[str, object]:
+        material_id_list = [material_id.strip() for material_id in material_ids.split(",") if material_id.strip()]
+        normalized_mode = "targeted" if mode == "targeted" else "overview"
+        return build_material_read_payload(
+            material_id_list,
+            repository=repository,
+            project_id=project_id,
+            query=query,
+            mode=normalized_mode,
+            max_chunks=max(1, min(max_chunks, 12)),
+        )
+
     @app.get("/threads/{thread_id}/recent-messages")
     def recent_messages(thread_id: str, limit: int = 8) -> list[dict[str, str]]:
         repo = _require_repository(repository)
@@ -387,6 +469,37 @@ def _build_default_repository() -> SQLiteRepository | None:
     repository = SQLiteRepository(db_path)
     repository.initialize()
     return repository
+
+
+def _to_workspace_session(record: dict[str, object]) -> Session:
+    return Session(
+        id=str(record["thread_id"]),
+        project_id=str(record["project_id"]),
+        type=str(record["session_type"]),
+        title=str(record["title"]),
+        status="closed" if str(record["status"]) == "已关闭" else "active",
+        focus_knowledge_point_ids=(
+            [str(record["knowledge_point_id"])] if record.get("knowledge_point_id") else []
+        ),
+        current_activity_id=None,
+        created_at=record.get("created_at"),
+        updated_at=record.get("updated_at"),
+    )
+
+
+def _to_workspace_project_material(project_id: str, material: SourceAsset) -> ProjectMaterial:
+    return ProjectMaterial(
+        id=material.id,
+        project_id=project_id,
+        kind=material.kind,
+        title=material.title,
+        source_uri=material.source_uri,
+        content_ref=material.content_ref,
+        summary=material.summary,
+        status="archived" if material.status == "archived" else "active",
+        created_at=material.created_at,
+        updated_at=material.updated_at,
+    )
 
 
 def _load_allowed_origins() -> list[str]:

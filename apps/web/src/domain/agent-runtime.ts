@@ -1,9 +1,8 @@
-import { MODE_LABELS, buildStudyPlan } from "./planner";
+import { MODE_LABELS } from "./planner";
 import type { SessionType } from "./project-workspace";
 import type {
   LearningActivity,
   LearningActivitySubmission,
-  LearnerProfile,
   LearningMode,
   LearningUnit,
   ProjectContext,
@@ -315,6 +314,8 @@ export interface AgentThreadContext {
   readonly source_asset_ids: ReadonlyArray<string>;
   readonly session_orchestration: AgentSessionOrchestration | null;
   readonly orchestration_events: ReadonlyArray<AgentSessionOrchestrationEventRecord>;
+  readonly plan: AgentPlan | null;
+  readonly activities: ReadonlyArray<AgentActivity>;
   readonly updated_at: string;
 }
 
@@ -350,6 +351,45 @@ export interface AgentAssetSummary {
   readonly summary: string;
 }
 
+export interface AgentMaterialReadMaterial {
+  readonly id: string;
+  readonly title: string;
+  readonly kind: SourceAsset["kind"];
+  readonly topic: string;
+  readonly contentExcerpt: string;
+  readonly keyConcepts: ReadonlyArray<string>;
+  readonly relevanceHint: string;
+  readonly chunkIds: ReadonlyArray<string>;
+}
+
+export interface AgentMaterialReadChunk {
+  readonly chunkId: string;
+  readonly materialId: string;
+  readonly title: string;
+  readonly text: string;
+  readonly locator: string | null;
+  readonly score: number | null;
+}
+
+export interface AgentMaterialReadCitation {
+  readonly chunkId: string;
+  readonly materialId: string;
+  readonly title: string;
+  readonly locator: string | null;
+  readonly label: string;
+}
+
+export interface AgentMaterialRead {
+  readonly mode: "overview" | "targeted";
+  readonly query: string | null;
+  readonly materialIds: ReadonlyArray<string>;
+  readonly materials: ReadonlyArray<AgentMaterialReadMaterial>;
+  readonly keyConcepts: ReadonlyArray<string>;
+  readonly chunks: ReadonlyArray<AgentMaterialReadChunk>;
+  readonly citations: ReadonlyArray<AgentMaterialReadCitation>;
+  readonly summary: string;
+}
+
 export interface AgentReviewEvent {
   readonly event_kind: "reviewed" | "scheduled";
   readonly event_at: string;
@@ -381,6 +421,51 @@ export interface AgentReviewInspector {
   readonly events: ReadonlyArray<AgentReviewEvent>;
 }
 
+function getReviewEventKey(event: AgentReviewEvent): string {
+  return `${event.event_kind}:${event.event_at}:${event.review_reason ?? ""}`;
+}
+
+function sortReviewEvents(
+  events: ReadonlyArray<AgentReviewEvent>,
+): ReadonlyArray<AgentReviewEvent> {
+  return [...events].sort(
+    (left, right) =>
+      new Date(left.event_at).getTime() - new Date(right.event_at).getTime(),
+  );
+}
+
+export function mergeReviewInspector(
+  current: AgentReviewInspector | null | undefined,
+  next: AgentReviewInspector | null,
+): AgentReviewInspector | null {
+  if (next === null) {
+    return null;
+  }
+
+  if (current === null || current === undefined || current.focusUnitId !== next.focusUnitId) {
+    return next;
+  }
+
+  const mergedEvents = new Map<string, AgentReviewEvent>();
+  for (const event of current.events) {
+    mergedEvents.set(getReviewEventKey(event), event);
+  }
+  for (const event of next.events) {
+    mergedEvents.set(getReviewEventKey(event), event);
+  }
+
+  return {
+    ...next,
+    scheduledAt: next.scheduledAt ?? current.scheduledAt,
+    reviewCount: Math.max(next.reviewCount, current.reviewCount),
+    lapseCount: Math.max(next.lapseCount, current.lapseCount),
+    performanceTrend: next.performanceTrend ?? current.performanceTrend,
+    lastReviewOutcome: next.lastReviewOutcome ?? current.lastReviewOutcome,
+    summary: next.summary.trim() === "" ? current.summary : next.summary,
+    events: sortReviewEvents([...mergedEvents.values()]),
+  };
+}
+
 export interface AgentInspectorBootstrap {
   readonly thread_context: AgentThreadContext | null;
   readonly learner_state: AgentLearnerUnitState | null;
@@ -395,7 +480,7 @@ export interface RuntimeSignalCard {
 }
 
 export interface RuntimeSnapshot {
-  readonly source: "mock" | "hydrated-state" | "live-agent";
+  readonly source: "empty" | "hydrated-state" | "live-agent";
   readonly state: {
     readonly mastery: number;
     readonly understandingLevel: number;
@@ -861,47 +946,47 @@ export function buildAgentRequest(input: {
   };
 }
 
-export function buildMockRuntimeSnapshot(
-  profile: LearnerProfile,
+export function buildEmptyRuntimeSnapshot(
   unit: LearningUnit,
   sessionType: SessionType = "study",
 ): RuntimeSnapshot {
-  const plan = buildStudyPlan(unit, profile.state);
-  const activities: ReadonlyArray<LearningActivity> = [];
-  const activity: LearningActivity | null = null;
+  const unitTitle = unit.title.trim() || "当前知识点";
+  const isProjectSession = sessionType === "project";
 
   return withActivities({
-    source: "mock",
+    source: "empty",
     state: {
-      mastery: profile.state.mastery,
-      understandingLevel: profile.state.understandingLevel,
-      memoryStrength: profile.state.memoryStrength,
-      confusion: profile.state.confusion,
+      mastery: 0,
+      understandingLevel: 0,
+      memoryStrength: 0,
+      confusion: 0,
       transferReadiness: null,
-      weakSignals: profile.state.weakSignals,
-      recommendedAction: profile.state.recommendedAction,
-      lastReviewedAt: profile.state.lastReviewedAt,
-      nextReviewAt: profile.state.nextReviewAt,
+      weakSignals: [],
+      recommendedAction: "teach",
+      lastReviewedAt: null,
+      nextReviewAt: null,
     },
-    stateSource: profile.stateSource,
-    signalCards: profile.diagnosisSignals,
+    stateSource: "当前还没有回读到 learner state。",
+    signalCards: [],
     decision: {
-      title: plan.decision.title,
-      reason: plan.decision.reason,
-      objective: plan.decision.objective,
+      title: isProjectSession ? "等待项目编排" : "等待学习编排",
+      reason: "当前还没有真实 agent 判断。",
+      objective: "先等待真实上下文、状态和编排结果回读。",
       confidence: null,
     },
     plan: {
-      headline: plan.headline,
-      summary: plan.summary,
-      steps: plan.steps,
-      highlightedModes: plan.steps.map((step) => step.mode),
-      primaryMode: plan.steps[0]?.mode ?? null,
+      headline: `等待围绕「${unitTitle}」回读真实学习路径`,
+      summary: "当前先展示空态；拿到真实 agent 结果后再展示下一步。",
+      steps: [],
+      highlightedModes: [],
+      primaryMode: null,
     },
-    writeback: plan.writeback,
-    activity,
-    activities,
-    assistantMessage: `${plan.decision.reason} 这轮我会先用「${plan.decision.title}」推进，目标是${plan.decision.objective}。`,
+    writeback: [],
+    activity: null,
+    activities: [],
+    assistantMessage: isProjectSession
+      ? "当前 session 还没有真实 project 编排结果。"
+      : "当前 session 还没有真实学习编排结果。",
     streamStatusPhase: null,
     streamStatusLabel: null,
     rationale: [],
@@ -953,13 +1038,26 @@ export function hydrateRuntimeSnapshotFromThreadContext(
   threadContext: AgentThreadContext,
   fallbackSnapshot: RuntimeSnapshot,
 ): RuntimeSnapshot {
-  return {
+  const activities = normalizeAgentActivities(threadContext.activities ?? []);
+  return withActivities({
     ...fallbackSnapshot,
+    plan:
+      threadContext.plan === null
+        ? fallbackSnapshot.plan
+        : {
+            headline: threadContext.plan.headline,
+            summary: threadContext.plan.summary,
+            steps: threadContext.plan.steps,
+            highlightedModes: threadContext.plan.steps.map((step) => step.mode),
+            primaryMode: threadContext.plan.selected_mode,
+          },
+    activity: activities[0] ?? fallbackSnapshot.activity,
+    activities: activities.length > 0 ? activities : fallbackSnapshot.activities,
     orchestration: buildOrchestrationState({
       current: threadContext.session_orchestration,
       timeline: threadContext.orchestration_events,
     }),
-  };
+  });
 }
 
 export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot {

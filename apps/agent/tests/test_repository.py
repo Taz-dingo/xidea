@@ -185,6 +185,10 @@ def test_repository_persists_session_orchestration_in_thread_context(tmp_path: P
         "kp-retrieval",
     ]
     assert thread_context["orchestration_events"][0]["kind"] == "plan_created"
+    assert thread_context["plan"] is not None
+    assert len(thread_context["activities"]) == 2
+    assert thread_context["plan"]["selected_mode"] in {"guided-qa", "contrast-drill"}
+    assert thread_context["activities"][0]["title"] != ""
 
 
 def test_repository_persists_and_resolves_knowledge_point_suggestion(tmp_path: Path) -> None:
@@ -507,6 +511,8 @@ def test_repository_persists_activity_result_writeback_to_project_level_state(tm
     assert knowledge_point_state.review_status == "scheduled"
     assert project_memory is not None
     assert "最近一次 review 结果" in project_memory.summary
+    assert "T" not in project_memory.summary
+    assert "+00:00" not in project_memory.summary
     assert project_learning_profile is not None
     assert project_learning_profile.current_stage == "stabilizing"
     assert project_context is not None
@@ -537,6 +543,23 @@ def test_repository_persists_thread_activity_decks(tmp_path: Path) -> None:
                         "activityPrompt": "说明为什么不能只做向量召回。",
                         "knowledgePointId": "kp-rag-boundary",
                         "kind": "guided-qa",
+                        "activitySnapshot": {
+                            "id": "activity-1",
+                            "kind": "quiz",
+                            "knowledgePointId": "kp-rag-boundary",
+                            "title": "边界判断",
+                            "objective": "判断为什么不能只做向量召回。",
+                            "prompt": "说明为什么不能只做向量召回。",
+                            "support": "先区分候选召回和最终回答质量。",
+                            "mode": "contrast-drill",
+                            "evidence": ["召回不等于回答可用。"],
+                            "submitLabel": "提交判断",
+                            "input": {
+                                "type": "text",
+                                "placeholder": "写出你的判断",
+                                "minLength": 4,
+                            },
+                        },
                         "action": "submit",
                         "responseText": "因为召回不等于回答可用。",
                         "selectedChoiceId": None,
@@ -551,6 +574,23 @@ def test_repository_persists_thread_activity_decks(tmp_path: Path) -> None:
                         "activityPrompt": "区分召回率和排序质量。",
                         "knowledgePointId": "kp-rag-boundary",
                         "kind": "contrast-drill",
+                        "activitySnapshot": {
+                            "id": "activity-2",
+                            "kind": "quiz",
+                            "knowledgePointId": "kp-rag-boundary",
+                            "title": "信号辨析",
+                            "objective": "区分召回率和排序质量。",
+                            "prompt": "区分召回率和排序质量。",
+                            "support": "不要把命中候选和最终排序混为一谈。",
+                            "mode": "contrast-drill",
+                            "evidence": ["召回率高也可能排错。"],
+                            "submitLabel": "提交判断",
+                            "input": {
+                                "type": "text",
+                                "placeholder": "写出你的判断",
+                                "minLength": 4,
+                            },
+                        },
                         "action": "submit",
                         "responseText": "召回率高也可能排错。",
                         "selectedChoiceId": None,
@@ -573,6 +613,7 @@ def test_repository_persists_thread_activity_decks(tmp_path: Path) -> None:
     assert decks[0]["session_type"] == "study"
     assert decks[0]["knowledge_point_id"] == "kp-rag-boundary"
     assert len(decks[0]["cards"]) == 2
+    assert decks[0]["cards"][0]["activitySnapshot"]["title"] == "边界判断"
 
 
 def test_repository_persists_project_materials(tmp_path: Path) -> None:

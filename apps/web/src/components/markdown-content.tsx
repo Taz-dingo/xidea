@@ -58,10 +58,11 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
   return nodes;
 }
 
-function renderParagraph(text: string, key: string): ReactElement {
+function renderParagraph(text: string, key: string, trailingInline?: ReactNode): ReactElement {
   return (
     <p className="text-[14px] leading-6 text-[var(--xidea-charcoal)]" key={key}>
       {renderInline(text, key)}
+      {trailingInline}
     </p>
   );
 }
@@ -69,9 +70,11 @@ function renderParagraph(text: string, key: string): ReactElement {
 export function MarkdownContent({
   content,
   className = "",
+  trailingInline,
 }: {
   content: string;
   className?: string;
+  trailingInline?: ReactNode;
 }): ReactElement {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   const nodes: ReactNode[] = [];
@@ -81,11 +84,13 @@ export function MarkdownContent({
   let codeBuffer: string[] = [];
   let inCodeBlock = false;
 
-  const flushParagraph = () => {
+  const flushParagraph = (nextTrailingInline?: ReactNode) => {
     if (paragraphBuffer.length === 0) {
       return;
     }
-    nodes.push(renderParagraph(paragraphBuffer.join(" "), `paragraph-${nodes.length}`));
+    nodes.push(
+      renderParagraph(paragraphBuffer.join(" "), `paragraph-${nodes.length}`, nextTrailingInline),
+    );
     paragraphBuffer = [];
   };
 
@@ -196,7 +201,7 @@ export function MarkdownContent({
     paragraphBuffer.push(line.trim());
   }
 
-  flushParagraph();
+  flushParagraph(trailingInline);
   flushBullets();
   flushOrdered();
   flushCode();

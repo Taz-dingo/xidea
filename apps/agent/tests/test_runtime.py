@@ -100,16 +100,29 @@ def test_run_agent_v0_prefers_clarify_for_confusion() -> None:
     ]
 
 
-def test_run_agent_v0_falls_back_to_rule_diagnosis_when_llm_unavailable() -> None:
+def test_run_agent_v0_falls_back_to_rule_diagnosis_when_llm_unavailable(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-1",
+            title="uploaded-multimodal.md",
+            kind="note",
+            topic="多模态学习编排",
+            summary="为什么万物皆可 Token 化会让多模态与具身智能共享同一套建模范式。",
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
     result = run_agent_v0(
         build_request(
             session_type="project",
             entry_mode="material-import",
             target_unit_id=None,
             topic="围绕材料推进多模态学习编排",
-            source_asset_ids=["asset-2"],
+            source_asset_ids=["material-1"],
             messages=[{"role": "user", "content": "请根据材料帮我沉淀一个知识点"}],
         ),
+        repository=repository,
         llm=build_mock_llm(side_effect=RuntimeError("401 auth failed")),
     )
 
@@ -117,11 +130,9 @@ def test_run_agent_v0_falls_back_to_rule_diagnosis_when_llm_unavailable() -> Non
     assert result.graph_state.diagnosis.recommended_action == "clarify"
     assert result.graph_state.plan is not None
     assert result.graph_state.activity is None
-    assert len(result.graph_state.knowledge_point_suggestions) == 3
-    assert "asset-2" in (result.graph_state.assistant_message or "") or "检索召回与重排对比笔记" in (
-        result.graph_state.assistant_message or ""
-    )
-    assert "知识点" in (result.graph_state.assistant_message or "")
+    assert result.graph_state.knowledge_point_suggestions == []
+    assert "uploaded-multimodal.md" in (result.graph_state.assistant_message or "")
+    assert "不能只凭材料标题或一段很薄的摘要" in (result.graph_state.assistant_message or "")
     assert any("rule-based fallback diagnosis" in item for item in result.graph_state.rationale)
 
 
@@ -480,6 +491,313 @@ def test_material_import_uses_asset_knowledge_point_candidates_when_reply_is_gen
     assert "统一建模范式" in result.graph_state.knowledge_point_suggestions[0].description
 
 
+def test_material_import_uses_llm_title_extraction_when_material_has_only_paragraph_judgments(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "materials.md"
+    material_path.write_text(
+        "你的观察非常敏锐！这三个领域在近几年的爆发性进步绝非偶然，它们在底层逻辑上有着极深的血缘关系。"
+        "简单来说：LLM不仅是另外两者的催化剂，更是它们的底层大脑或架构模板。"
+        "现在的 AI 正在经历一场从文本、多模态到具身智能的统一建模。\n",
+        encoding="utf-8",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-llm-fallback",
+            title="LLM、音视频、具身智能.md",
+            kind="note",
+            topic="大模型、音视频、具身智能",
+            summary="验证段落型材料也能提炼知识点。",
+            source_uri="LLM、音视频、具身智能.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = build_request(
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-llm-fallback"],
+        messages=[{"role": "user", "content": "你现在能看到完整上下文吗？可以根据材料生成知识点了吗"}],
+    )
+
+    def _response(content: str):
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message)
+        return SimpleNamespace(choices=[choice])
+
+    generic_main_decision = json.dumps(
+        {
+            "signals": [
+                {
+                    "kind": "project-relevance",
+                    "score": 0.94,
+                    "confidence": 0.88,
+                    "summary": "材料与当前项目高度相关",
+                },
+            ],
+            "diagnosis": {
+                "recommended_action": "clarify",
+                "reason": "先围绕材料收敛知识点，再决定后续学习安排。",
+                "confidence": 0.86,
+                "primary_issue": "missing-context",
+                "needs_tool": False,
+            },
+            "reply": "我先按这份材料收敛学习主题，再继续往知识点沉淀和后续编排推进。",
+            "plan": {
+                "headline": "围绕材料收敛学习方向",
+                "summary": "先沉淀知识点，再决定学习与复习安排。",
+                "selected_mode": "guided-qa",
+                "expected_outcome": "明确下一轮最值得沉淀的学习对象。",
+                "steps": [
+                    {
+                        "id": "clarify-material",
+                        "title": "围绕材料收敛主题",
+                        "mode": "guided-qa",
+                        "reason": "先把材料里的稳定判断拉出来。",
+                        "outcome": "明确后续要沉淀的知识点。",
+                    }
+                ],
+            },
+            "activities": [],
+        },
+        ensure_ascii=False,
+    )
+    fallback_plan = json.dumps(
+        {
+            "headline": "围绕材料收敛学习方向",
+            "summary": "先沉淀知识点，再决定学习与复习安排。",
+            "selected_mode": "guided-qa",
+            "expected_outcome": "明确下一轮最值得沉淀的学习对象。",
+            "steps": [
+                {
+                    "id": "clarify-material",
+                    "title": "围绕材料收敛主题",
+                    "mode": "guided-qa",
+                    "reason": "先把材料里的稳定判断拉出来。",
+                    "outcome": "明确后续要沉淀的知识点。",
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    fallback_response_bundle = json.dumps(
+        {
+            "reply": "我先按这份材料收敛学习主题。",
+            "plan": json.loads(fallback_plan),
+        },
+        ensure_ascii=False,
+    )
+    title_extraction_payload = json.dumps(
+        [
+            "LLM 是音视频与具身智能的底层大脑",
+            "多模态与具身智能正在共享统一建模范式",
+        ],
+        ensure_ascii=False,
+    )
+    enrichment_payload = json.dumps(
+        [
+            {
+                "title": "LLM 是音视频与具身智能的底层大脑",
+                "description": "这条知识点强调 LLM 不只是文本模型，而是在多模态和具身系统里逐渐承担统一语义接口、高层推理和任务组织的角色。",
+                "reason": "材料正文已经明确把 LLM 提到“底层大脑/架构模板”的位置，先沉淀这条判断，后面才能继续拆清多模态与具身智能为什么会向同一底层靠拢。",
+            },
+            {
+                "title": "多模态与具身智能正在共享统一建模范式",
+                "description": "这条知识点解释为什么文本、多模态和具身智能不是彼此割裂的路线，而是在表示、推理接口和系统组织上逐步汇入同一套建模思路。",
+                "reason": "材料已经把“三者不是偶然并进”说成稳定判断，如果不先收成知识点，后续讨论很容易重新退回成三个分散话题。",
+            },
+        ],
+        ensure_ascii=False,
+    )
+
+    prefix_responses = iter([
+        _response(generic_main_decision),
+        _response(fallback_response_bundle),
+        _response(fallback_plan),
+    ])
+
+    def _side_effect(*args, **kwargs):
+        messages = kwargs.get("messages", [])
+        system_prompt = messages[0]["content"] if messages else ""
+        if "材料知识点提炼模块" in system_prompt:
+            return _response(title_extraction_payload)
+        if "知识点沉淀模块" in system_prompt:
+            return _response(enrichment_payload)
+        return next(prefix_responses, _response(fallback_plan))
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = _side_effect
+    llm = LLMClient(client=mock_client, model="gpt-4o-mini")
+
+    result = run_agent_v0(request, repository=repository, llm=llm)
+
+    titles = [suggestion.title for suggestion in result.graph_state.knowledge_point_suggestions]
+    assert titles == [
+        "LLM 是音视频与具身智能的底层大脑",
+        "多模态与具身智能正在共享统一建模范式",
+    ]
+    assert all(suggestion.description for suggestion in result.graph_state.knowledge_point_suggestions)
+    assert "不能只凭材料标题或一段很薄的摘要" not in (result.graph_state.assistant_message or "")
+
+
+def test_material_import_allows_more_than_three_suggestions_for_dense_material(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "dense-materials.md"
+    material_path.write_text(
+        "# RAG 学习提纲\n\n"
+        "1. RAG不是简单检索+拼接\n"
+        "2. 为什么需要重排\n"
+        "3. 上下文构造如何影响最终答案质量\n"
+        "4. 什么时候该回到业务场景解释方案取舍\n",
+        encoding="utf-8",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-dense",
+            title="rag-learning-outline.md",
+            kind="note",
+            topic="RAG 学习编排",
+            summary="验证 dense material 可以沉淀超过 3 条知识点。",
+            source_uri="rag-learning-outline.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = build_request(
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进 RAG 学习编排",
+        source_asset_ids=["material-uploaded-dense"],
+        messages=[{"role": "user", "content": "根据这份材料生成知识点"}],
+    )
+
+    def _response(content: str):
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message)
+        return SimpleNamespace(choices=[choice])
+
+    generic_main_decision = json.dumps(
+        {
+            "signals": [
+                {
+                    "kind": "project-relevance",
+                    "score": 0.92,
+                    "confidence": 0.86,
+                    "summary": "材料与当前项目高度相关",
+                },
+            ],
+            "diagnosis": {
+                "recommended_action": "clarify",
+                "reason": "先围绕材料收敛知识点，再决定后续学习安排。",
+                "confidence": 0.86,
+                "primary_issue": "missing-context",
+                "needs_tool": False,
+            },
+            "reply": "我先按这份材料收敛学习主题，再继续往知识点沉淀和后续编排推进。",
+            "plan": {
+                "headline": "围绕材料收敛学习方向",
+                "summary": "先沉淀知识点，再决定学习与复习安排。",
+                "selected_mode": "guided-qa",
+                "expected_outcome": "明确下一轮最值得沉淀的学习对象。",
+                "steps": [
+                    {
+                        "id": "clarify-material",
+                        "title": "围绕材料收敛主题",
+                        "mode": "guided-qa",
+                        "reason": "先把材料里的稳定判断拉出来。",
+                        "outcome": "明确后续要沉淀的知识点。",
+                    }
+                ],
+            },
+            "activities": [],
+        },
+        ensure_ascii=False,
+    )
+    fallback_plan = json.dumps(
+        {
+            "headline": "围绕材料收敛学习方向",
+            "summary": "先沉淀知识点，再决定学习与复习安排。",
+            "selected_mode": "guided-qa",
+            "expected_outcome": "明确下一轮最值得沉淀的学习对象。",
+            "steps": [
+                {
+                    "id": "clarify-material",
+                    "title": "围绕材料收敛主题",
+                    "mode": "guided-qa",
+                    "reason": "先把材料里的稳定判断拉出来。",
+                    "outcome": "明确后续要沉淀的知识点。",
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    fallback_response_bundle = json.dumps(
+        {
+            "reply": "我先按这份材料收敛学习主题。",
+            "plan": json.loads(fallback_plan),
+        },
+        ensure_ascii=False,
+    )
+    enrichment_payload = json.dumps(
+        [
+            {
+                "title": "RAG不是简单检索+拼接",
+                "description": "这条知识点解释为什么 RAG 的质量不只取决于把文档塞进上下文，而取决于检索、排序和组织是否共同服务于问题。",
+                "reason": "材料已经把这条判断直接列成提纲，如果不先沉淀，后面很容易继续把 RAG 误解成机械拼接。",
+            },
+            {
+                "title": "为什么需要重排",
+                "description": "这条知识点关注候选文档已经召回后，为什么还需要再按问题相关性重新排序，才能把真正有用的证据推到前面。",
+                "reason": "材料把重排列成独立主题，说明它不是召回细节，而是影响最终答案质量的独立判断点。",
+            },
+            {
+                "title": "上下文构造如何影响最终答案质量",
+                "description": "这条知识点强调最终回答质量不仅依赖召回，还依赖截断、组织顺序和证据拼装方式。",
+                "reason": "如果不把上下文构造单独收住，后续学习时很容易把回答质量问题全部归因到检索阶段。",
+            },
+            {
+                "title": "什么时候该回到业务场景解释方案取舍",
+                "description": "这条知识点关注技术方案解释不能停在机制层，而要在合适时机回到具体业务问题、约束和评审标准上说明取舍。",
+                "reason": "材料已经把这一点列成独立提纲，说明这不是表达补充，而是面向项目迁移的关键学习对象。",
+            },
+        ],
+        ensure_ascii=False,
+    )
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = [
+        _response(generic_main_decision),
+        _response(fallback_response_bundle),
+        _response(fallback_plan),
+        _response(enrichment_payload),
+        _response(enrichment_payload),
+        _response(enrichment_payload),
+    ]
+    llm = LLMClient(client=mock_client, model="gpt-4o-mini")
+
+    result = run_agent_v0(request, repository=repository, llm=llm)
+
+    titles = [suggestion.title for suggestion in result.graph_state.knowledge_point_suggestions]
+    assert titles == [
+        "RAG不是简单检索+拼接",
+        "为什么需要重排",
+        "上下文构造如何影响最终答案质量",
+        "什么时候该回到业务场景解释方案取舍",
+    ]
+
+
 def test_iter_agent_v0_events_material_import_reply_matches_generated_suggestions(
     tmp_path: Path,
 ) -> None:
@@ -658,6 +976,48 @@ def test_iter_agent_v0_events_reuses_existing_material_suggestion_and_reply(tmp_
     assert "LLM、音视频" in "".join(text_deltas)
     assert suggestion_event.suggestions[0].id == existing_suggestion.id
     assert suggestion_event.suggestions[0].title == existing_suggestion.title
+
+
+def test_material_import_does_not_split_filename_tokens_into_fake_knowledge_points(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    material_path = tmp_path / "thin-material.md"
+    material_path.write_text("大模型学习", encoding="utf-8")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-uploaded-thin",
+            title="LLM、音视频、具身智能.md",
+            kind="note",
+            topic="大模型学习",
+            summary="大模型学习",
+            source_uri="LLM、音视频、具身智能.md",
+            content_ref=str(material_path),
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+
+    request = build_request(
+        thread_id="material-thread-thin",
+        session_type="project",
+        entry_mode="material-import",
+        target_unit_id=None,
+        topic="围绕材料推进多模态学习编排",
+        source_asset_ids=["material-uploaded-thin"],
+        messages=[{"role": "user", "content": "先根据这份材料帮我整理一下"}],
+    )
+
+    result = run_agent_v0(
+        request,
+        repository=repository,
+        llm=build_mock_llm(side_effect=RuntimeError("401 auth failed")),
+    )
+
+    assert result.graph_state.knowledge_point_suggestions == []
+    assert "不能只凭材料标题" in (result.graph_state.assistant_message or "")
+    assert "「LLM」" not in (result.graph_state.assistant_message or "")
 
 
 def test_project_session_never_emits_activity_even_with_target_unit() -> None:
@@ -948,22 +1308,46 @@ def test_iter_agent_v0_events_streams_reply_in_multiple_chunks() -> None:
     assert "".join(text_deltas) == long_reply
 
 
-def test_run_agent_v0_uses_asset_summary_for_material_import() -> None:
+def test_run_agent_v0_uses_material_read_for_material_import(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.save_project_material(
+        SourceAsset(
+            id="material-1",
+            title="rag-material.md",
+            kind="note",
+            topic="RAG 设计",
+            summary="检索、重排和上下文构造的关系。",
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
+    repository.save_project_material(
+        SourceAsset(
+            id="material-2",
+            title="rerank-material.md",
+            kind="note",
+            topic="Rerank",
+            summary="重排把最相关的证据排到前面。",
+            status="ready",
+        ),
+        project_id="rag-demo",
+    )
     request = build_request(
         entry_mode="material-import",
-        source_asset_ids=["asset-1", "asset-2"],
+        source_asset_ids=["material-1", "material-2"],
         messages=[{"role": "user", "content": "帮我先看这份材料，再判断我下一步该怎么学"}],
         target_unit_id=None,
     )
 
     llm = build_mock_llm_for_material_import()
-    result = run_agent_v0(request, llm=llm)
+    result = run_agent_v0(request, repository=repository, llm=llm)
 
     assert result.graph_state.diagnosis is not None
     assert result.graph_state.diagnosis.needs_tool is False
     assert result.graph_state.tool_intent == "none"
     assert result.graph_state.tool_result is not None
-    assert result.graph_state.tool_result.kind == "asset-summary"
+    assert result.graph_state.tool_result.kind == "material-read"
+    assert len(result.graph_state.tool_result.payload["chunks"]) >= 1
     assert llm.client.chat.completions.create.call_count == 1
 
 
@@ -1220,6 +1604,69 @@ def test_run_agent_v0_applies_activity_result_writeback_and_preloads_project_sta
     assert result.graph_state.knowledge_point_state_writebacks[0].knowledge_point_id == "kp-rag-boundary"
     assert result.graph_state.project_memory_writeback is not None
     assert result.graph_state.project_learning_profile_writeback is not None
+
+
+def test_run_agent_v0_stops_emitting_new_activities_when_orchestration_is_completed(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-last-step",
+                project_id="rag-demo",
+                title="DiT 架构如何打通 LLM 与音视频生成",
+                description="理解 DiT 如何复用 Transformer 训练基础设施。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            )
+        ]
+    )
+
+    first_request = build_request(
+        target_unit_id="kp-last-step",
+        knowledge_point_id="kp-last-step",
+        topic="DiT 架构如何打通 LLM 与音视频生成",
+        messages=[{"role": "user", "content": "带我学一轮这个知识点"}],
+    )
+    first_result = run_agent_v0(first_request, repository=repository, llm=build_mock_llm())
+    repository.save_run(first_request, first_result)
+
+    followup_request = build_request(
+        target_unit_id="kp-last-step",
+        knowledge_point_id="kp-last-step",
+        topic="DiT 架构如何打通 LLM 与音视频生成",
+        messages=[{"role": "user", "content": "继续吧"}],
+        activity_result={
+            "run_id": "run-final-step",
+            "project_id": "rag-demo",
+            "session_id": "thread-1",
+            "activity_id": "activity-final",
+            "knowledge_point_id": "kp-last-step",
+            "result_type": "exercise",
+            "action": "submit",
+            "answer": "DiT 用 Transformer 替代 U-Net，让音视频生成能复用 LLM 的训练基础设施和规模化经验。",
+            "meta": {"correct": True},
+        },
+    )
+    followup_result = run_agent_v0(
+        followup_request,
+        repository=repository,
+        llm=build_mock_llm(),
+    )
+
+    assert followup_result.graph_state.session_orchestration is not None
+    assert followup_result.graph_state.session_orchestration.status == "completed"
+    assert followup_result.graph_state.request.target_unit_id is None
+    assert followup_result.graph_state.request.knowledge_point_id is None
+    assert followup_result.graph_state.activities == []
+    assert followup_result.graph_state.activity is None
+    assert "可以先结束这次学习" in (followup_result.graph_state.assistant_message or "")
 
 
 # ---------------------------------------------------------------------------

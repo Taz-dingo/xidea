@@ -6,10 +6,12 @@ import { resetLegacyWorkspaceStorage } from "@/app/workspace/store/persistence";
 import type {
   AgentAssetSummary,
   AgentEntryMode,
+  AgentMaterialRead,
   AgentReviewInspector,
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
 import {
+  type ActivityReplayState,
   type ActivityResolution,
   type CompletedActivityDeck,
   type SessionActivityBatchState,
@@ -31,12 +33,14 @@ interface WorkspaceRuntimeState {
   readonly sessionSnapshots: Record<string, RuntimeSnapshot>;
   readonly sessionReviewInspectors: Record<string, AgentReviewInspector | null>;
   readonly assetSummaryByKey: Record<string, AgentAssetSummary>;
+  readonly materialReadByKey: Record<string, AgentMaterialRead>;
   readonly agentConnectionState: "checking" | "ready" | "offline";
   readonly sessionMessagesById: Record<string, UIMessage[]>;
   readonly activityResolutionsBySession: Record<string, Record<string, ActivityResolution>>;
   readonly runningSessionIds: Record<string, boolean>;
   readonly bootstrapLoadedKeys: Record<string, boolean>;
   readonly activityBatchStateBySession: Record<string, SessionActivityBatchState>;
+  readonly activityReplayStateBySession: Record<string, ActivityReplayState | null>;
   readonly completedActivityDecksBySession: Record<string, ReadonlyArray<CompletedActivityDeck>>;
   readonly setSessionEntryModes: (
     nextState: SetStateAction<Record<string, AgentEntryMode>>,
@@ -56,6 +60,9 @@ interface WorkspaceRuntimeState {
   readonly setAssetSummaryByKey: (
     nextState: SetStateAction<Record<string, AgentAssetSummary>>,
   ) => void;
+  readonly setMaterialReadByKey: (
+    nextState: SetStateAction<Record<string, AgentMaterialRead>>,
+  ) => void;
   readonly setAgentConnectionState: (
     nextState: SetStateAction<"checking" | "ready" | "offline">,
   ) => void;
@@ -70,6 +77,9 @@ interface WorkspaceRuntimeState {
   ) => void;
   readonly setActivityBatchStateBySession: (
     nextState: SetStateAction<Record<string, SessionActivityBatchState>>,
+  ) => void;
+  readonly setActivityReplayStateBySession: (
+    nextState: SetStateAction<Record<string, ActivityReplayState | null>>,
   ) => void;
   readonly setCompletedActivityDecksBySession: (
     nextState: SetStateAction<Record<string, ReadonlyArray<CompletedActivityDeck>>>,
@@ -89,12 +99,14 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()(
       sessionSnapshots: {},
       sessionReviewInspectors: {},
       assetSummaryByKey: {},
+      materialReadByKey: {},
       agentConnectionState: "checking",
       sessionMessagesById: {},
       activityResolutionsBySession: {},
       runningSessionIds: {},
       bootstrapLoadedKeys: {},
       activityBatchStateBySession: {},
+      activityReplayStateBySession: {},
       completedActivityDecksBySession: {},
       setSessionEntryModes: (nextState) =>
         set((state) => ({
@@ -120,6 +132,10 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()(
         set((state) => ({
           assetSummaryByKey: resolveState(nextState, state.assetSummaryByKey),
         })),
+      setMaterialReadByKey: (nextState) =>
+        set((state) => ({
+          materialReadByKey: resolveState(nextState, state.materialReadByKey),
+        })),
       setAgentConnectionState: (nextState) =>
         set((state) => ({
           agentConnectionState: resolveState(nextState, state.agentConnectionState),
@@ -144,6 +160,13 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()(
           activityBatchStateBySession: resolveState(
             nextState,
             state.activityBatchStateBySession,
+          ),
+        })),
+      setActivityReplayStateBySession: (nextState) =>
+        set((state) => ({
+          activityReplayStateBySession: resolveState(
+            nextState,
+            state.activityReplayStateBySession,
           ),
         })),
       setCompletedActivityDecksBySession: (nextState) =>

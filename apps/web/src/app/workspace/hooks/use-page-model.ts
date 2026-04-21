@@ -177,50 +177,44 @@ export function useWorkspacePageModel({
   );
   const projectReviewHeatmap = useMemo(
     () =>
-      reviewEvents.length === 0
+      data.projectReviewInspectors.length === 0
         ? buildEmptyReviewHeatmap()
         : buildReviewHeatmap(
-            reviewEvents,
-            latestKnowledgePointReviewedEvent?.event_at
-              ? formatDateLabel(latestKnowledgePointReviewedEvent.event_at)
-              : null,
+            data.projectReviewInspectors.flatMap((inspector) => inspector.events),
+            formatDateLabel(
+              getLatestReviewEvent(
+                data.projectReviewInspectors.flatMap((inspector) => inspector.events),
+                "reviewed",
+              )?.event_at ?? null,
+            ),
             formatDateLabel(
               getLatestIsoDate(
-                data.knowledgePointReviewInspectors.map(
-                  (inspector) => inspector.scheduledAt,
-                ),
+                data.projectReviewInspectors.map((inspector) => inspector.scheduledAt),
               ),
             ),
           ),
-    [
-      data.knowledgePointReviewInspectors,
-      latestKnowledgePointReviewedEvent?.event_at,
-      reviewEvents,
-    ],
+    [data.projectReviewInspectors],
   );
   const projectReviewHeatmapExpanded = useMemo(
     () =>
-      reviewEvents.length === 0
+      data.projectReviewInspectors.length === 0
         ? buildEmptyReviewHeatmap(52)
         : buildReviewHeatmap(
-            reviewEvents,
-            latestKnowledgePointReviewedEvent?.event_at
-              ? formatDateLabel(latestKnowledgePointReviewedEvent.event_at)
-              : null,
+            data.projectReviewInspectors.flatMap((inspector) => inspector.events),
+            formatDateLabel(
+              getLatestReviewEvent(
+                data.projectReviewInspectors.flatMap((inspector) => inspector.events),
+                "reviewed",
+              )?.event_at ?? null,
+            ),
             formatDateLabel(
               getLatestIsoDate(
-                data.knowledgePointReviewInspectors.map(
-                  (inspector) => inspector.scheduledAt,
-                ),
+                data.projectReviewInspectors.map((inspector) => inspector.scheduledAt),
               ),
             ),
             52,
           ),
-    [
-      data.knowledgePointReviewInspectors,
-      latestKnowledgePointReviewedEvent?.event_at,
-      reviewEvents,
-    ],
+    [data.projectReviewInspectors],
   );
   const knowledgePointReviewHistorySummary = useMemo(
     () =>

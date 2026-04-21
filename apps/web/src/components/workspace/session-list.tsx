@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Info } from "lucide-react";
 import type { SessionItem } from "@/domain/project-workspace";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,8 +11,8 @@ const SESSION_LIST_EXPAND_THRESHOLD = 4;
 
 export function SessionListSection({
   actions,
-  description,
   emptyText,
+  infoTooltip,
   onDeleteSession,
   onOpenSession,
   selectedSessionId = null,
@@ -21,8 +21,8 @@ export function SessionListSection({
   title,
 }: {
   actions?: ReactNode;
-  description: string;
   emptyText: string;
+  infoTooltip?: ReactNode;
   onDeleteSession?: (sessionId: string) => void;
   onOpenSession: (sessionId: string) => void;
   selectedSessionId?: string | null;
@@ -74,9 +74,22 @@ export function SessionListSection({
 
   return (
     <div className="space-y-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3">
-      <div className="space-y-1">
+      <div className="flex items-center gap-2">
         <p className="xidea-kicker text-[var(--xidea-stone)]">{title}</p>
-        <p className="text-sm leading-6 text-[var(--xidea-stone)]">{description}</p>
+        {infoTooltip ? (
+          <div className="group relative">
+            <button
+              aria-label={`${title}说明`}
+              className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-stone)] transition-colors hover:border-[var(--xidea-selection-border)] hover:text-[var(--xidea-selection-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2"
+              type="button"
+            >
+              <Info className="h-3.5 w-3.5" />
+            </button>
+            <div className="pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-[17rem] rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-3 shadow-[0_18px_36px_rgba(20,20,19,0.10)] group-hover:block group-focus-within:block">
+              {infoTooltip}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {actions ? <div className="space-y-2">{actions}</div> : null}

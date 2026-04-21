@@ -86,11 +86,11 @@ export function getSessionTypeLabel(type: SessionType): string {
 export function getSessionTypeDescription(type: SessionType): string {
   switch (type) {
     case "project":
-      return "围绕学习方向、材料线索和知识点演化持续推进。";
+      return "研讨用于围绕项目目标、材料判断和知识点沉淀持续推进，先把方向讲清楚。";
     case "review":
-      return "针对已学知识点做回忆校准和复盘。";
+      return "复习用于回忆校准和稳定判断，检查是不是真的记住了、会用了。";
     case "study":
-      return "围绕当前知识点继续学习编排和练习。";
+      return "学习用于推进一个知识点，系统会安排讲解、追问和题卡来带你往前走。";
   }
 }
 

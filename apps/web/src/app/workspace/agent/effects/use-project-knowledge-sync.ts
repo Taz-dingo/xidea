@@ -29,7 +29,7 @@ export function useProjectKnowledgeSync({
   const { agentConnectionState, setKnowledgePoints } = data;
 
   useEffect(() => {
-    if (agentConnectionState !== "ready") {
+    if (agentConnectionState !== "ready" || projectId.trim() === "") {
       return;
     }
 

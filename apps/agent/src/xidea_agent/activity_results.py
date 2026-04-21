@@ -19,6 +19,23 @@ _TRUE_STRINGS = {"true", "1", "yes", "y", "success", "pass", "passed", "correct"
 _FALSE_STRINGS = {"false", "0", "no", "n", "fail", "failed", "incorrect", "wrong"}
 
 
+def _format_summary_datetime(value: datetime, now: datetime) -> str:
+    localized_value = value.astimezone()
+    localized_now = now.astimezone()
+
+    if localized_value.date() == localized_now.date():
+        return f"今天 {localized_value:%H:%M}"
+
+    tomorrow = localized_now.date() + timedelta(days=1)
+    if localized_value.date() == tomorrow:
+        return f"明天 {localized_value:%H:%M}"
+
+    if localized_value.year == localized_now.year:
+        return f"{localized_value.month}月{localized_value.day}日 {localized_value:%H:%M}"
+
+    return f"{localized_value.year}-{localized_value.month:02d}-{localized_value.day:02d} {localized_value:%H:%M}"
+
+
 def apply_activity_result_writeback(state: GraphState) -> GraphState:
     result = state.request.activity_result
     if result is None or state.learner_unit_state is None or state.state_patch is None:
@@ -277,7 +294,9 @@ def _build_project_memory(
 
     review_patch = state.state_patch.review_patch if state.state_patch is not None else None
     if review_patch is not None and review_patch.scheduled_at is not None:
-        parts.append(f"下次复习已安排在 {review_patch.scheduled_at.isoformat()}")
+        parts.append(
+            f"下次复习已安排在 {_format_summary_datetime(review_patch.scheduled_at, now)}"
+        )
     if state.diagnosis is not None:
         parts.append(f"当前主要问题仍是 {state.diagnosis.primary_issue}")
 

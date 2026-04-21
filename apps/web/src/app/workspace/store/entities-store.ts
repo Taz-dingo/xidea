@@ -1,12 +1,7 @@
 import type { SetStateAction } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import {
-  initialKnowledgePoints,
-  initialProjects,
-} from "@/data/project-workspace-demo";
 import { resetLegacyWorkspaceStorage } from "@/app/workspace/store/persistence";
-import { sourceAssets } from "@/data/demo";
 import type {
   KnowledgePointItem,
   ProjectItem,
@@ -50,39 +45,17 @@ interface WorkspaceEntitiesState {
   ) => void;
 }
 
-const initialProjectMaterials = Object.fromEntries(
-  initialProjects.map((project) => [
-    project.id,
-    Array.from(
-      new Set(
-        initialKnowledgePoints
-          .filter((point) => point.projectId === project.id)
-          .flatMap((point) => point.sourceAssetIds),
-      ),
-    ),
-  ]),
-);
-
-const initialProjectAssets = Object.fromEntries(
-  initialProjects.map((project) => [
-    project.id,
-    sourceAssets.filter((asset) =>
-      (initialProjectMaterials[project.id] ?? []).includes(asset.id),
-    ),
-  ]),
-);
-
 resetLegacyWorkspaceStorage();
 
 export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
   persist(
     (set) => ({
-      projects: initialProjects,
-      knowledgePoints: initialKnowledgePoints,
+      projects: [],
+      knowledgePoints: [],
       sessions: [],
-      sourceAssets,
-      projectMaterialIdsByProject: initialProjectMaterials,
-      projectAssetsByProject: initialProjectAssets,
+      sourceAssets: [],
+      projectMaterialIdsByProject: {},
+      projectAssetsByProject: {},
       setProjects: (nextState) =>
         set((state) => ({ projects: resolveState(nextState, state.projects) })),
       setKnowledgePoints: (nextState) =>
@@ -106,7 +79,7 @@ export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
         })),
     }),
     {
-      name: "xidea-workspace-entities-v4",
+      name: "xidea-workspace-entities-v5",
       partialize: (state) => ({
         knowledgePoints: state.knowledgePoints,
         projectAssetsByProject: state.projectAssetsByProject,
@@ -115,7 +88,7 @@ export const useWorkspaceEntitiesStore = create<WorkspaceEntitiesState>()(
         sourceAssets: state.sourceAssets,
       }),
       storage: createJSONStorage(() => localStorage),
-      version: 5,
+      version: 6,
     },
   ),
 );

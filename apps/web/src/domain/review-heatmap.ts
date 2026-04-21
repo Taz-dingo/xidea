@@ -1,5 +1,7 @@
 import type { AgentReviewEvent } from "@/domain/agent-runtime";
 
+export const REVIEW_HEATMAP_LOOKBACK_DAYS = 366;
+
 export interface ReviewHeatmapCell {
   readonly dateKey: string;
   readonly tooltip: string;

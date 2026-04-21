@@ -17,6 +17,14 @@ _MARKDOWN_DECORATION_PATTERNS = (
     (re.compile(r"\[([^\]]+)\]\([^)]*\)"), r"\1"),
     (re.compile(r">\s*", re.MULTILINE), ""),
 )
+_CANDIDATE_EXTRACTION_PATTERNS = (
+    (re.compile(r"`{1,3}"), ""),
+    (re.compile(r"[*_~]+"), ""),
+    (re.compile(r"^#{1,6}\s*", re.MULTILINE), ""),
+    (re.compile(r"!\[[^\]]*\]\([^)]*\)"), ""),
+    (re.compile(r"\[([^\]]+)\]\([^)]*\)"), r"\1"),
+    (re.compile(r">\s*", re.MULTILINE), ""),
+)
 _METADATA_PREFIXES = (
     "created:",
     "modified:",
@@ -39,6 +47,8 @@ _KNOWLEDGE_POINT_PATTERNS = (
         r"(?:^|[\n；;])\s*(?:\d+|[一二三四])[)）.、]\s*(?P<title>[^；;。\n]+)"
     ),
 )
+
+MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS = 6
 
 
 def clean_material_text(text: str) -> str:
@@ -70,9 +80,34 @@ def normalize_material_text(text: str, *, limit: int = 900) -> str:
     return normalized[:limit]
 
 
-def extract_material_knowledge_point_candidates(text: str, *, limit: int = 3) -> list[str]:
-    cleaned = clean_material_text(text)
-    if not cleaned:
+def _prepare_candidate_source_text(text: str) -> str:
+    if not text.strip():
+        return ""
+
+    prepared = _MARKDOWN_FRONTMATTER_PATTERN.sub("", text, count=1)
+    for pattern, replacement in _CANDIDATE_EXTRACTION_PATTERNS:
+        prepared = pattern.sub(replacement, prepared)
+
+    lines: list[str] = []
+    for raw_line in prepared.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        lowered = line.lower()
+        if any(lowered.startswith(prefix) for prefix in _METADATA_PREFIXES):
+            continue
+        lines.append(line)
+
+    return "\n".join(lines)
+
+
+def extract_material_knowledge_point_candidates(
+    text: str,
+    *,
+    limit: int = MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS,
+) -> list[str]:
+    candidate_source = _prepare_candidate_source_text(text)
+    if not candidate_source:
         return []
 
     titles: list[str] = []
@@ -86,7 +121,7 @@ def extract_material_knowledge_point_candidates(text: str, *, limit: int = 3) ->
             titles.append(normalized[:48])
 
     for pattern in _KNOWLEDGE_POINT_PATTERNS:
-        for match in pattern.finditer(cleaned):
+        for match in pattern.finditer(candidate_source):
             _append(match.group("title"))
             if len(titles) >= limit:
                 return titles[:limit]

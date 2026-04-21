@@ -23,7 +23,6 @@ export function createSessionActions({
   data,
   error,
   handleCreateSession,
-  isMaterialsTrayOpen,
   latestAssistantMessageId,
   onQueueActivityResult,
   prepareSourceAssetsForSend,
@@ -51,7 +50,6 @@ export function createSessionActions({
     knowledgePointId?: string | null,
     initialSourceAssetIds?: ReadonlyArray<string>,
   ) => { id: string } | null;
-  isMaterialsTrayOpen: boolean;
   latestAssistantMessageId: string | null;
   onQueueActivityResult: (result: AgentActivityResult | null) => void;
   prepareSourceAssetsForSend: () => void;
@@ -134,11 +132,6 @@ export function createSessionActions({
       if (createdSession !== null) {
         if (selectedSessionKey !== null) {
           data.setSessionSourceAssetIds((current) => {
-            const next = { ...current };
-            delete next[selectedSessionKey];
-            return next;
-          });
-          data.setSessionMaterialTrayOpen((current) => {
             const next = { ...current };
             delete next[selectedSessionKey];
             return next;
@@ -308,14 +301,6 @@ export function createSessionActions({
     handleSkipActivity,
     handleSubmitActivity,
     handleSubmitPrompt,
-    handleToggleMaterialsTray: () => {
-      if (selectedSessionKey !== null && activeSessionType === "project") {
-        data.setSessionMaterialTrayOpen((current) => ({
-          ...current,
-          [selectedSessionKey]: !isMaterialsTrayOpen,
-        }));
-      }
-    },
     handleToggleProjectMaterial: (assetId: string) => {
       if (selectedSessionKey !== null && activeSessionType === "project") {
         data.setSessionSourceAssetIds((current) => {

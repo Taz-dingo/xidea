@@ -7,12 +7,12 @@ import type {
   SessionType,
   WorkspaceSection,
 } from "@/domain/project-workspace";
-import { getSessionTypeDescription } from "@/domain/project-workspace";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
   KnowledgePointCard,
+  SessionTypeGuide,
   SessionTypeBadge,
 } from "@/components/workspace/core";
 import { SessionListSection } from "@/components/workspace/session-list";
@@ -104,8 +104,8 @@ export function WorkspaceBrowseScreen({
                 研讨
               </Button>
             }
-            description={getSessionTypeDescription("project")}
             emptyText="当前还没有研讨会话。"
+            infoTooltip={<SessionTypeGuide types={["project"]} />}
             onDeleteSession={onDeleteSession}
             onOpenSession={onOpenSession}
             sessions={projectSessions}
@@ -137,8 +137,8 @@ export function WorkspaceBrowseScreen({
                 </Button>
               </div>
             }
-            description="学习负责推进新知识，复习负责回拉和校准。"
             emptyText="当前还没有学习或复习会话。"
+            infoTooltip={<SessionTypeGuide types={["study", "review"]} />}
             onDeleteSession={onDeleteSession}
             onOpenSession={onOpenSession}
             sessions={learningSessions}

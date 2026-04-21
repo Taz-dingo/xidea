@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
+import sys
+from contextlib import contextmanager
+from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -33,6 +35,15 @@ class _FakeProviderSafetyError(Exception):
                 "message": "系统检测到输入或生成内容可能包含不安全或敏感内容，请您避免输入易产生敏感内容的提示语。",
             },
         }
+
+
+@contextmanager
+def _patch_openai_constructor():
+    mock_openai = MagicMock(return_value=object())
+    fake_openai_module = ModuleType("openai")
+    fake_openai_module.OpenAI = mock_openai
+    with patch.dict(sys.modules, {"openai": fake_openai_module}):
+        yield mock_openai
 
 
 def _make_diagnosis(**overrides) -> Diagnosis:
@@ -468,9 +479,7 @@ def test_build_llm_client_uses_explicit_base_url_for_generic_key() -> None:
         },
         clear=True,
     ):
-        with patch("openai.OpenAI") as mock_openai:
-            mock_openai.return_value = object()
-
+        with _patch_openai_constructor() as mock_openai:
             llm = build_llm_client()
 
     mock_openai.assert_called_once()
@@ -486,9 +495,7 @@ def test_build_llm_client_uses_explicit_base_url_for_generic_key() -> None:
 
 def test_build_llm_client_generic_key_defaults_to_openai_when_base_url_missing() -> None:
     with patch.dict("os.environ", {"XIDEA_LLM_API_KEY": "generic-key"}, clear=True):
-        with patch("openai.OpenAI") as mock_openai:
-            mock_openai.return_value = object()
-
+        with _patch_openai_constructor() as mock_openai:
             llm = build_llm_client()
 
     mock_openai.assert_called_once()
@@ -503,9 +510,7 @@ def test_build_llm_client_generic_key_defaults_to_openai_when_base_url_missing()
 
 def test_build_llm_client_accepts_zhipu_api_key_alias() -> None:
     with patch.dict("os.environ", {"ZHIPU_API_KEY": "zhipu-key"}, clear=True):
-        with patch("openai.OpenAI") as mock_openai:
-            mock_openai.return_value = object()
-
+        with _patch_openai_constructor() as mock_openai:
             llm = build_llm_client()
 
     mock_openai.assert_called_once()
@@ -517,11 +522,53 @@ def test_build_llm_client_accepts_zhipu_api_key_alias() -> None:
     call_kwargs["http_client"].close()
 
 
+def test_build_llm_client_infers_zhipu_base_url_from_glm_model_for_generic_key() -> None:
+    with patch.dict(
+        "os.environ",
+        {
+            "XIDEA_LLM_API_KEY": "zhipu-key",
+            "XIDEA_LLM_MODEL": "glm-5",
+        },
+        clear=True,
+    ):
+        with _patch_openai_constructor() as mock_openai:
+            llm = build_llm_client()
+
+    mock_openai.assert_called_once()
+    call_kwargs = mock_openai.call_args.kwargs
+    assert call_kwargs["api_key"] == "zhipu-key"
+    assert call_kwargs["base_url"] == ZHIPU_OPENAI_BASE_URL
+    assert llm.model == "glm-5"
+    assert llm.provider == "zhipu"
+    assert llm.base_url == ZHIPU_OPENAI_BASE_URL
+    call_kwargs["http_client"].close()
+
+
+def test_build_llm_client_infers_zhipu_base_url_from_glm_model_for_openai_key_fallback() -> None:
+    with patch.dict(
+        "os.environ",
+        {
+            "OPENAI_API_KEY": "zhipu-key",
+            "XIDEA_LLM_MODEL": "glm-5",
+        },
+        clear=True,
+    ):
+        with _patch_openai_constructor() as mock_openai:
+            llm = build_llm_client()
+
+    mock_openai.assert_called_once()
+    call_kwargs = mock_openai.call_args.kwargs
+    assert call_kwargs["api_key"] == "zhipu-key"
+    assert call_kwargs["base_url"] == ZHIPU_OPENAI_BASE_URL
+    assert llm.model == "glm-5"
+    assert llm.provider == "zhipu"
+    assert llm.base_url == ZHIPU_OPENAI_BASE_URL
+    call_kwargs["http_client"].close()
+
+
 def test_build_llm_client_keeps_openai_backwards_compatibility() -> None:
     with patch.dict("os.environ", {"OPENAI_API_KEY": "openai-key"}, clear=True):
-        with patch("openai.OpenAI") as mock_openai:
-            mock_openai.return_value = object()
-
+        with _patch_openai_constructor() as mock_openai:
             llm = build_llm_client()
 
     mock_openai.assert_called_once()
@@ -541,9 +588,7 @@ def test_build_llm_client_can_opt_in_to_proxy_environment() -> None:
         {"XIDEA_LLM_API_KEY": "zhipu-key", "XIDEA_LLM_TRUST_ENV": "true"},
         clear=True,
     ):
-        with patch("openai.OpenAI") as mock_openai:
-            mock_openai.return_value = object()
-
+        with _patch_openai_constructor() as mock_openai:
             build_llm_client()
 
     http_client = mock_openai.call_args.kwargs["http_client"]

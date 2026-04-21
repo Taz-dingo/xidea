@@ -43,7 +43,7 @@ export function useProjectConsolidation({
       return;
     }
 
-    if (agentConnectionState !== "ready") {
+    if (agentConnectionState !== "ready" || projectId.trim() === "") {
       setState((current) => ({
         ...current,
         status: current.snapshot === null ? "idle" : current.status,

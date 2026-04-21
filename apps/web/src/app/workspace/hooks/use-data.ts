@@ -1,41 +1,47 @@
 import { useMemo } from "react";
-import { learnerProfiles, learningUnits } from "@/data/demo";
-import {
-  initialKnowledgePoints,
-  initialProjects,
-} from "@/data/project-workspace-demo";
 import {
   getSelectedKnowledgePoint,
   getSelectedKnowledgePointAssets,
   getKnowledgePointRelatedSessions,
-  getKnowledgePointReviewInspectors,
+  getSessionReviewInspectors,
   getSelectedProject,
   getSelectedProjectKnowledgePoints,
   getSelectedProjectMaterials,
   getSelectedProjectSessions,
 } from "@/app/workspace/model/selectors";
+import {
+  EMPTY_KNOWLEDGE_POINT_ITEM,
+  EMPTY_LEARNING_UNIT,
+  EMPTY_PROJECT_ITEM,
+} from "@/app/workspace/model/empty-state";
+import { useWorkspaceBackendHydration } from "@/app/workspace/hooks/data/use-backend-hydration";
 import { useWorkspaceDrafts } from "@/app/workspace/hooks/data/use-drafts";
 import { useWorkspaceStores } from "@/app/workspace/hooks/data/use-stores";
 
 export function useWorkspaceData() {
-  const initialProfile = learnerProfiles[1] ?? learnerProfiles[0];
-  const initialUnit = learningUnits[0];
-  const initialProject = initialProjects[0];
-  const initialKnowledgePoint = initialKnowledgePoints[0];
+  const initialUnit = EMPTY_LEARNING_UNIT;
+  const initialProject = EMPTY_PROJECT_ITEM;
+  const initialKnowledgePoint = EMPTY_KNOWLEDGE_POINT_ITEM;
   const isDevEnvironment = import.meta.env.DEV;
 
-  if (
-    initialProfile === undefined ||
-    initialUnit === undefined ||
-    initialProject === undefined ||
-    initialKnowledgePoint === undefined
-  ) {
-    throw new Error(
-      "Demo data must contain at least one learner profile, learning unit, knowledge point, and project.",
-    );
-  }
-
   const stores = useWorkspaceStores();
+  useWorkspaceBackendHydration({
+    selectedProjectId: stores.selectedProjectId,
+    selectedKnowledgePointId: stores.selectedKnowledgePointId,
+    selectedSessionId: stores.selectedSessionId,
+    setProjects: stores.setProjects,
+    setKnowledgePoints: stores.setKnowledgePoints,
+    setSessions: stores.setSessions,
+    setSourceAssets: stores.setSourceAssets,
+    setProjectMaterialIdsByProject: stores.setProjectMaterialIdsByProject,
+    setProjectAssetsByProject: stores.setProjectAssetsByProject,
+    sessionEntryModesSetter: stores.setSessionEntryModes,
+    setSessionSourceAssetIds: stores.setSessionSourceAssetIds,
+    setSessionMessagesById: stores.setSessionMessagesById,
+    setSelectedProjectId: stores.setSelectedProjectId,
+    setSelectedKnowledgePointId: stores.setSelectedKnowledgePointId,
+    setSelectedSessionId: stores.setSelectedSessionId,
+  });
   const selectedSession = stores.sessions.find(
     (session) => session.id === stores.selectedSessionId,
   );
@@ -74,11 +80,19 @@ export function useWorkspaceData() {
   );
   const knowledgePointReviewInspectors = useMemo(
     () =>
-      getKnowledgePointReviewInspectors(
+      getSessionReviewInspectors(
         knowledgePointRelatedSessions,
         stores.sessionReviewInspectors,
       ),
     [knowledgePointRelatedSessions, stores.sessionReviewInspectors],
+  );
+  const projectReviewInspectors = useMemo(
+    () =>
+      getSessionReviewInspectors(
+        selectedProjectSessions,
+        stores.sessionReviewInspectors,
+      ),
+    [selectedProjectSessions, stores.sessionReviewInspectors],
   );
   const selectedProjectMaterials = useMemo(
     () =>
@@ -89,8 +103,6 @@ export function useWorkspaceData() {
     [selectedProject.id, selectedProjectAssets, stores.projectMaterialIdsByProject],
   );
   const drafts = useWorkspaceDrafts({
-    initialKnowledgePoint,
-    initialProject,
     projectMaterialIdsByProject: stores.projectMaterialIdsByProject,
     selectedKnowledgePoint,
     selectedProject,
@@ -101,12 +113,12 @@ export function useWorkspaceData() {
 
   return {
     initialKnowledgePoint,
-    initialProfile,
     initialProject,
     initialUnit,
     isDevEnvironment,
     knowledgePointRelatedSessions,
     knowledgePointReviewInspectors,
+    projectReviewInspectors,
     selectedKnowledgePoint,
     selectedKnowledgePointAssets,
     selectedProject,

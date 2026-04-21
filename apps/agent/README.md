@@ -19,7 +19,7 @@ LLM 是核心 pedagogical agent，规则仅作为 guardrails：
 | 变量 | 必须 | 默认值 | 说明 |
 |------|------|--------|------|
 | `XIDEA_LLM_API_KEY` | 建议必填 | 无 | 通用 LLM key；应用层主配置入口 |
-| `XIDEA_LLM_BASE_URL` | 否 | OpenAI 默认 | 自定义 OpenAI-compatible base URL；接 GLM 时填 `https://open.bigmodel.cn/api/paas/v4/` |
+| `XIDEA_LLM_BASE_URL` | 否 | OpenAI 默认 | 自定义 OpenAI-compatible base URL；接 GLM 时填 `https://open.bigmodel.cn/api/paas/v4/`，若 `XIDEA_LLM_MODEL` 以 `glm` 开头则会自动推断为该地址 |
 | `XIDEA_LLM_MODEL` | 否 | `glm-5` 或 `gpt-4o-mini` | LLM 模型 |
 | `XIDEA_LLM_TRUST_ENV` | 否 | `false` | 是否继承代理环境变量 |
 | `XIDEA_LLM_CA_BUNDLE` | 否 | 无 | 自定义 CA 证书文件路径 |
@@ -27,7 +27,7 @@ LLM 是核心 pedagogical agent，规则仅作为 guardrails：
 | `XIDEA_AGENT_DB_PATH` | 否 | 无 | SQLite 数据库路径 |
 | `XIDEA_AGENT_ALLOW_ORIGINS` | 否 | `localhost:5173` | CORS 允许域名 |
 
-兼容说明：`ZHIPU_API_KEY / ZAI_API_KEY / OPENAI_API_KEY` 仍可继续使用，但只作为旧环境回退读取来源，不再作为推荐配置口径。
+兼容说明：`ZHIPU_API_KEY / ZAI_API_KEY / OPENAI_API_KEY` 仍可继续使用，但只作为旧环境回退读取来源，不再作为推荐配置口径。若只配置 `XIDEA_LLM_API_KEY + XIDEA_LLM_MODEL=glm-*`，运行时也会自动按智谱 OpenAI-compatible 路径发请求。
 
 ## 本地运行
 

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Any
 
+from xidea_agent.material_reader import (
+    MaterialReadMode,
+    build_material_chunks,
+    read_material_text,
+    select_material_chunks,
+)
 from xidea_agent.material_content import (
+    MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS,
     extract_material_knowledge_point_candidates,
     normalize_material_text,
 )
@@ -21,187 +27,17 @@ from xidea_agent.state import (
 )
 
 
-_ASSET_CATALOG: dict[str, SourceAsset] = {
-    "asset-1": SourceAsset(
-        id="asset-1",
-        title="RAG 系统设计评审记录.pdf",
-        kind="pdf",
-        topic="当前项目方案",
-    ),
-    "asset-2": SourceAsset(
-        id="asset-2",
-        title="检索召回与重排对比笔记",
-        kind="note",
-        topic="概念边界",
-    ),
-    "asset-3": SourceAsset(
-        id="asset-3",
-        title="线上 bad case 复盘网页",
-        kind="web",
-        topic="真实项目反馈",
-    ),
-}
-
-_ASSET_ENRICHMENT: dict[str, dict[str, Any]] = {
-    "asset-1": {
-        "contentExcerpt": (
-            "当前 RAG 方案采用向量召回 + cross-encoder 重排两阶段架构。"
-            "评审中暴露的核心问题：召回阶段命中率达到 82%，但端到端回答准确率只有 61%，"
-            "说明召回命中不等于回答质量。重排层的 recall@5 提升了 18pp，"
-            "但上下文窗口超过 4k token 后回答质量反而下降。"
-        ),
-        "keyConcepts": [
-            "两阶段检索架构",
-            "召回命中率 vs 回答准确率",
-            "cross-encoder 重排",
-            "上下文窗口饱和效应",
-        ],
-        "relevanceHint": "直接对应当前项目的核心设计取舍，适合用来验证学习者对 RAG 架构的理解深度。",
-    },
-    "asset-2": {
-        "contentExcerpt": (
-            "向量召回的优势在于语义泛化能力，但容易把语义相似但逻辑不同的段落混在一起。"
-            "重排的核心价值不是「提高召回率」，而是「重新排列召回结果的业务相关性」。"
-            "常见误区：把重排当成召回的简单补丁，忽略了重排本身需要任务级信号。"
-        ),
-        "keyConcepts": [
-            "语义召回 vs 精确匹配",
-            "重排 ≠ 召回补丁",
-            "任务级信号的必要性",
-            "语义相似 ≠ 逻辑等价",
-        ],
-        "relevanceHint": "聚焦概念边界辨析，适合在学习者出现「召回 vs 重排」混淆时作为澄清材料。",
-    },
-    "asset-3": {
-        "contentExcerpt": (
-            "线上 bad case 分析：用户问「如何优化检索效果」时，系统召回了 3 篇语义相关文档，"
-            "但其中 2 篇讨论的是倒排索引优化而非向量检索优化。"
-            "根因：召回阶段没有区分「检索」的不同技术含义，重排模型也没有足够的领域判别能力。"
-        ),
-        "keyConcepts": [
-            "语义歧义导致的召回污染",
-            "领域判别能力不足",
-            "bad case 根因分析方法",
-            "召回质量的评估维度",
-        ],
-        "relevanceHint": "真实项目反馈，适合用来验证学习者能否把概念知识迁移到实际问题诊断。",
-    },
-}
-
-_UNIT_CATALOG: dict[str, LearningUnit] = {
-    "unit-rag-retrieval": LearningUnit(
-        id="unit-rag-retrieval",
-        title="什么时候需要重排，而不是只做向量召回",
-        summary="理解召回命中和回答质量之间的断层，以及重排的作用。",
-        weakness_tags=["概念边界", "方案取舍", "容易误配"],
-        candidate_modes=["contrast-drill", "guided-qa", "scenario-sim"],
-        difficulty=3,
-    ),
-    "unit-rag-core": LearningUnit(
-        id="unit-rag-core",
-        title="RAG 为什么不是简单检索 + 拼接",
-        summary="理解召回、重排、上下文构造与回答质量之间的关系。",
-        weakness_tags=["概念边界", "系统设计", "容易混淆"],
-        candidate_modes=["guided-qa", "contrast-drill", "scenario-sim"],
-        difficulty=4,
-    ),
-    "unit-rag-explain": LearningUnit(
-        id="unit-rag-explain",
-        title="如何把 RAG 方案解释给产品和评审",
-        summary="把技术设计转换成业务可理解的取舍说明和实施路径。",
-        weakness_tags=["表达迁移", "真实应用", "答辩压力"],
-        candidate_modes=["scenario-sim", "guided-qa", "contrast-drill"],
-        difficulty=4,
-    ),
-}
-
-_UNIT_ENRICHMENT: dict[str, dict[str, Any]] = {
-    "unit-rag-retrieval": {
-        "prerequisites": [
-            "向量相似度检索的基本原理",
-            "embedding 模型的输入输出",
-            "信息检索中 precision / recall 的含义",
-        ],
-        "commonMisconceptions": [
-            "「召回率高 = 回答质量高」：召回命中的文档可能语义相关但逻辑不对口",
-            "「重排只是对召回结果重新排序」：重排需要引入任务级信号，不只是换个排序函数",
-            "「向量召回够好就不需要重排」：即使 recall@10 很高，top-k 的排列顺序仍显著影响生成质量",
-        ],
-        "coreQuestions": [
-            "在什么条件下，只做向量召回就够了？给出一个具体场景。",
-            "重排层引入了什么额外信号，是向量召回本身无法提供的？",
-            "如果召回 recall@10=95% 但回答准确率只有 60%，最可能的瓶颈在哪里？",
-        ],
-        "relatedUnits": ["unit-rag-core", "unit-rag-explain"],
-    },
-    "unit-rag-core": {
-        "prerequisites": [
-            "大语言模型的上下文窗口机制",
-            "prompt 构造对生成质量的影响",
-            "检索增强生成的基本流程",
-        ],
-        "commonMisconceptions": [
-            "「RAG = 检索 + 拼接到 prompt」：上下文构造本身是一个需要设计的环节，不是简单拼接",
-            "「检索到的内容越多越好」：上下文窗口存在饱和效应，过多内容反而降低生成质量",
-            "「RAG 只解决知识更新问题」：RAG 同时解决知识覆盖、幻觉控制和可溯源性",
-        ],
-        "coreQuestions": [
-            "RAG 系统中「上下文构造」阶段的核心决策是什么？",
-            "为什么说「检索到 ≠ 用好」？用一个项目例子说明。",
-            "如果去掉 RAG 的重排环节，对最终回答质量的影响路径是什么？",
-        ],
-        "relatedUnits": ["unit-rag-retrieval", "unit-rag-explain"],
-    },
-    "unit-rag-explain": {
-        "prerequisites": [
-            "RAG 系统的基本技术架构",
-            "产品需求和技术方案之间的映射关系",
-            "技术评审中的常见关注点",
-        ],
-        "commonMisconceptions": [
-            "「技术方案只需要讲实现细节」：评审关注的是取舍逻辑，不是实现步骤",
-            "「用技术术语更专业」：对非技术受众，业务指标比技术概念更有说服力",
-            "「方案好就不需要准备质疑回答」：评审的核心是压力测试取舍判断，不是验证正确性",
-        ],
-        "coreQuestions": [
-            "如何用一句话向产品经理解释为什么需要重排层？",
-            "评审中被问「为什么不用更简单的关键词检索」，你会怎么回答？",
-            "如何量化 RAG 方案的 ROI，让非技术决策者理解投入产出？",
-        ],
-        "relatedUnits": ["unit-rag-core", "unit-rag-retrieval"],
-    },
-}
-
-
 def retrieve_source_assets(
     asset_ids: list[str],
     repository: SQLiteRepository | None = None,
     project_id: str | None = None,
 ) -> list[SourceAsset]:
-    if repository is not None and project_id is not None:
-        materials = repository.get_project_materials_by_ids(project_id, asset_ids)
-        materials_by_id = {material.id: material for material in materials}
-        resolved_assets = [materials_by_id[asset_id] for asset_id in asset_ids if asset_id in materials_by_id]
-        if len(resolved_assets) == len(asset_ids):
-            return resolved_assets
+    if repository is None or project_id is None:
+        return []
 
-    assets: list[SourceAsset] = []
-
-    for asset_id in asset_ids:
-        asset = _ASSET_CATALOG.get(asset_id)
-        if asset is None:
-            assets.append(
-                SourceAsset(
-                    id=asset_id,
-                    title=f"Imported asset {asset_id}",
-                    kind="note",
-                    topic="未分类材料",
-                )
-            )
-        else:
-            assets.append(asset)
-
-    return assets
+    materials = repository.get_project_materials_by_ids(project_id, asset_ids)
+    materials_by_id = {material.id: material for material in materials}
+    return [materials_by_id[asset_id] for asset_id in asset_ids if asset_id in materials_by_id]
 
 
 def _build_learning_unit_from_knowledge_point(point: KnowledgePoint) -> LearningUnit:
@@ -219,6 +55,27 @@ def _build_learning_unit_from_knowledge_point(point: KnowledgePoint) -> Learning
     )
 
 
+def _build_learning_unit_from_topic(
+    unit_id: str | None,
+    topic: str,
+) -> LearningUnit:
+    normalized_topic = " ".join(topic.strip().split())
+    title = normalized_topic or "当前学习主题"
+    summary = (
+        f"围绕「{title}」建立稳定理解、判断边界和可迁移表达。"
+        if normalized_topic
+        else "先围绕当前主题建立稳定理解、判断边界和可迁移表达。"
+    )
+    return LearningUnit(
+        id=unit_id or "current-topic",
+        title=title,
+        summary=summary,
+        weakness_tags=["知识点沉淀", "概念边界", "项目迁移"],
+        candidate_modes=["guided-qa", "contrast-drill", "scenario-sim"],
+        difficulty=3,
+    )
+
+
 def retrieve_learning_unit(
     unit_id: str | None,
     topic: str,
@@ -226,21 +83,12 @@ def retrieve_learning_unit(
     repository: SQLiteRepository | None = None,
     project_id: str | None = None,
 ) -> LearningUnit:
-    if unit_id and unit_id in _UNIT_CATALOG:
-        return _UNIT_CATALOG[unit_id]
-
     if unit_id and repository is not None and project_id is not None:
         point = repository.get_knowledge_point(project_id, unit_id)
         if point is not None:
             return _build_learning_unit_from_knowledge_point(point)
 
-    lowered = topic.lower()
-    if "重排" in topic or "rerank" in lowered:
-        return _UNIT_CATALOG["unit-rag-retrieval"]
-    if "答辩" in topic or "评审" in topic:
-        return _UNIT_CATALOG["unit-rag-explain"]
-
-    return _UNIT_CATALOG["unit-rag-core"]
+    return _build_learning_unit_from_topic(unit_id, topic)
 
 
 def resolve_tool_result(
@@ -261,6 +109,18 @@ def resolve_tool_result(
             ),
         )
 
+    if tool_intent == "material-read":
+        return ToolResult(
+            kind=tool_intent,
+            payload=_build_material_read_payload(
+                request.source_asset_ids,
+                repository=repository,
+                project_id=request.project_id,
+                query=request.messages[-1].content if request.messages else None,
+                mode="overview" if request.entry_mode == "material-import" else "targeted",
+            ),
+        )
+
     if tool_intent == "thread-memory":
         return ToolResult(
             kind=tool_intent,
@@ -268,11 +128,13 @@ def resolve_tool_result(
         )
 
     if tool_intent == "review-context":
+        if request.target_unit_id is None:
+            return None
         return ToolResult(
             kind=tool_intent,
             payload=_build_review_context_payload(
                 request.thread_id,
-                request.target_unit_id or "rag-core-unit",
+                request.target_unit_id,
                 repository,
             ),
         )
@@ -297,6 +159,17 @@ def describe_tool_registry() -> dict[str, dict[str, Any]]:
                 "assetIds",
                 "assets",
                 "keyConcepts",
+                "summary",
+            ],
+        },
+        "material-read": {
+            "description": "Read source materials as retrievable chunks with citations for overview or targeted lookup.",
+            "returns": [
+                "materialIds",
+                "materials",
+                "keyConcepts",
+                "chunks",
+                "citations",
                 "summary",
             ],
         },
@@ -352,27 +225,27 @@ def _build_asset_summary_payload(
     all_concepts: list[str] = []
 
     for asset in assets:
-        enrichment = _ASSET_ENRICHMENT.get(asset.id, {})
-        extracted_text = _read_asset_text(asset)
+        extracted_text = read_material_text(asset)
         normalized_excerpt = _normalize_asset_text(extracted_text)
         uploaded_summary = asset.summary.strip() if isinstance(asset.summary, str) else ""
         concept_source = normalized_excerpt or uploaded_summary
-        extracted_concepts = enrichment.get("keyConcepts") or _extract_key_concepts(concept_source)
-        title_concepts = _extract_title_concepts(asset.title)
-        concepts = list(dict.fromkeys([*title_concepts, *extracted_concepts]))[:4]
+        extracted_concepts = _extract_key_concepts(concept_source)
+        knowledge_point_candidates = extract_material_knowledge_point_candidates(
+            concept_source,
+            limit=MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS,
+        )
+        concepts = list(dict.fromkeys(extracted_concepts))[:4]
         all_concepts.extend(concepts)
         asset_details.append({
             "id": asset.id,
             "title": asset.title,
             "kind": asset.kind,
             "topic": asset.topic,
-            "contentExcerpt": enrichment.get("contentExcerpt", normalized_excerpt or uploaded_summary)
+            "contentExcerpt": (normalized_excerpt or uploaded_summary)
             or f"材料「{asset.title}」的内容摘要暂未提取，后续接入解析后自动补充。",
             "keyConcepts": concepts,
-            "relevanceHint": enrichment.get(
-                "relevanceHint",
-                "该材料已进入当前 project 材料池，可作为这轮 project 判断与知识点建议的上下文。",
-            ),
+            "knowledgePointCandidates": knowledge_point_candidates,
+            "relevanceHint": "该材料已进入当前 project 材料池，可作为这轮 project 判断与知识点建议的上下文。",
         })
 
     unique_concepts = list(dict.fromkeys(all_concepts))
@@ -400,6 +273,25 @@ def build_asset_summary_payload(
         asset_ids,
         repository=repository,
         project_id=project_id,
+    )
+
+
+def build_material_read_payload(
+    asset_ids: list[str],
+    *,
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+    query: str | None = None,
+    mode: MaterialReadMode = "overview",
+    max_chunks: int = 6,
+) -> dict[str, Any]:
+    return _build_material_read_payload(
+        asset_ids,
+        repository=repository,
+        project_id=project_id,
+        query=query,
+        mode=mode,
+        max_chunks=max_chunks,
     )
 
 
@@ -547,67 +439,104 @@ def _extract_key_concepts(summary: str) -> list[str]:
     return concepts
 
 
-def _extract_title_concepts(title: str) -> list[str]:
-    stem = re.sub(r"\.[^.]+$", "", title).strip()
-    if stem == "":
-        return []
-    if stem.lower().startswith("imported asset "):
-        return []
-    if re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,}", stem.lower()):
-        return []
-
-    split_parts = [
-        part.strip(" ：:-")
-        for part in re.split(r"[、/,，；;｜|]+", stem)
-        if part.strip(" ：:-")
-    ]
-    if len(split_parts) >= 2:
-        return split_parts[:4]
-
-    lowered = stem.lower()
-    if lowered.endswith(("笔记", "记录", "网页", "方案", "文档", "材料")) and len(stem) > 4:
-        stem = re.sub(r"(笔记|记录|网页|方案|文档|材料)$", "", stem).strip(" ：:-")
-
-    return [stem[:24]] if len(stem) >= 2 else []
-
-
-def _read_asset_text(asset: SourceAsset) -> str:
-    content_ref = getattr(asset, "content_ref", None)
-    if not isinstance(content_ref, str) or not content_ref.strip():
-        return asset.summary or ""
-
-    path = Path(content_ref)
-    if not path.exists() or not path.is_file():
-        return asset.summary or ""
-
-    if asset.kind in {"note", "web"}:
-        try:
-            return path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            return asset.summary or ""
-
-    if asset.kind == "pdf":
-        try:
-            from pypdf import PdfReader  # type: ignore
-        except Exception:
-            return asset.summary or ""
-
-        try:
-            reader = PdfReader(str(path))
-            page_text = []
-            for page in reader.pages[:3]:
-                extracted = page.extract_text() or ""
-                if extracted.strip():
-                    page_text.append(extracted)
-            return "\n".join(page_text) if page_text else (asset.summary or "")
-        except Exception:
-            return asset.summary or ""
-
-    return asset.summary or ""
-
-
 def _normalize_asset_text(text: str, limit: int = 900) -> str:
     return normalize_material_text(text, limit=limit)
+
+
+def _build_material_read_payload(
+    asset_ids: list[str],
+    *,
+    repository: SQLiteRepository | None = None,
+    project_id: str | None = None,
+    query: str | None = None,
+    mode: MaterialReadMode = "overview",
+    max_chunks: int = 6,
+) -> dict[str, Any]:
+    assets = retrieve_source_assets(asset_ids, repository=repository, project_id=project_id)
+    material_details: list[dict[str, Any]] = []
+    all_chunks = []
+    all_concepts: list[str] = []
+
+    for asset in assets:
+        raw_material_text = read_material_text(asset)
+        asset_chunks = build_material_chunks(asset)
+        excerpt_source = " ".join(chunk.text for chunk in asset_chunks[:2]) if asset_chunks else (asset.summary or "")
+        candidate_source = (
+            raw_material_text
+            if raw_material_text.strip()
+            else "\n".join(chunk.text for chunk in asset_chunks[:MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS])
+            if asset_chunks
+            else (asset.summary or "")
+        )
+        normalized_excerpt = _normalize_asset_text(excerpt_source)
+        key_concepts = _extract_key_concepts(normalized_excerpt)
+        knowledge_point_candidates = extract_material_knowledge_point_candidates(
+            candidate_source,
+            limit=MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS,
+        )
+        all_concepts.extend(key_concepts)
+        material_details.append({
+            "id": asset.id,
+            "title": asset.title,
+            "kind": asset.kind,
+            "topic": asset.topic,
+            "contentExcerpt": normalized_excerpt
+            or f"材料「{asset.title}」的正文暂未成功提取，当前先回退到元信息。",
+            "keyConcepts": key_concepts,
+            "knowledgePointCandidates": knowledge_point_candidates,
+            "relevanceHint": "该材料已切成可检索片段，可用于主题判断、知识点建议和后续引用。",
+            "chunkIds": [chunk.chunk_id for chunk in asset_chunks],
+        })
+        all_chunks.extend(asset_chunks)
+
+    selected_chunks = select_material_chunks(
+        all_chunks,
+        query=query,
+        mode=mode,
+        max_chunks=max_chunks,
+    )
+    visible_titles = "、".join(material["title"] for material in material_details[:3])
+    visible_concepts = "、".join(list(dict.fromkeys(all_concepts))[:6])
+    chunk_payload = [
+        {
+            "chunkId": chunk.chunk_id,
+            "materialId": chunk.material_id,
+            "title": chunk.title,
+            "text": chunk.text,
+            "locator": chunk.locator,
+            "score": chunk.score,
+        }
+        for chunk in selected_chunks
+    ]
+    citations = [
+        {
+            "chunkId": chunk.chunk_id,
+            "materialId": chunk.material_id,
+            "title": chunk.title,
+            "locator": chunk.locator,
+            "label": (
+                f"{chunk.title} / {chunk.locator}"
+                if chunk.locator
+                else chunk.title
+            ),
+        }
+        for chunk in selected_chunks
+    ]
+
+    return {
+        "mode": mode,
+        "query": query,
+        "materialIds": [asset.id for asset in assets],
+        "materials": material_details,
+        "keyConcepts": list(dict.fromkeys(all_concepts)),
+        "chunks": chunk_payload,
+        "citations": citations,
+        "summary": (
+            f"已阅读 {len(material_details)} 份材料：{visible_titles or '暂无标题'}。"
+            f"当前返回 {len(chunk_payload)} 个可引用片段。"
+            f"{'核心概念包括：' + visible_concepts + '。' if visible_concepts else ''}"
+        ),
+    }
 
 
 def _summarize_project_memory(project_memory: object | None) -> str | None:
@@ -640,30 +569,21 @@ def _summarize_project_learning_profile(project_learning_profile: object | None)
 
 
 def _build_unit_detail_payload(unit: LearningUnit) -> dict[str, Any]:
-    enrichment = _UNIT_ENRICHMENT.get(unit.id, {})
     generic_title = unit.title.strip()
     generic_summary = unit.summary.strip()
-    prerequisites = enrichment.get("prerequisites")
-    if prerequisites is None:
-        prerequisites = [
-            f"先明确「{generic_title}」在当前项目里要解决什么判断问题。",
-            "先把来源材料中的关键概念、术语和例子对齐，再进入学习动作。",
-        ]
-    common_misconceptions = enrichment.get("commonMisconceptions")
-    if common_misconceptions is None:
-        common_misconceptions = [
-            f"把「{generic_title}」当成泛泛主题，而不是一个需要建立边界的知识点。",
-            "只记住表面结论，没有回到材料证据和适用条件。",
-        ]
-    core_questions = enrichment.get("coreQuestions")
-    if core_questions is None:
-        core_questions = [
-            f"「{generic_title}」最关键的判断边界是什么？",
-            f"如果要把「{generic_title}」讲给别人听，最先应该举哪个例子或证据？",
-        ]
-    related_units = enrichment.get("relatedUnits")
-    if related_units is None:
-        related_units = []
+    prerequisites = [
+        f"先明确「{generic_title}」在当前项目里要解决什么判断问题。",
+        "先把来源材料中的关键概念、术语和例子对齐，再进入学习动作。",
+    ]
+    common_misconceptions = [
+        f"把「{generic_title}」当成泛泛主题，而不是一个需要建立边界的知识点。",
+        "只记住表面结论，没有回到材料证据和适用条件。",
+    ]
+    core_questions = [
+        f"「{generic_title}」最关键的判断边界是什么？",
+        f"如果要把「{generic_title}」讲给别人听，最先应该举哪个例子或证据？",
+    ]
+    related_units: list[str] = []
 
     return {
         "focusUnitId": unit.id,

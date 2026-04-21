@@ -1,65 +1,24 @@
 import { useMemo, useState } from "react";
-import type { ReactElement } from "react";
-import { X } from "lucide-react";
+import type { CSSProperties, ReactElement } from "react";
+import { ArrowRight, Compass, Flag, Route, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DeckHistoryDialog,
+  formatDeckCompletionLabel,
+  SessionDeckBadge,
+} from "@/components/session/deck-history-dialog";
 import { CompactNote, MonitorSection } from "@/components/workspace/monitor";
 import type {
-  AgentAssetSummary,
   AgentReviewInspector,
+  AgentSessionOrchestration,
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
 import type {
-  ActivityBatchResult,
   CompletedActivityDeck,
 } from "@/domain/project-session-runtime";
-import {
-  getSessionTypeLabel,
-  type ProjectItem,
-} from "@/domain/project-workspace";
-
-function formatDeckCompletionLabel(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "刚刚";
-  }
-
-  const diffMinutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
-  if (diffMinutes < 1) {
-    return "刚刚完成";
-  }
-  if (diffMinutes < 60) {
-    return `${diffMinutes} 分钟前`;
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function getAttemptStatusLabel(card: ActivityBatchResult): string {
-  if (card.action === "skip") {
-    return "已跳过";
-  }
-  if (card.isCorrect === true) {
-    return `已完成 · ${card.attempts.length} 次`;
-  }
-  return "未完成";
-}
-
-function getAttemptStatusClass(card: ActivityBatchResult): string {
-  if (card.action === "skip") {
-    return "border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-stone)]";
-  }
-  if (card.isCorrect === true) {
-    return "border-[#bfd6a7] bg-[#f3fbe9] text-[#4f7c2f]";
-  }
-  return "border-[var(--xidea-selection-border)] bg-[#fff3eb] text-[var(--xidea-selection-text)]";
-}
+import { type ProjectItem } from "@/domain/project-workspace";
 
 function DeckStackPreview({
   deck,
@@ -94,7 +53,7 @@ function DeckStackPreview({
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <SessionBadgeLabel sessionType={deck.sessionType} />
+                <SessionDeckBadge sessionType={deck.sessionType} />
                 <span className="text-[12px] text-[var(--xidea-stone)]">
                   {formatDeckCompletionLabel(deck.completedAt)}
                 </span>
@@ -133,153 +92,214 @@ function CompactInlineNote({
   );
 }
 
-function SessionBadgeLabel({
-  sessionType,
-}: {
-  sessionType: CompletedActivityDeck["sessionType"];
-}): ReactElement {
-  return (
-    <Badge className="border-[var(--xidea-border)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)] shadow-none" variant="outline">
-      {getSessionTypeLabel(sessionType)}卡组
-    </Badge>
-  );
+function getPlanAccent(status: AgentSessionOrchestration["status"]): string {
+  switch (status) {
+    case "completed":
+      return "已完成";
+    case "adjusted":
+      return "已调整";
+    case "planned":
+      return "进行中";
+  }
 }
 
-function DeckHistoryDialog({
-  deck,
-  onClose,
-}: {
-  deck: CompletedActivityDeck | null;
-  onClose: () => void;
-}): ReactElement | null {
-  if (deck === null) {
-    return null;
+function getPlanStatusTone(status: AgentSessionOrchestration["status"]): string {
+  switch (status) {
+    case "completed":
+      return "border-[#bfd6a7] bg-[#f2f8ea] text-[#5c7f39]";
+    case "adjusted":
+      return "border-[#e0c5b9] bg-[#fbefe7] text-[#9d5b43]";
+    case "planned":
+      return "border-[#e6d8b2] bg-[#fbf5df] text-[#99741f]";
   }
+}
 
+function clampTwoLines(value: string): CSSProperties {
+  return {
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  };
+}
+
+function PlanInfoTile({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactElement;
+  label: string;
+  value: string;
+}): ReactElement {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 px-4 py-8 backdrop-blur-[2px]">
-      <Card className="max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-[0_24px_80px_rgba(20,20,19,0.18)]">
-        <CardContent className="flex max-h-[85vh] flex-col gap-4 p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <SessionBadgeLabel sessionType={deck.sessionType} />
-                <span className="text-sm text-[var(--xidea-stone)]">
-                  {deck.cards.length} 张卡 · {formatDeckCompletionLabel(deck.completedAt)}
-                </span>
-              </div>
-              <p className="text-base font-medium text-[var(--xidea-near-black)]">本轮卡片回看</p>
-            </div>
-            <Button className="rounded-full" onClick={onClose} type="button" variant="outline">
-              <X className="h-4 w-4" />
-              关闭
-            </Button>
-          </div>
-
-          <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
-            {deck.cards.map((card) => (
-              <Card
-                className="rounded-[1rem] border-[var(--xidea-border)] bg-[#fffaf5] shadow-none"
-                key={card.activityId}
-              >
-                <CardContent className="space-y-3 px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
-                        {card.activityTitle}
-                      </p>
-                      <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                        {card.activityPrompt}
-                      </p>
-                    </div>
-                    <Badge className={`shadow-none ${getAttemptStatusClass(card)}`} variant="outline">
-                      {getAttemptStatusLabel(card)}
-                    </Badge>
-                  </div>
-
-                  {card.attempts.length > 0 ? (
-                    <div className="space-y-2">
-                      {card.attempts.map((attempt) => (
-                        <div
-                          className="rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2.5"
-                          key={`${card.activityId}-${attempt.attemptNumber}`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-[13px] font-medium text-[var(--xidea-near-black)]">
-                              第 {attempt.attemptNumber} 次：{attempt.responseText || "未作答"}
-                            </p>
-                            <span
-                              className={
-                                attempt.isCorrect === true
-                                  ? "text-[12px] text-[#5a8c34]"
-                                  : attempt.isCorrect === false
-                                    ? "text-[12px] text-[#cc6d48]"
-                                    : "text-[12px] text-[var(--xidea-stone)]"
-                              }
-                            >
-                              {attempt.isCorrect === true
-                                ? "答对"
-                                : attempt.isCorrect === false
-                                  ? "纠偏中"
-                                  : "已提交"}
-                            </span>
-                          </div>
-                          {attempt.feedback ? (
-                            <p className="mt-1.5 text-[12px] leading-5 text-[var(--xidea-charcoal)]">
-                              {attempt.feedback}
-                            </p>
-                          ) : null}
-                          {attempt.analysis ? (
-                            <p className="mt-1 text-[12px] leading-5 text-[var(--xidea-stone)]">
-                              分析：{attempt.analysis}
-                            </p>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[12px] leading-5 text-[var(--xidea-stone)]">这一张没有留下作答记录。</p>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+    <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)]/85 px-3 py-3">
+      <div className="flex items-center gap-2 text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
+        <span className="text-[var(--xidea-selection-text)]">{icon}</span>
+        <span>{label}</span>
+      </div>
+      <p
+        className="mt-2 text-[13px] font-medium leading-5 text-[var(--xidea-near-black)]"
+        style={clampTwoLines(value)}
+      >
+        {value}
+      </p>
     </div>
   );
 }
 
+function LearningPlanBoard({
+  activePlan,
+  onOpenDetail,
+}: {
+  activePlan: AgentSessionOrchestration;
+  onOpenDetail: () => void;
+}): ReactElement {
+  const completedCount = activePlan.steps.filter((step) => step.status === "completed").length;
+  const totalSteps = Math.max(activePlan.steps.length, 1);
+  const activeStep =
+    activePlan.steps.find((step) => step.status === "active") ??
+    activePlan.steps.at(completedCount) ??
+    activePlan.steps[0] ??
+    null;
+  const routeSteps = activePlan.steps.slice(0, 4);
+
+  return (
+    <MonitorSection accent={getPlanAccent(activePlan.status)} title="当前学习计划">
+      <div className="overflow-hidden rounded-[1.15rem] border border-[#e4d7ca] bg-[linear-gradient(180deg,#fffdfa_0%,#f6efe7_100%)]">
+        <div className="space-y-4 px-4 py-4">
+          <div className="flex items-center gap-3">
+            <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-[#e2d2c3] bg-[var(--xidea-white)]">
+              <div className="absolute inset-[7px] rounded-full border border-dashed border-[#dcc7b4]" />
+              <div className="text-center">
+                <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">进度</p>
+                <p className="mt-1 text-xl font-semibold text-[var(--xidea-near-black)]">
+                  {completedCount}/{totalSteps}
+                </p>
+              </div>
+            </div>
+
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${getPlanStatusTone(activePlan.status)}`}
+                >
+                  {getPlanAccent(activePlan.status)}
+                </span>
+              </div>
+              {activeStep ? (
+                <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2">
+                  <p className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">当前聚焦</p>
+                  <p className="mt-1 text-[13px] font-medium leading-5 text-[var(--xidea-near-black)]">
+                    {activeStep.title}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <PlanInfoTile icon={<Flag className="h-3.5 w-3.5" />} label="目标" value={activePlan.objective} />
+            <PlanInfoTile
+              icon={<Compass className="h-3.5 w-3.5" />}
+              label="焦点"
+              value={activeStep?.title ?? "等待首次编排"}
+            />
+            <PlanInfoTile
+              icon={<Sparkles className="h-3.5 w-3.5" />}
+              label="状态"
+              value={activePlan.last_change_reason ?? "按当前编排继续推进"}
+            />
+          </div>
+        </div>
+
+        {routeSteps.length > 0 ? (
+          <div className="border-t border-[#eadfd3] bg-[var(--xidea-white)]/70 px-4 py-4">
+            <div className="mb-2 flex items-center gap-2 text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
+              <Route className="h-3.5 w-3.5 text-[var(--xidea-selection-text)]" />
+              <span>步骤轨道</span>
+            </div>
+            <div className="space-y-2">
+              {routeSteps.map((step, index) => (
+                <div className="space-y-2" key={step.knowledge_point_id}>
+                  <div
+                    className={
+                      step.status === "completed"
+                        ? "rounded-[0.95rem] border border-[#bfd6a7] bg-[#f3f8ea] px-3 py-2"
+                        : step.status === "active"
+                          ? "rounded-[0.95rem] border border-[var(--xidea-selection-border)] bg-[#fcf2ea] px-3 py-2"
+                          : "rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2"
+                    }
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={
+                          step.status === "completed"
+                            ? "h-2.5 w-2.5 rounded-full bg-[#7da25b]"
+                            : step.status === "active"
+                              ? "h-2.5 w-2.5 rounded-full bg-[var(--xidea-terracotta)]"
+                              : "h-2.5 w-2.5 rounded-full bg-[#d8cdc2]"
+                        }
+                      />
+                      <span className="text-[11px] text-[var(--xidea-stone)]">
+                        {step.status === "completed" ? "完成" : step.status === "active" ? "当前" : "待推进"}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[13px] font-medium leading-5 text-[var(--xidea-near-black)]">
+                      {step.title}
+                    </p>
+                  </div>
+                  {index < routeSteps.length - 1 ? (
+                    <div className="flex justify-center">
+                      <ArrowRight className="h-4 w-4 shrink-0 rotate-90 text-[var(--xidea-stone)]/60" />
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <Button
+        className="w-full rounded-[0.95rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] hover:bg-[var(--xidea-selection)]"
+        onClick={onOpenDetail}
+        type="button"
+        variant="outline"
+      >
+        查看详情
+      </Button>
+    </MonitorSection>
+  );
+}
+
+
 export function SessionInspector({
-  activeAssetSummary,
   activeReviewInspector,
   activeRuntime,
   completedActivityDecks,
   hasPersistedState,
   hasStructuredRuntime,
-  isBlankSession,
+  isReplayDisabled = false,
   latestReviewedLabel,
   nextReviewLabel,
-  requestSourceAssetIds,
+  onReplayDeck,
   selectedProject,
   selectedSessionStatus,
   selectedSessionType,
-  selectedSourceAssetIds,
 }: {
-  activeAssetSummary: AgentAssetSummary | null;
   activeReviewInspector: AgentReviewInspector | null;
   activeRuntime: RuntimeSnapshot;
   completedActivityDecks: ReadonlyArray<CompletedActivityDeck>;
   hasPersistedState: boolean;
   hasStructuredRuntime: boolean;
-  isBlankSession: boolean;
+  isReplayDisabled?: boolean;
   latestReviewedLabel: string;
   nextReviewLabel: string;
-  requestSourceAssetIds: ReadonlyArray<string>;
+  onReplayDeck: (deck: CompletedActivityDeck) => void;
   selectedProject: ProjectItem;
   selectedSessionStatus: string;
   selectedSessionType: "project" | "study" | "review";
-  selectedSourceAssetIds: ReadonlyArray<string>;
 }): ReactElement {
   const [openDeckKey, setOpenDeckKey] = useState<string | null>(null);
   const [isPlanDetailOpen, setIsPlanDetailOpen] = useState(false);
@@ -312,41 +332,10 @@ export function SessionInspector({
             </p>
           </MonitorSection>
         ) : activePlan !== null ? (
-          <MonitorSection
-            accent={activePlan.status === "completed" ? "已完成" : activePlan.status === "adjusted" ? "已调整" : "进行中"}
-            title="当前学习计划"
-          >
-            <CompactNote label="目标" value={activePlan.objective} />
-            <CompactNote
-              label="当前焦点"
-              value={activePlan.steps.find((step) => step.status === "active")?.title ?? "已完成"}
-            />
-            <CompactNote label="状态" value={activePlan.last_change_reason ?? "按当前计划继续推进。"} />
-            <div className="space-y-2">
-              {activePlan.steps.slice(0, 3).map((step) => (
-                <div
-                  className="rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2.5"
-                  key={step.knowledge_point_id}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[13px] font-medium text-[var(--xidea-near-black)]">{step.title}</p>
-                    <span className="text-[11px] text-[var(--xidea-stone)]">
-                      {step.status === "active" ? "当前" : step.status === "completed" ? "完成" : "待推进"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[12px] leading-5 text-[var(--xidea-charcoal)]">{step.reason}</p>
-                </div>
-              ))}
-            </div>
-            <Button
-              className="w-full rounded-[0.9rem]"
-              onClick={() => setIsPlanDetailOpen(true)}
-              type="button"
-              variant="outline"
-            >
-              查看详情
-            </Button>
-          </MonitorSection>
+          <LearningPlanBoard
+            activePlan={activePlan}
+            onOpenDetail={() => setIsPlanDetailOpen(true)}
+          />
         ) : (
           <MonitorSection title="当前学习计划">
             <CompactNote label="项目" value={selectedProject.name} />
@@ -383,40 +372,17 @@ export function SessionInspector({
           </MonitorSection>
         ) : null}
 
-        {selectedSessionType === "project" ? (
-          <MonitorSection title="材料上下文">
-            <CompactNote
-              label="材料"
-              value={
-                isBlankSession
-                  ? "0 份"
-                  : selectedSourceAssetIds.length > 0
-                    ? `${requestSourceAssetIds.length} 份已附加`
-                    : `${requestSourceAssetIds.length} 份已关联`
-              }
-            />
-            <CompactNote
-              label="摘要"
-              value={activeAssetSummary?.summary ?? "等待读取真实材料上下文"}
-            />
-            {activeAssetSummary?.keyConcepts.length ? (
-              <div className="flex flex-wrap gap-2">
-                {activeAssetSummary.keyConcepts.slice(0, 4).map((concept) => (
-                  <Badge
-                    className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
-                    key={concept}
-                    variant="outline"
-                  >
-                    {concept}
-                  </Badge>
-                ))}
-              </div>
-            ) : null}
-          </MonitorSection>
-        ) : null}
       </div>
 
-      <DeckHistoryDialog deck={openDeck} onClose={() => setOpenDeckKey(null)} />
+      <DeckHistoryDialog
+        deck={openDeck}
+        onClose={() => setOpenDeckKey(null)}
+        onReplay={(deck) => {
+          onReplayDeck(deck);
+          setOpenDeckKey(null);
+        }}
+        replayDisabled={isReplayDisabled}
+      />
       {isPlanDetailOpen && activePlan !== null ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 px-4 py-8 backdrop-blur-[2px]">
           <Card className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-[0_24px_80px_rgba(20,20,19,0.18)]">

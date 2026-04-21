@@ -196,6 +196,7 @@ export function WorkspacePage(): ReactElement {
               ) : (
                 <SessionWorkspace
                   activeAssetSummary={session.activeAssetSummary}
+                  activeMaterialRead={session.activeMaterialRead}
                   activeReviewInspector={session.activeReviewInspector}
                   activeRuntime={session.activeRuntime}
                   activeSourceAssets={session.activeSourceAssets}
@@ -212,7 +213,7 @@ export function WorkspacePage(): ReactElement {
                   hasStructuredRuntime={session.hasStructuredRuntime}
                   isAgentRunning={session.isAgentRunning}
                   isBlankSession={session.isBlankSession || data.selectedSession === undefined}
-                  isMaterialsTrayOpen={session.isMaterialsTrayOpen}
+                  isReplayingDeck={session.isReplayingDeck}
                   latestAssistantMessageId={session.latestAssistantMessageId}
                   latestReviewedLabel={session.latestReviewedLabel}
                   nextReviewLabel={session.nextReviewLabel}
@@ -220,6 +221,7 @@ export function WorkspacePage(): ReactElement {
                   onDeleteSession={actions.handleDeleteSession}
                   onExitSession={actions.handleCloseSession}
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
+                  onReplayDeck={session.handleReplayDeck}
                   onOpenSession={(sessionId) => {
                     data.setPendingSessionIntent(null);
                     data.setSelectedSessionId(sessionId);
@@ -244,7 +246,6 @@ export function WorkspacePage(): ReactElement {
                   onSkipActivity={session.handleSkipActivity}
                   onSubmitActivity={session.handleSubmitActivity}
                   onSubmitPrompt={session.handleSubmitPrompt}
-                  onToggleMaterialsTray={session.handleToggleMaterialsTray}
                   onToggleProjectMaterial={session.handleToggleProjectMaterial}
                   onUploadMaterial={actions.handleUploadProjectMaterialAndAttach}
                   onUnsetSourceAsset={session.handleUnsetSourceAsset}

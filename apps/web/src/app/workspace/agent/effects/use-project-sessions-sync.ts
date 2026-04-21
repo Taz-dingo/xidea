@@ -113,7 +113,7 @@ export function useProjectSessionsSync({
   }, [projectId]);
 
   useEffect(() => {
-    if (agentConnectionState !== "ready") {
+    if (agentConnectionState !== "ready" || projectId.trim() === "") {
       return;
     }
 
@@ -158,6 +158,7 @@ export function useProjectSessionsSync({
   useEffect(() => {
     if (
       agentConnectionState !== "ready" ||
+      projectId.trim() === "" ||
       selectedSessionKey === null ||
       !selectedSessionExists ||
       hydratedMessageSessionIdsRef.current.has(selectedSessionKey)
@@ -190,6 +191,7 @@ export function useProjectSessionsSync({
     return () => abortController.abort();
   }, [
     agentConnectionState,
+    projectId,
     selectedSessionKey,
     selectedSessionExists,
     setSessionMessagesById,
