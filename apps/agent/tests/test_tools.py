@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from xidea_agent.material_content import extract_material_knowledge_point_candidates
 from xidea_agent.repository import SQLiteRepository
 from xidea_agent.runtime import run_agent_v0
 from xidea_agent.state import (
@@ -164,6 +165,22 @@ def test_asset_summary_prefers_knowledge_point_candidates_over_filename_slug(tmp
         "LLM 作为具身智能常识大脑的边界",
     ]
     assert "xidea-multimodal-demo" not in concepts
+
+
+def test_extract_material_knowledge_point_candidates_preserves_numbered_outline() -> None:
+    text = (
+        "1. RAG不是简单检索+拼接\n"
+        "2. 为什么需要重排\n"
+        "3. 如何解释给产品和评审\n"
+        "4. 什么时候应该回到业务场景解释方案取舍\n"
+    )
+
+    assert extract_material_knowledge_point_candidates(text, limit=5) == [
+        "RAG不是简单检索+拼接",
+        "为什么需要重排",
+        "如何解释给产品和评审",
+        "什么时候应该回到业务场景解释方案取舍",
+    ]
 
 
 def test_material_read_returns_chunked_sections_with_citations(tmp_path: Path) -> None:

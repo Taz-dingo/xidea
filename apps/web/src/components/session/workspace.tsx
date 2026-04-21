@@ -58,6 +58,7 @@ export function SessionWorkspace({
   isAgentRunning,
   isBlankSession,
   isMaterialsTrayOpen,
+  isReplayingDeck,
   latestAssistantMessageId,
   latestReviewedLabel,
   nextReviewLabel,
@@ -65,6 +66,7 @@ export function SessionWorkspace({
   onDeleteSession,
   onExitSession,
   onOpenKnowledgePoint,
+  onReplayDeck,
   onOpenSession,
   onStartProjectSession,
   onStartReview,
@@ -110,6 +112,7 @@ export function SessionWorkspace({
   isAgentRunning: boolean;
   isBlankSession: boolean;
   isMaterialsTrayOpen: boolean;
+  isReplayingDeck: boolean;
   latestAssistantMessageId: string | null;
   latestReviewedLabel: string;
   nextReviewLabel: string;
@@ -117,6 +120,7 @@ export function SessionWorkspace({
   onDeleteSession: (sessionId: string) => void;
   onExitSession: () => void;
   onOpenKnowledgePoint: (pointId: string) => void;
+  onReplayDeck: (deck: CompletedActivityDeck) => void;
   onOpenSession: (sessionId: string) => void;
   onStartProjectSession: () => void;
   onStartReview: () => void;
@@ -227,7 +231,7 @@ export function SessionWorkspace({
         </CardContent>
       </Card>
 
-      <Card className="xidea-card-motion flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none">
+      <Card className="xidea-card-motion flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none lg:h-[calc(100svh-7.25rem)]">
         <CardHeader className="gap-3 border-b border-[var(--xidea-border)] px-5 pb-4 pt-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
@@ -255,7 +259,11 @@ export function SessionWorkspace({
         </CardHeader>
 
         {selectedSession.type !== "project" && completedActivityDecks.length > 0 ? (
-          <CompletedDeckRail decks={completedActivityDecks} />
+          <CompletedDeckRail
+            decks={completedActivityDecks}
+            onReplayDeck={onReplayDeck}
+            replayDisabled={isAgentRunning || hasPendingActivity || isReplayingDeck}
+          />
         ) : null}
 
         <SessionThreadPane
@@ -271,6 +279,7 @@ export function SessionWorkspace({
           draftPrompt={draftPrompt}
           errorMessage={errorMessage}
           hasPendingActivity={hasPendingActivity}
+          isReplayingDeck={isReplayingDeck}
           hasStructuredRuntime={hasStructuredRuntime}
           isAgentRunning={isAgentRunning}
           isMaterialsTrayOpen={isMaterialsTrayOpen}
@@ -293,21 +302,18 @@ export function SessionWorkspace({
       </Card>
 
       <SessionInspector
-        activeAssetSummary={activeAssetSummary}
-        activeMaterialRead={activeMaterialRead}
         activeReviewInspector={activeReviewInspector}
         activeRuntime={activeRuntime}
         completedActivityDecks={completedActivityDecks}
         hasPersistedState={hasPersistedState}
         hasStructuredRuntime={hasStructuredRuntime}
-        isBlankSession={isBlankSession}
+        isReplayDisabled={isAgentRunning || hasPendingActivity || isReplayingDeck}
         latestReviewedLabel={latestReviewedLabel}
         nextReviewLabel={nextReviewLabel}
-        requestSourceAssetIds={requestSourceAssetIds}
+        onReplayDeck={onReplayDeck}
         selectedProject={selectedProject}
         selectedSessionStatus={selectedSession.status}
         selectedSessionType={selectedSession.type}
-        selectedSourceAssetIds={selectedSourceAssetIds}
       />
     </div>
   );

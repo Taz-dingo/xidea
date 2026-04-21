@@ -116,6 +116,7 @@ export function SessionThreadPane({
   hasStructuredRuntime,
   isAgentRunning,
   isMaterialsTrayOpen,
+  isReplayingDeck,
   latestAssistantMessageId,
   onChangeDraftPrompt,
   onOpenKnowledgePoint,
@@ -147,6 +148,7 @@ export function SessionThreadPane({
   hasStructuredRuntime: boolean;
   isAgentRunning: boolean;
   isMaterialsTrayOpen: boolean;
+  isReplayingDeck: boolean;
   latestAssistantMessageId: string | null;
   onChangeDraftPrompt: (value: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
@@ -191,8 +193,8 @@ export function SessionThreadPane({
     (latestMessage?.role !== "assistant" || latestMessageText === "");
   const canManageMaterials = selectedSessionType === "project";
   const shouldShowActivityStack =
-    hasStructuredRuntime &&
     currentActivity !== null &&
+    (hasStructuredRuntime || isReplayingDeck) &&
     !isAgentRunning &&
     !shouldShowStreamingPreview &&
     !shouldShowRunningPlaceholder;
@@ -302,6 +304,7 @@ export function SessionThreadPane({
                   <LearningActivityStack
                     activities={currentActivities}
                     disabled={activityInputDisabled}
+                    isReplay={isReplayingDeck}
                     key={`${selectedSessionId}-${currentActivityKey ?? currentActivity.id}`}
                     onSkip={onSkipActivity}
                     onSubmit={onSubmitActivity}

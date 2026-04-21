@@ -214,6 +214,7 @@ export function WorkspacePage(): ReactElement {
                   isAgentRunning={session.isAgentRunning}
                   isBlankSession={session.isBlankSession || data.selectedSession === undefined}
                   isMaterialsTrayOpen={session.isMaterialsTrayOpen}
+                  isReplayingDeck={session.isReplayingDeck}
                   latestAssistantMessageId={session.latestAssistantMessageId}
                   latestReviewedLabel={session.latestReviewedLabel}
                   nextReviewLabel={session.nextReviewLabel}
@@ -221,6 +222,7 @@ export function WorkspacePage(): ReactElement {
                   onDeleteSession={actions.handleDeleteSession}
                   onExitSession={actions.handleCloseSession}
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
+                  onReplayDeck={session.handleReplayDeck}
                   onOpenSession={(sessionId) => {
                     data.setPendingSessionIntent(null);
                     data.setSelectedSessionId(sessionId);

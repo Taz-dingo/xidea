@@ -11,6 +11,7 @@ import type {
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
 import {
+  type ActivityReplayState,
   type ActivityResolution,
   type CompletedActivityDeck,
   type SessionActivityBatchState,
@@ -39,6 +40,7 @@ interface WorkspaceRuntimeState {
   readonly runningSessionIds: Record<string, boolean>;
   readonly bootstrapLoadedKeys: Record<string, boolean>;
   readonly activityBatchStateBySession: Record<string, SessionActivityBatchState>;
+  readonly activityReplayStateBySession: Record<string, ActivityReplayState | null>;
   readonly completedActivityDecksBySession: Record<string, ReadonlyArray<CompletedActivityDeck>>;
   readonly setSessionEntryModes: (
     nextState: SetStateAction<Record<string, AgentEntryMode>>,
@@ -76,6 +78,9 @@ interface WorkspaceRuntimeState {
   readonly setActivityBatchStateBySession: (
     nextState: SetStateAction<Record<string, SessionActivityBatchState>>,
   ) => void;
+  readonly setActivityReplayStateBySession: (
+    nextState: SetStateAction<Record<string, ActivityReplayState | null>>,
+  ) => void;
   readonly setCompletedActivityDecksBySession: (
     nextState: SetStateAction<Record<string, ReadonlyArray<CompletedActivityDeck>>>,
   ) => void;
@@ -101,6 +106,7 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()(
       runningSessionIds: {},
       bootstrapLoadedKeys: {},
       activityBatchStateBySession: {},
+      activityReplayStateBySession: {},
       completedActivityDecksBySession: {},
       setSessionEntryModes: (nextState) =>
         set((state) => ({
@@ -154,6 +160,13 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()(
           activityBatchStateBySession: resolveState(
             nextState,
             state.activityBatchStateBySession,
+          ),
+        })),
+      setActivityReplayStateBySession: (nextState) =>
+        set((state) => ({
+          activityReplayStateBySession: resolveState(
+            nextState,
+            state.activityReplayStateBySession,
           ),
         })),
       setCompletedActivityDecksBySession: (nextState) =>

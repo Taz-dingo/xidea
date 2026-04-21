@@ -18,6 +18,7 @@ import {
   getLatestIsoDate,
 } from "@/domain/review-heatmap";
 import {
+  buildActivityReplayState,
   buildActivityDeckKey,
   getVisibleActivitiesForBatch,
   type SessionActivityBatchState,
@@ -115,7 +116,12 @@ export function useSessionAgent({
       ? emptyRuntime
       : data.sessionSnapshots[data.selectedSession.id] ?? emptyRuntime;
   activeRuntimeRef.current = activeRuntime;
-  const deckKey = buildActivityDeckKey(activeRuntime);
+  const replayState =
+    selectedSessionKey === null
+      ? null
+      : data.activityReplayStateBySession[selectedSessionKey] ?? null;
+  const deckKey =
+    replayState?.replayDeckKey ?? buildActivityDeckKey(activeRuntime);
   const activityBatchState =
     selectedSessionKey === null
       ? null
@@ -127,8 +133,9 @@ export function useSessionAgent({
       : activeRuntime.activity === null
         ? []
         : [activeRuntime.activity];
+  const visibleActivitiesSource = replayState?.activities ?? baseActivities;
   const currentActivities = getVisibleActivitiesForBatch({
-    activities: baseActivities,
+    activities: visibleActivitiesSource,
     batchState:
       deckKey !== null && activityBatchState?.deckKey === deckKey ? activityBatchState : null,
     deckKey,
@@ -137,7 +144,9 @@ export function useSessionAgent({
   const currentActivityKey =
     currentActivity === null
       ? null
-      : `${currentActivity.id}:${activeRuntime.assistantMessage || activeRuntime.decision.reason}`;
+      : replayState !== null
+        ? `${currentActivity.id}:${replayState.replayDeckKey}`
+        : `${currentActivity.id}:${activeRuntime.assistantMessage || activeRuntime.decision.reason}`;
   const currentActivityResolution =
     selectedSessionKey === null || currentActivityKey === null
       ? null
@@ -240,10 +249,10 @@ export function useSessionAgent({
     selectedSessionKey !== null && data.runningSessionIds[selectedSessionKey] === true;
   const isAwaitingActivityFollowup = activityBatchState?.awaitingAgent === true;
   const hasPendingActivity =
-    hasStructuredRuntime &&
     currentActivity !== null &&
     currentActivityResolution === null &&
-    !isAwaitingActivityFollowup;
+    !isAwaitingActivityFollowup &&
+    (hasStructuredRuntime || replayState !== null);
   const latestReviewedLabel = latestReviewedEvent?.event_at
     ? formatDateLabel(latestReviewedEvent.event_at) ?? "待回读"
     : activeRuntime.state.lastReviewedAt ?? "待回读";
@@ -500,6 +509,21 @@ export function useSessionAgent({
     }
 
     pendingActivityResultRef.current = null;
+    data.setActivityReplayStateBySession((current) => {
+      const currentReplayState = current[selectedSessionKey];
+      if (
+        currentReplayState === undefined ||
+        currentReplayState === null ||
+        currentReplayState.replayDeckKey !== activityBatchState.deckKey
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [selectedSessionKey]: null,
+      };
+    });
     data.setActivityBatchStateBySession((current) => {
       if (current[selectedSessionKey] === undefined) {
         return current;
@@ -510,6 +534,7 @@ export function useSessionAgent({
     });
   }, [
     activityBatchState,
+    data.setActivityReplayStateBySession,
     data.setActivityBatchStateBySession,
     latestAssistantMessageId,
     selectedSessionKey,
@@ -594,6 +619,53 @@ export function useSessionAgent({
     selectedSessionKnowledgePointId: runtimeFocusKnowledgePointId,
     sendMessage,
   });
+  const handleReplayDeck = useCallback(
+    (deck: typeof completedActivityDecks[number]) => {
+      if (
+        selectedSessionKey === null ||
+        isAgentRunning ||
+        hasPendingActivity ||
+        replayState !== null ||
+        activityBatchState?.awaitingAgent === true
+      ) {
+        return;
+      }
+
+      const nextReplayState = buildActivityReplayState(deck);
+      if (nextReplayState === null) {
+        return;
+      }
+
+      if (error !== undefined) {
+        clearError();
+      }
+
+      pendingActivityResultRef.current = null;
+      data.setActivityBatchStateBySession((current) => {
+        if (current[selectedSessionKey] === undefined) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[selectedSessionKey];
+        return next;
+      });
+      data.setActivityReplayStateBySession((current) => ({
+        ...current,
+        [selectedSessionKey]: nextReplayState,
+      }));
+    },
+    [
+      activityBatchState?.awaitingAgent,
+      clearError,
+      data.setActivityBatchStateBySession,
+      data.setActivityReplayStateBySession,
+      error,
+      hasPendingActivity,
+      isAgentRunning,
+      replayState,
+      selectedSessionKey,
+    ],
+  );
 
   return {
     activeAssetSummary,
@@ -610,11 +682,13 @@ export function useSessionAgent({
     error,
     errorMessage,
     ...actions,
+    handleReplayDeck,
     hasPendingActivity,
     hasPersistedState,
     hasStructuredRuntime,
     isAgentRunning,
     isBlankSession,
+    isReplayingDeck: replayState !== null,
     isMaterialsTrayOpen,
     latestAssistantMessageId,
     latestReviewedEvent,

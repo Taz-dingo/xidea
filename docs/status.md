@@ -27,6 +27,7 @@
 - `apps/agent` 已把 runtime 里的 RAG 专属题卡/标题/提示模板收回通用知识点编排逻辑，不再对 `unit-rag-retrieval / unit-rag-core / unit-rag-explain` 走隐藏 demo 分支
 - `apps/agent` 已去掉默认 `rag-core-unit` 兜底；未显式选中知识点时，learner state 与 learning unit 统一回到通用 `current-topic` 空位语义
 - `apps/agent` 已新增第一版 `material-read` tool：材料导入主链不再只吃 900 字 excerpt，而是会把 note/web/PDF 切成可检索 chunk，并把命中的正文片段与 citation 一起供主决策和知识点建议使用；当前仍是本地 chunk 检索版，尚未接向量库
+- `apps/agent` 已把材料导入的知识点生成从“固定最多 3 条”改成按材料密度动态决定，当前会在 `0-6` 条内浮动：薄材料不会硬生多卡，结构化提纲或更厚的正文会允许生成第 4-6 条候选知识点
 - `apps/web` 已为 project session inspector 补可选 `查看依据` 入口：默认仍只展示材料摘要，需要时才展开查看 `material-read` 返回的正文片段与 citation，不把底层 chunk 列表常驻在主界面
 
 #### 多卡编排 session v0（2026-04-20）

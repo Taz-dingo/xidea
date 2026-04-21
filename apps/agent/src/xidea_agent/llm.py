@@ -25,6 +25,7 @@ from types import SimpleNamespace
 import httpx
 
 from xidea_agent.activity_choices import reorder_activity_choice_input
+from xidea_agent.material_content import MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS
 from xidea_agent.state import (
     Activity,
     ActivityChoice,
@@ -583,6 +584,26 @@ KNOWLEDGE_POINT_ENRICH_SYSTEM_PROMPT = """\
 - 输出严格 JSON 数组，不要包含 markdown 代码块标记
 """
 
+KNOWLEDGE_POINT_TITLE_EXTRACTION_SYSTEM_PROMPT = """\
+你是 Xidea 学习编排系统的材料知识点提炼模块。
+
+你的任务是基于材料正文片段和当前项目主题，提炼 1-3 个适合沉淀成知识卡的候选标题。
+
+## 输出格式
+
+严格输出 JSON 数组，数组元素必须是字符串标题。
+
+## 质量约束
+
+- 标题必须是可学习、可复习的知识点，不要只是话题词或文件名
+- 优先提炼材料里出现的关键判断、关系、边界、因果或迁移逻辑
+- 标题尽量简洁，控制在 8-32 个中文字符或等价信息量内
+- 不要输出“材料总结”“学习方向”“继续讨论”这类流程词
+- 不要编造材料里没有出现过的术语
+- 如果材料仍然太薄，输出空数组
+- 输出严格 JSON 数组，不要包含 markdown 代码块标记
+"""
+
 SESSION_SYSTEM_PROMPT_BLOCKS: dict[str, dict[str, str]] = {
     "project": {
         "default": """\
@@ -729,6 +750,11 @@ def _is_zhipu_base_url(base_url: str | None) -> bool:
     return bool(base_url and "bigmodel.cn" in base_url.lower())
 
 
+def _looks_like_zhipu_model(model: str | None) -> bool:
+    normalized = (model or "").strip().lower()
+    return normalized.startswith("glm")
+
+
 def _read_bool_env(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
@@ -760,13 +786,22 @@ def _resolve_zhipu_thinking_mode() -> str:
 def _resolve_llm_config() -> tuple[str, str | None, str, str]:
     configured_api_key = os.getenv("XIDEA_LLM_API_KEY", "").strip()
     configured_base_url = os.getenv("XIDEA_LLM_BASE_URL", "").strip() or None
+    configured_model = os.getenv("XIDEA_LLM_MODEL", "").strip()
     zhipu_api_key = os.getenv("ZHIPU_API_KEY", "").strip()
     zai_api_key = os.getenv("ZAI_API_KEY", "").strip()
     openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
 
+    inferred_zhipu_base_url = (
+        configured_base_url
+        if configured_base_url is not None
+        else ZHIPU_OPENAI_BASE_URL
+        if _looks_like_zhipu_model(configured_model)
+        else None
+    )
+
     if configured_api_key:
         api_key = configured_api_key
-        base_url = configured_base_url
+        base_url = inferred_zhipu_base_url
     elif zhipu_api_key:
         api_key = zhipu_api_key
         base_url = configured_base_url or ZHIPU_OPENAI_BASE_URL
@@ -775,7 +810,7 @@ def _resolve_llm_config() -> tuple[str, str | None, str, str]:
         base_url = configured_base_url or ZHIPU_OPENAI_BASE_URL
     elif openai_api_key:
         api_key = openai_api_key
-        base_url = configured_base_url
+        base_url = inferred_zhipu_base_url if _looks_like_zhipu_model(configured_model) else configured_base_url
     else:
         raise RuntimeError(
             "LLM API key is required. "
@@ -793,7 +828,7 @@ def _resolve_llm_config() -> tuple[str, str | None, str, str]:
         default_model = "gpt-4o-mini"
         provider = "openai"
 
-    model = os.getenv("XIDEA_LLM_MODEL", "").strip() or default_model
+    model = configured_model or default_model
     return api_key, base_url, model, provider
 
 
@@ -2395,6 +2430,105 @@ def llm_enrich_material_knowledge_points(
     except Exception:
         logger.warning(
             "LLM knowledge point enrichment failed, falling back to template copy. raw preview: %r",
+            raw[:160] if "raw" in locals() else "",
+            exc_info=True,
+        )
+        return None
+
+
+def llm_extract_material_knowledge_point_titles(
+    llm: LLMClient,
+    *,
+    topic: str,
+    user_message: str,
+    assistant_reply: str,
+    asset_summary: dict[str, object],
+    session_type: str = "project",
+    limit: int = MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS,
+) -> list[str] | None:
+    assets_payload: list[dict[str, object]] = []
+    assets = asset_summary.get("materials")
+    if not isinstance(assets, list):
+        assets = asset_summary.get("assets")
+    if isinstance(assets, list):
+        for asset in assets[:3]:
+            if not isinstance(asset, dict):
+                continue
+            assets_payload.append({
+                "title": str(asset.get("title") or "").strip(),
+                "topic": str(asset.get("topic") or "").strip(),
+                "excerpt": _compact_context_text(str(asset.get("contentExcerpt") or ""), max_chars=320),
+                "keyConcepts": [
+                    str(item).strip()
+                    for item in (asset.get("keyConcepts") or [])
+                    if str(item).strip()
+                ][:4],
+            })
+
+    chunks_payload: list[dict[str, str]] = []
+    chunks = asset_summary.get("chunks")
+    if isinstance(chunks, list):
+        for chunk in chunks[:4]:
+            if not isinstance(chunk, dict):
+                continue
+            chunks_payload.append({
+                "title": str(chunk.get("title") or "").strip(),
+                "locator": str(chunk.get("locator") or "").strip(),
+                "text": _compact_context_text(str(chunk.get("text") or ""), max_chars=220),
+            })
+
+    if not assets_payload and not chunks_payload:
+        return None
+
+    user_prompt = "\n".join([
+        f"当前 session 类型：{session_type}",
+        f"当前项目主题：{topic}",
+        f"用户这轮输入：{user_message}",
+        f"当前 assistant 已初步回复：{assistant_reply}",
+        f"材料摘要：{str(asset_summary.get('summary') or '').strip()}",
+        f"材料详情：{json.dumps(assets_payload, ensure_ascii=False)}",
+        f"正文片段：{json.dumps(chunks_payload, ensure_ascii=False)}",
+        f"请提炼不超过 {limit} 个候选知识点标题；如果材料还不足以负责任提炼，就返回空数组。",
+    ])
+
+    try:
+        response = _chat_completion(
+            llm,
+            messages=[
+                {
+                    "role": "system",
+                    "content": _build_system_prompt(
+                        KNOWLEDGE_POINT_TITLE_EXTRACTION_SYSTEM_PROMPT,
+                        session_type=session_type,
+                        family="knowledge-point-extraction",
+                    ),
+                },
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+            max_tokens=400,
+            _caller="extract_material_knowledge_point_titles",
+        )
+        raw = _extract_message_text(response)
+        raw = _prepare_structured_output(raw, prefer="[")
+        parsed = _load_structured_json(raw)
+        if not isinstance(parsed, list):
+            return None
+
+        titles: list[str] = []
+        for item in parsed:
+            normalized = " ".join(str(item).strip().split())
+            normalized = normalized.strip(" ：:；;，,。！？!?“”\"'（）()[]【】")
+            if len(normalized) < 4:
+                continue
+            if normalized not in titles:
+                titles.append(normalized[:48])
+            if len(titles) >= limit:
+                break
+        return titles
+    except Exception:
+        logger.warning(
+            "LLM knowledge point title extraction failed. raw preview: %r",
             raw[:160] if "raw" in locals() else "",
             exc_info=True,
         )

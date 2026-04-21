@@ -314,6 +314,8 @@ export interface AgentThreadContext {
   readonly source_asset_ids: ReadonlyArray<string>;
   readonly session_orchestration: AgentSessionOrchestration | null;
   readonly orchestration_events: ReadonlyArray<AgentSessionOrchestrationEventRecord>;
+  readonly plan: AgentPlan | null;
+  readonly activities: ReadonlyArray<AgentActivity>;
   readonly updated_at: string;
 }
 
@@ -1036,13 +1038,26 @@ export function hydrateRuntimeSnapshotFromThreadContext(
   threadContext: AgentThreadContext,
   fallbackSnapshot: RuntimeSnapshot,
 ): RuntimeSnapshot {
-  return {
+  const activities = normalizeAgentActivities(threadContext.activities ?? []);
+  return withActivities({
     ...fallbackSnapshot,
+    plan:
+      threadContext.plan === null
+        ? fallbackSnapshot.plan
+        : {
+            headline: threadContext.plan.headline,
+            summary: threadContext.plan.summary,
+            steps: threadContext.plan.steps,
+            highlightedModes: threadContext.plan.steps.map((step) => step.mode),
+            primaryMode: threadContext.plan.selected_mode,
+          },
+    activity: activities[0] ?? fallbackSnapshot.activity,
+    activities: activities.length > 0 ? activities : fallbackSnapshot.activities,
     orchestration: buildOrchestrationState({
       current: threadContext.session_orchestration,
       timeline: threadContext.orchestration_events,
     }),
-  };
+  });
 }
 
 export function normalizeAgentRunResult(result: AgentRunResult): RuntimeSnapshot {

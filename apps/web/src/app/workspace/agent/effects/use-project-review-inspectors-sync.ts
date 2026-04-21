@@ -24,7 +24,9 @@ export function useProjectReviewInspectorsSync({
 
     const sessionsToHydrate = projectSessions.filter(
       (session) =>
+        session.type !== "project" &&
         session.knowledgePointId !== null &&
+        session.status !== "待开始" &&
         sessionReviewInspectors[session.id] === undefined,
     );
     if (sessionsToHydrate.length === 0) {

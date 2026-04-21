@@ -814,6 +814,23 @@ def test_thread_activity_decks_endpoint_returns_persisted_decks(tmp_path: Path) 
                             "activityPrompt": "说明为什么不能只做向量召回。",
                             "knowledgePointId": "kp-rag-boundary",
                             "kind": "guided-qa",
+                            "activitySnapshot": {
+                                "id": "activity-1",
+                                "kind": "quiz",
+                                "knowledgePointId": "kp-rag-boundary",
+                                "title": "边界判断",
+                                "objective": "判断为什么不能只做向量召回。",
+                                "prompt": "说明为什么不能只做向量召回。",
+                                "support": "先区分候选召回和最终回答质量。",
+                                "mode": "contrast-drill",
+                                "evidence": ["召回不等于回答可用。"],
+                                "submitLabel": "提交判断",
+                                "input": {
+                                    "type": "text",
+                                    "placeholder": "写出你的判断",
+                                    "minLength": 4,
+                                },
+                            },
                             "action": "submit",
                             "responseText": "召回不等于回答可用。",
                             "selectedChoiceId": None,
@@ -838,6 +855,7 @@ def test_thread_activity_decks_endpoint_returns_persisted_decks(tmp_path: Path) 
     assert payload[0]["session_type"] == "study"
     assert payload[0]["knowledge_point_id"] == "kp-rag-boundary"
     assert len(payload[0]["cards"]) == 1
+    assert payload[0]["cards"][0]["activitySnapshot"]["input"]["type"] == "text"
 
 
 def test_consolidation_preview_summarizes_project_state(tmp_path: Path) -> None:

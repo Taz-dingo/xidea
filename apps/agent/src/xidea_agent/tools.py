@@ -10,6 +10,7 @@ from xidea_agent.material_reader import (
     select_material_chunks,
 )
 from xidea_agent.material_content import (
+    MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS,
     extract_material_knowledge_point_candidates,
     normalize_material_text,
 )
@@ -231,7 +232,7 @@ def _build_asset_summary_payload(
         extracted_concepts = _extract_key_concepts(concept_source)
         knowledge_point_candidates = extract_material_knowledge_point_candidates(
             concept_source,
-            limit=3,
+            limit=MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS,
         )
         concepts = list(dict.fromkeys(extracted_concepts))[:4]
         all_concepts.extend(concepts)
@@ -457,13 +458,21 @@ def _build_material_read_payload(
     all_concepts: list[str] = []
 
     for asset in assets:
+        raw_material_text = read_material_text(asset)
         asset_chunks = build_material_chunks(asset)
         excerpt_source = " ".join(chunk.text for chunk in asset_chunks[:2]) if asset_chunks else (asset.summary or "")
+        candidate_source = (
+            raw_material_text
+            if raw_material_text.strip()
+            else "\n".join(chunk.text for chunk in asset_chunks[:MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS])
+            if asset_chunks
+            else (asset.summary or "")
+        )
         normalized_excerpt = _normalize_asset_text(excerpt_source)
         key_concepts = _extract_key_concepts(normalized_excerpt)
         knowledge_point_candidates = extract_material_knowledge_point_candidates(
-            excerpt_source,
-            limit=3,
+            candidate_source,
+            limit=MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS,
         )
         all_concepts.extend(key_concepts)
         material_details.append({

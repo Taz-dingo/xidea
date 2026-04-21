@@ -66,6 +66,10 @@ export function getSessionReviewInspectors(
   sessionReviewInspectors: Record<string, AgentReviewInspector | null>,
 ): ReadonlyArray<AgentReviewInspector> {
   return sessions
+    .filter(
+      (session) =>
+        session.type !== "project" && session.knowledgePointId !== null,
+    )
     .map((session) => sessionReviewInspectors[session.id])
     .filter(
       (inspector): inspector is AgentReviewInspector =>

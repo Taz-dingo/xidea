@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS thread_context (
   source_asset_ids TEXT NOT NULL,
   session_orchestration TEXT,
   orchestration_events TEXT NOT NULL DEFAULT '[]',
+  plan TEXT,
+  activities TEXT NOT NULL DEFAULT '[]',
   updated_at TEXT NOT NULL,
   FOREIGN KEY(thread_id) REFERENCES threads(thread_id)
 );
@@ -219,6 +221,8 @@ THREAD_COLUMN_MIGRATIONS: dict[str, str] = {
 THREAD_CONTEXT_COLUMN_MIGRATIONS: dict[str, str] = {
     "session_orchestration": "ALTER TABLE thread_context ADD COLUMN session_orchestration TEXT",
     "orchestration_events": "ALTER TABLE thread_context ADD COLUMN orchestration_events TEXT NOT NULL DEFAULT '[]'",
+    "plan": "ALTER TABLE thread_context ADD COLUMN plan TEXT",
+    "activities": "ALTER TABLE thread_context ADD COLUMN activities TEXT NOT NULL DEFAULT '[]'",
 }
 
 KNOWLEDGE_POINT_SUGGESTION_COLUMN_MIGRATIONS: dict[str, str] = {
@@ -404,6 +408,8 @@ class SQLiteRepository:
                 effective_request.source_asset_ids,
                 state.session_orchestration,
                 state.orchestration_events,
+                state.plan,
+                state.activities,
                 now_value,
             )
             assistant_message_id: int | None = None
@@ -1335,6 +1341,8 @@ class SQLiteRepository:
                 else None
             ),
             "orchestration_events": json.loads(row["orchestration_events"] or "[]"),
+            "plan": json.loads(row["plan"]) if row["plan"] else None,
+            "activities": json.loads(row["activities"] or "[]"),
             "updated_at": row["updated_at"],
         }
 
@@ -1476,19 +1484,23 @@ class SQLiteRepository:
         source_asset_ids: list[str],
         session_orchestration: SessionOrchestration | None,
         orchestration_events: list[SessionOrchestrationEventRecord],
+        plan: StudyPlan | None,
+        activities: list[Activity],
         updated_at: str,
     ) -> None:
         connection.execute(
             """
             INSERT INTO thread_context(
-              thread_id, entry_mode, source_asset_ids, session_orchestration, orchestration_events, updated_at
+              thread_id, entry_mode, source_asset_ids, session_orchestration, orchestration_events, plan, activities, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(thread_id) DO UPDATE SET
               entry_mode = excluded.entry_mode,
               source_asset_ids = excluded.source_asset_ids,
               session_orchestration = excluded.session_orchestration,
               orchestration_events = excluded.orchestration_events,
+              plan = excluded.plan,
+              activities = excluded.activities,
               updated_at = excluded.updated_at
             """,
             (
@@ -1503,6 +1515,13 @@ class SQLiteRepository:
                 else None,
                 json.dumps(
                     [event.model_dump(mode="json") for event in orchestration_events],
+                    ensure_ascii=False,
+                ),
+                json.dumps(plan.model_dump(mode="json"), ensure_ascii=False)
+                if plan is not None
+                else None,
+                json.dumps(
+                    [activity.model_dump(mode="json") for activity in activities],
                     ensure_ascii=False,
                 ),
                 updated_at,

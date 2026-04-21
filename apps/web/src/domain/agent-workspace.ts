@@ -1,4 +1,10 @@
-import type { AgentEntryMode } from "@/domain/agent-runtime";
+import type {
+  AgentActivity,
+  AgentEntryMode,
+  AgentPlan,
+  AgentSessionOrchestration,
+  AgentSessionOrchestrationEventRecord,
+} from "@/domain/agent-runtime";
 
 export type AgentWorkspaceProjectStatus = "active" | "archived";
 export type AgentWorkspaceSessionType = "project" | "study" | "review";
@@ -61,6 +67,10 @@ export interface AgentWorkspaceThreadContext {
   readonly thread_id: string;
   readonly entry_mode: AgentEntryMode;
   readonly source_asset_ids: ReadonlyArray<string>;
+  readonly session_orchestration: AgentSessionOrchestration | null;
+  readonly orchestration_events: ReadonlyArray<AgentSessionOrchestrationEventRecord>;
+  readonly plan: AgentPlan | null;
+  readonly activities: ReadonlyArray<AgentActivity>;
   readonly updated_at: string | null;
 }
 

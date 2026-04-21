@@ -87,6 +87,11 @@ export function useNavigationActions(data: WorkspaceData) {
       delete next[targetSessionId];
       return next;
     });
+    data.setActivityReplayStateBySession((current) => {
+      const next = { ...current };
+      delete next[targetSessionId];
+      return next;
+    });
     data.setActivityResolutionsBySession((current) => {
       const next = { ...current };
       delete next[targetSessionId];

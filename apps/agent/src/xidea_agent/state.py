@@ -164,6 +164,8 @@ class ThreadContextRecord(StrictModel):
     source_asset_ids: list[str] = Field(default_factory=list)
     session_orchestration: SessionOrchestration | None = None
     orchestration_events: list[SessionOrchestrationEventRecord] = Field(default_factory=list)
+    plan: StudyPlan | None = None
+    activities: list[Activity] = Field(default_factory=list)
     updated_at: datetime | None = None
 
 

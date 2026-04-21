@@ -60,6 +60,7 @@ export function useWorkspaceStores() {
     useShallow((state) => ({
       activityResolutionsBySession: state.activityResolutionsBySession,
       activityBatchStateBySession: state.activityBatchStateBySession,
+      activityReplayStateBySession: state.activityReplayStateBySession,
       agentConnectionState: state.agentConnectionState,
       assetSummaryByKey: state.assetSummaryByKey,
       bootstrapLoadedKeys: state.bootstrapLoadedKeys,
@@ -76,6 +77,7 @@ export function useWorkspaceStores() {
       sessionSourceAssetIds: state.sessionSourceAssetIds,
       setActivityResolutionsBySession: state.setActivityResolutionsBySession,
       setActivityBatchStateBySession: state.setActivityBatchStateBySession,
+      setActivityReplayStateBySession: state.setActivityReplayStateBySession,
       setAgentConnectionState: state.setAgentConnectionState,
       setAssetSummaryByKey: state.setAssetSummaryByKey,
       setCompletedActivityDecksBySession: state.setCompletedActivityDecksBySession,

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from xidea_agent.activity_choices import reorder_activity_choice_input
 from xidea_agent.activity_results import apply_activity_result_writeback
 from xidea_agent.guardrails import get_violations, validate_diagnosis
+from xidea_agent.material_content import MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS
 from xidea_agent.knowledge_points import (
     COMPARISON_PATTERN,
     build_boundary_title,
@@ -1557,7 +1558,11 @@ def _build_create_knowledge_point_suggestion(
     )
 
 
-def _extract_material_import_suggestion_titles(reply: str) -> list[str]:
+def _extract_material_import_suggestion_titles(
+    reply: str,
+    *,
+    limit: int = MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS,
+) -> list[str]:
     if not reply.strip():
         return []
 
@@ -1581,13 +1586,13 @@ def _extract_material_import_suggestion_titles(reply: str) -> list[str]:
             flags=re.S,
         )
     )
-    for match in matches[:3]:
+    for match in matches[:limit]:
         body = " ".join(match.group("body").strip().split())
         if not body:
             continue
         title = re.split(r"[——:：；;，,。]", body, maxsplit=1)[0].strip()
         _append_title(title)
-    return titles[:3]
+    return titles[:limit]
 
 
 def _get_material_context_payload(
@@ -1617,6 +1622,58 @@ def _get_material_entries(payload: dict[str, object]) -> list[dict[str, object]]
         return [item for item in assets if isinstance(item, dict)]
 
     return []
+
+
+def _estimate_material_import_suggestion_limit(
+    payload: dict[str, object],
+) -> int:
+    materials = _get_material_entries(payload)
+    if not materials:
+        return 1
+
+    material_count = len(materials)
+    explicit_candidate_count = len(
+        {
+            str(candidate).strip()
+            for material in materials
+            for candidate in (
+                material.get("knowledgePointCandidates")
+                if isinstance(material.get("knowledgePointCandidates"), list)
+                else []
+            )
+            if str(candidate).strip()
+        }
+    )
+    chunk_count = sum(
+        len(chunk_ids)
+        for material in materials
+        for chunk_ids in [
+            material.get("chunkIds") if isinstance(material.get("chunkIds"), list) else []
+        ]
+    )
+    excerpt_chars = sum(
+        len(" ".join(str(material.get("contentExcerpt") or "").split()))
+        for material in materials
+    )
+    sentence_count = sum(
+        len(re.findall(r"[。！？!?；;]", str(material.get("contentExcerpt") or "")))
+        for material in materials
+    )
+
+    estimated_limit = 1
+    if material_count >= 2:
+        estimated_limit += 1
+    if chunk_count >= 2 or excerpt_chars >= 400 or sentence_count >= 3:
+        estimated_limit += 1
+    if chunk_count >= 4 or excerpt_chars >= 900 or excerpt_chars >= 180:
+        estimated_limit += 1
+    if chunk_count >= 7 or excerpt_chars >= 1600:
+        estimated_limit += 1
+    if chunk_count >= 10 or excerpt_chars >= 2400 or material_count >= 4:
+        estimated_limit += 1
+
+    estimated_limit = max(estimated_limit, explicit_candidate_count)
+    return max(1, min(MAX_MATERIAL_KNOWLEDGE_POINT_SUGGESTIONS, estimated_limit))
 
 
 def _build_material_import_knowledge_point_suggestions(
@@ -1655,7 +1712,11 @@ def _build_material_import_knowledge_point_suggestions(
             elif suggestion.status == "accepted":
                 existing_accepted_by_key[suggestion_key] = suggestion
 
-    suggestion_titles = _extract_material_import_suggestion_titles(state.assistant_message or "")
+    suggestion_limit = _estimate_material_import_suggestion_limit(material_context)
+    suggestion_titles = _extract_material_import_suggestion_titles(
+        state.assistant_message or "",
+        limit=suggestion_limit,
+    )
     candidate_contexts: list[dict[str, str]] = []
     seen_candidate_keys: set[str] = set()
 
@@ -1686,7 +1747,7 @@ def _build_material_import_knowledge_point_suggestions(
         if not candidate_titles:
             continue
 
-        for title in candidate_titles[:3]:
+        for title in candidate_titles[:suggestion_limit]:
             candidate_key = knowledge_point_identity_key(title)
             if candidate_key in seen_candidate_keys:
                 continue
@@ -1710,6 +1771,39 @@ def _build_material_import_knowledge_point_suggestions(
             f"建议把「{candidate['title']}」收成独立知识点，再继续学习编排和复习安排。"
         )
         return description, reason
+
+    if not candidate_contexts and llm is not None:
+        from xidea_agent.llm import llm_extract_material_knowledge_point_titles
+
+        extracted_titles = llm_extract_material_knowledge_point_titles(
+            llm,
+            topic=state.request.topic,
+            user_message=latest_user_message(state.request.messages),
+            assistant_reply=state.assistant_message or "",
+            asset_summary=material_context,
+            session_type=state.request.session_type,
+            limit=suggestion_limit,
+        )
+        if extracted_titles:
+            fallback_asset = assets[0] if assets and isinstance(assets[0], dict) else {}
+            asset_title = str(fallback_asset.get("title") or "当前材料").strip()
+            key_concepts = fallback_asset.get("keyConcepts") or []
+            if not isinstance(key_concepts, list):
+                key_concepts = []
+            concept_hint = "、".join(str(item) for item in key_concepts[:3] if str(item).strip())
+            topic_hint = str(fallback_asset.get("topic") or "").strip()
+            for title in extracted_titles[:suggestion_limit]:
+                candidate_key = knowledge_point_identity_key(title)
+                if candidate_key in seen_candidate_keys:
+                    continue
+                seen_candidate_keys.add(candidate_key)
+                candidate_contexts.append({
+                    "key": candidate_key,
+                    "title": title,
+                    "asset_title": asset_title,
+                    "concept_hint": concept_hint,
+                    "topic_hint": topic_hint,
+                })
 
     enriched_by_key: dict[str, dict[str, str]] = {}
     if llm is not None and candidate_contexts:
@@ -1797,7 +1891,7 @@ def _build_material_import_knowledge_point_suggestions(
             )
         )
 
-    return suggestions[:3]
+    return suggestions[:suggestion_limit]
 
 
 def _compose_material_import_project_reply(
@@ -1818,33 +1912,7 @@ def _compose_material_import_project_reply(
         return fallback_message
 
     asset_title = str(asset.get("title") or "当前材料").strip() or "当前材料"
-    visible_chunks = payload.get("chunks")
-    top_chunk = (
-        visible_chunks[0]
-        if isinstance(visible_chunks, list) and visible_chunks and isinstance(visible_chunks[0], dict)
-        else None
-    )
-    key_concepts = asset.get("keyConcepts")
-    visible_concepts = (
-        [str(item).strip() for item in key_concepts if str(item).strip()]
-        if isinstance(key_concepts, list)
-        else []
-    )
     suggestion_titles = [suggestion.title for suggestion in state.knowledge_point_suggestions]
-    concept_line = (
-        f"我先读到几个材料线索：{visible_concepts[0]}、{visible_concepts[1]}。"
-        if len(visible_concepts) >= 2
-        else f"我先读到一个材料线索：{visible_concepts[0]}。"
-        if visible_concepts
-        else ""
-    )
-    citation_line = (
-        f"当前最相关的正文片段来自「{str(top_chunk.get('title') or asset_title).strip()}」"
-        f"{' / ' + str(top_chunk.get('locator')).strip() if str(top_chunk.get('locator') or '').strip() else ''}："
-        f"{str(top_chunk.get('text') or '').strip()[:120]}。"
-        if isinstance(top_chunk, dict) and str(top_chunk.get("text") or "").strip()
-        else ""
-    )
 
     if suggestion_titles:
         suggestion_line = (
@@ -1871,8 +1939,6 @@ def _compose_material_import_project_reply(
         part
         for part in [
             f"我能看到你这轮挂载的材料《{asset_title}》。",
-            concept_line,
-            citation_line,
             suggestion_line,
             closing_line,
         ]

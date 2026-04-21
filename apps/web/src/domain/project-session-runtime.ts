@@ -20,6 +20,7 @@ export interface ActivityBatchResult {
   readonly activityPrompt: string;
   readonly knowledgePointId: string | null;
   readonly kind: LearningActivityKind;
+  readonly activitySnapshot: LearningActivity | null;
   readonly action: "submit" | "skip";
   readonly responseText: string;
   readonly selectedChoiceId: string | null;
@@ -44,6 +45,12 @@ export interface SessionActivityBatchState {
   readonly currentIndex: number;
   readonly deckKey: string;
   readonly results: ReadonlyArray<ActivityBatchResult>;
+}
+
+export interface ActivityReplayState {
+  readonly sourceDeckKey: string;
+  readonly replayDeckKey: string;
+  readonly activities: ReadonlyArray<LearningActivity>;
 }
 
 export function getActionLabel(action: AgentAction): string {
@@ -102,6 +109,7 @@ export function createActivityBatchResult(input: {
     activityPrompt: input.activity.prompt,
     knowledgePointId: input.knowledgePointId,
     kind: input.activity.kind,
+    activitySnapshot: input.activity,
     action: input.action,
     responseText: input.submission?.responseText.trim() ?? "",
     selectedChoiceId: input.submission?.selectedChoiceId ?? null,
@@ -130,6 +138,51 @@ export function buildCompletedActivityDeck(input: {
     knowledgePointId: lastResult.knowledgePointId,
     completedAt: new Date().toISOString(),
     cards: input.results,
+  };
+}
+
+export function isCompletedDeckReplayable(
+  deck: CompletedActivityDeck,
+): boolean {
+  return (
+    deck.cards.length > 0 &&
+    deck.cards.every((card) => card.activitySnapshot !== null)
+  );
+}
+
+export function buildActivityReplayState(
+  deck: CompletedActivityDeck,
+): ActivityReplayState | null {
+  if (!isCompletedDeckReplayable(deck)) {
+    return null;
+  }
+
+  const replayDeckKey = `${deck.deckKey}::replay::${Date.now()}`;
+
+  return {
+    sourceDeckKey: deck.deckKey,
+    replayDeckKey,
+    activities: deck.cards.map((card, index) => ({
+      ...card.activitySnapshot!,
+      id: `${card.activitySnapshot!.id}::${replayDeckKey}::${index + 1}`,
+    })),
+  };
+}
+
+export function normalizeActivityBatchResult(
+  card: ActivityBatchResult | Record<string, unknown>,
+): ActivityBatchResult {
+  const fallbackCard = card as ActivityBatchResult;
+  const activitySnapshot =
+    "activitySnapshot" in card &&
+    card.activitySnapshot !== undefined &&
+    card.activitySnapshot !== null
+      ? (card.activitySnapshot as LearningActivity)
+      : null;
+
+  return {
+    ...fallbackCard,
+    activitySnapshot,
   };
 }
 

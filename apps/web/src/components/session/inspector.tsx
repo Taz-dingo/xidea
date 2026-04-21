@@ -1,66 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DeckHistoryDialog,
+  formatDeckCompletionLabel,
+  SessionDeckBadge,
+} from "@/components/session/deck-history-dialog";
 import { CompactNote, MonitorSection } from "@/components/workspace/monitor";
 import type {
-  AgentAssetSummary,
-  AgentMaterialRead,
   AgentReviewInspector,
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
 import type {
-  ActivityBatchResult,
   CompletedActivityDeck,
 } from "@/domain/project-session-runtime";
-import {
-  getSessionTypeLabel,
-  type ProjectItem,
-} from "@/domain/project-workspace";
-
-function formatDeckCompletionLabel(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "刚刚";
-  }
-
-  const diffMinutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
-  if (diffMinutes < 1) {
-    return "刚刚完成";
-  }
-  if (diffMinutes < 60) {
-    return `${diffMinutes} 分钟前`;
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function getAttemptStatusLabel(card: ActivityBatchResult): string {
-  if (card.action === "skip") {
-    return "已跳过";
-  }
-  if (card.isCorrect === true) {
-    return `已完成 · ${card.attempts.length} 次`;
-  }
-  return "未完成";
-}
-
-function getAttemptStatusClass(card: ActivityBatchResult): string {
-  if (card.action === "skip") {
-    return "border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-stone)]";
-  }
-  if (card.isCorrect === true) {
-    return "border-[#bfd6a7] bg-[#f3fbe9] text-[#4f7c2f]";
-  }
-  return "border-[var(--xidea-selection-border)] bg-[#fff3eb] text-[var(--xidea-selection-text)]";
-}
+import { type ProjectItem } from "@/domain/project-workspace";
 
 function DeckStackPreview({
   deck,
@@ -95,7 +52,7 @@ function DeckStackPreview({
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <SessionBadgeLabel sessionType={deck.sessionType} />
+                <SessionDeckBadge sessionType={deck.sessionType} />
                 <span className="text-[12px] text-[var(--xidea-stone)]">
                   {formatDeckCompletionLabel(deck.completedAt)}
                 </span>
@@ -134,193 +91,40 @@ function CompactInlineNote({
   );
 }
 
-function buildMaterialEvidenceCards(materialRead: AgentMaterialRead): ReadonlyArray<{
-  readonly id: string;
-  readonly label: string;
-  readonly text: string;
-}> {
-  return materialRead.citations
-    .slice(0, 3)
-    .map((citation) => {
-      const chunk = materialRead.chunks.find(
-        (candidate) => candidate.chunkId === citation.chunkId,
-      );
-      if (chunk === undefined) {
-        return null;
-      }
-      return {
-        id: citation.chunkId,
-        label: citation.label,
-        text: chunk.text,
-      };
-    })
-    .filter((item): item is { readonly id: string; readonly label: string; readonly text: string } => item !== null);
-}
-
-function SessionBadgeLabel({
-  sessionType,
-}: {
-  sessionType: CompletedActivityDeck["sessionType"];
-}): ReactElement {
-  return (
-    <Badge className="border-[var(--xidea-border)] bg-[var(--xidea-parchment)] text-[var(--xidea-charcoal)] shadow-none" variant="outline">
-      {getSessionTypeLabel(sessionType)}卡组
-    </Badge>
-  );
-}
-
-function DeckHistoryDialog({
-  deck,
-  onClose,
-}: {
-  deck: CompletedActivityDeck | null;
-  onClose: () => void;
-}): ReactElement | null {
-  if (deck === null) {
-    return null;
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 px-4 py-8 backdrop-blur-[2px]">
-      <Card className="max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-[0_24px_80px_rgba(20,20,19,0.18)]">
-        <CardContent className="flex max-h-[85vh] flex-col gap-4 p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <SessionBadgeLabel sessionType={deck.sessionType} />
-                <span className="text-sm text-[var(--xidea-stone)]">
-                  {deck.cards.length} 张卡 · {formatDeckCompletionLabel(deck.completedAt)}
-                </span>
-              </div>
-              <p className="text-base font-medium text-[var(--xidea-near-black)]">本轮卡片回看</p>
-            </div>
-            <Button className="rounded-full" onClick={onClose} type="button" variant="outline">
-              <X className="h-4 w-4" />
-              关闭
-            </Button>
-          </div>
-
-          <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
-            {deck.cards.map((card) => (
-              <Card
-                className="rounded-[1rem] border-[var(--xidea-border)] bg-[#fffaf5] shadow-none"
-                key={card.activityId}
-              >
-                <CardContent className="space-y-3 px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
-                        {card.activityTitle}
-                      </p>
-                      <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                        {card.activityPrompt}
-                      </p>
-                    </div>
-                    <Badge className={`shadow-none ${getAttemptStatusClass(card)}`} variant="outline">
-                      {getAttemptStatusLabel(card)}
-                    </Badge>
-                  </div>
-
-                  {card.attempts.length > 0 ? (
-                    <div className="space-y-2">
-                      {card.attempts.map((attempt) => (
-                        <div
-                          className="rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2.5"
-                          key={`${card.activityId}-${attempt.attemptNumber}`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-[13px] font-medium text-[var(--xidea-near-black)]">
-                              第 {attempt.attemptNumber} 次：{attempt.responseText || "未作答"}
-                            </p>
-                            <span
-                              className={
-                                attempt.isCorrect === true
-                                  ? "text-[12px] text-[#5a8c34]"
-                                  : attempt.isCorrect === false
-                                    ? "text-[12px] text-[#cc6d48]"
-                                    : "text-[12px] text-[var(--xidea-stone)]"
-                              }
-                            >
-                              {attempt.isCorrect === true
-                                ? "答对"
-                                : attempt.isCorrect === false
-                                  ? "纠偏中"
-                                  : "已提交"}
-                            </span>
-                          </div>
-                          {attempt.feedback ? (
-                            <p className="mt-1.5 text-[12px] leading-5 text-[var(--xidea-charcoal)]">
-                              {attempt.feedback}
-                            </p>
-                          ) : null}
-                          {attempt.analysis ? (
-                            <p className="mt-1 text-[12px] leading-5 text-[var(--xidea-stone)]">
-                              分析：{attempt.analysis}
-                            </p>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[12px] leading-5 text-[var(--xidea-stone)]">这一张没有留下作答记录。</p>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
 
 export function SessionInspector({
-  activeAssetSummary,
-  activeMaterialRead,
   activeReviewInspector,
   activeRuntime,
   completedActivityDecks,
   hasPersistedState,
   hasStructuredRuntime,
-  isBlankSession,
+  isReplayDisabled = false,
   latestReviewedLabel,
   nextReviewLabel,
-  requestSourceAssetIds,
+  onReplayDeck,
   selectedProject,
   selectedSessionStatus,
   selectedSessionType,
-  selectedSourceAssetIds,
 }: {
-  activeAssetSummary: AgentAssetSummary | null;
-  activeMaterialRead: AgentMaterialRead | null;
   activeReviewInspector: AgentReviewInspector | null;
   activeRuntime: RuntimeSnapshot;
   completedActivityDecks: ReadonlyArray<CompletedActivityDeck>;
   hasPersistedState: boolean;
   hasStructuredRuntime: boolean;
-  isBlankSession: boolean;
+  isReplayDisabled?: boolean;
   latestReviewedLabel: string;
   nextReviewLabel: string;
-  requestSourceAssetIds: ReadonlyArray<string>;
+  onReplayDeck: (deck: CompletedActivityDeck) => void;
   selectedProject: ProjectItem;
   selectedSessionStatus: string;
   selectedSessionType: "project" | "study" | "review";
-  selectedSourceAssetIds: ReadonlyArray<string>;
 }): ReactElement {
   const [openDeckKey, setOpenDeckKey] = useState<string | null>(null);
   const [isPlanDetailOpen, setIsPlanDetailOpen] = useState(false);
-  const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const previewDecks = useMemo(
     () => completedActivityDecks.slice(0, 3),
     [completedActivityDecks],
   );
-  const materialEvidenceCards = useMemo(
-    () => (activeMaterialRead === null ? [] : buildMaterialEvidenceCards(activeMaterialRead)),
-    [activeMaterialRead],
-  );
-  useEffect(() => {
-    setIsEvidenceOpen(false);
-  }, [activeMaterialRead?.materialIds.join("|")]);
   const openDeck =
     completedActivityDecks.find((deck) => deck.deckKey === openDeckKey) ?? null;
   const activePlan = activeRuntime.orchestration.current;
@@ -417,70 +221,17 @@ export function SessionInspector({
           </MonitorSection>
         ) : null}
 
-        {selectedSessionType === "project" ? (
-          <MonitorSection title="材料上下文">
-            <CompactNote
-              label="材料"
-              value={
-                isBlankSession
-                  ? "0 份"
-                  : selectedSourceAssetIds.length > 0
-                    ? `${requestSourceAssetIds.length} 份已附加`
-                    : `${requestSourceAssetIds.length} 份已关联`
-              }
-            />
-            <CompactNote
-              label="摘要"
-              value={activeAssetSummary?.summary ?? "等待读取真实材料上下文"}
-            />
-            {activeAssetSummary?.keyConcepts.length ? (
-              <div className="flex flex-wrap gap-2">
-                {activeAssetSummary.keyConcepts.slice(0, 4).map((concept) => (
-                  <Badge
-                    className="border-[var(--xidea-sand)] bg-[var(--xidea-ivory)] px-2 py-1 text-[12px] text-[var(--xidea-charcoal)] shadow-none"
-                    key={concept}
-                    variant="outline"
-                  >
-                    {concept}
-                  </Badge>
-                ))}
-              </div>
-            ) : null}
-            {materialEvidenceCards.length > 0 ? (
-              <div className="space-y-2">
-                <Button
-                  className="h-9 w-full justify-between rounded-[0.9rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 text-[13px] text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-parchment)]"
-                  onClick={() => setIsEvidenceOpen((current) => !current)}
-                  type="button"
-                  variant="outline"
-                >
-                  查看依据
-                  {isEvidenceOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </Button>
-                {isEvidenceOpen ? (
-                  <div className="space-y-2">
-                    {materialEvidenceCards.map((card) => (
-                      <div
-                        className="rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-3"
-                        key={card.id}
-                      >
-                        <p className="text-[12px] font-medium text-[var(--xidea-near-black)]">
-                          {card.label}
-                        </p>
-                        <p className="mt-1 text-[12px] leading-5 text-[var(--xidea-charcoal)]">
-                          {card.text}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </MonitorSection>
-        ) : null}
       </div>
 
-      <DeckHistoryDialog deck={openDeck} onClose={() => setOpenDeckKey(null)} />
+      <DeckHistoryDialog
+        deck={openDeck}
+        onClose={() => setOpenDeckKey(null)}
+        onReplay={(deck) => {
+          onReplayDeck(deck);
+          setOpenDeckKey(null);
+        }}
+        replayDisabled={isReplayDisabled}
+      />
       {isPlanDetailOpen && activePlan !== null ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 px-4 py-8 backdrop-blur-[2px]">
           <Card className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-[0_24px_80px_rgba(20,20,19,0.18)]">

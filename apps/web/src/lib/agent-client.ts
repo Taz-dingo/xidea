@@ -14,7 +14,10 @@ import type {
   AgentStreamEvent,
   AgentThreadContext,
 } from "@/domain/agent-runtime";
-import type { CompletedActivityDeck } from "@/domain/project-session-runtime";
+import {
+  normalizeActivityBatchResult,
+  type CompletedActivityDeck,
+} from "@/domain/project-session-runtime";
 import type { AgentWorkspaceProjectConsolidation } from "@/domain/agent-workspace";
 import type { SourceAsset } from "@/domain/types";
 
@@ -392,7 +395,7 @@ export async function getThreadActivityDecks(
     sessionType: record.session_type,
     knowledgePointId: record.knowledge_point_id,
     completedAt: record.completed_at,
-    cards: record.cards,
+    cards: record.cards.map((card) => normalizeActivityBatchResult(card)),
   }));
 }
 

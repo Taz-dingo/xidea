@@ -29,12 +29,14 @@ function getKindLabel(kind: LearningActivity["kind"]): string {
 export function LearningActivityStack({
   activities,
   disabled,
+  isReplay = false,
   resolution,
   onSkip,
   onSubmit,
 }: {
   activities: ReadonlyArray<LearningActivity>;
   disabled: boolean;
+  isReplay?: boolean;
   resolution: "submitted" | "skipped" | null;
   onSkip?: (attempts?: ReadonlyArray<LearningActivityAttempt>) => void;
   onSubmit: (submission: LearningActivitySubmission) => void;
@@ -56,14 +58,14 @@ export function LearningActivityStack({
               className="border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] shadow-none"
               variant="outline"
             >
-              当前卡组
+              {isReplay ? "重做卡组" : "当前卡组"}
             </Badge>
             <span className="text-sm text-[var(--xidea-charcoal)]/80">
               共 {activities.length} 张
             </span>
           </div>
           <span className="text-sm text-[var(--xidea-stone)]">
-            答对后自动切到下一张
+            {isReplay ? "这轮会保留历史并重新写回学习状态" : "答对后自动切到下一张"}
           </span>
         </div>
       ) : null}
