@@ -43,8 +43,7 @@ function buildChoiceAttempt(input: {
         Math.max(input.attemptNumber - 1, 0),
         Math.max(choice.feedbackLayers.length - 1, 0),
       );
-  const feedback =
-    choice.feedbackLayers[feedbackIndex] ?? choice.analysis ?? choice.detail;
+  const feedback = choice.feedbackLayers[feedbackIndex] ?? choice.analysis ?? null;
 
   return {
     attemptNumber: input.attemptNumber,
@@ -363,12 +362,9 @@ export function LearningActivityCard({
                   type="button"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1.5">
+                    <div>
                       <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
                         {choice.label}
-                      </p>
-                      <p className="text-[13px] leading-5 text-[var(--xidea-stone)]">
-                        {choice.detail}
                       </p>
                     </div>
                     {wasLatestCorrect ? (

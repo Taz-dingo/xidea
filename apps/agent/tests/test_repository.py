@@ -511,6 +511,8 @@ def test_repository_persists_activity_result_writeback_to_project_level_state(tm
     assert knowledge_point_state.review_status == "scheduled"
     assert project_memory is not None
     assert "最近一次 review 结果" in project_memory.summary
+    assert "T" not in project_memory.summary
+    assert "+00:00" not in project_memory.summary
     assert project_learning_profile is not None
     assert project_learning_profile.current_stage == "stabilizing"
     assert project_context is not None

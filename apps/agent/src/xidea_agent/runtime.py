@@ -594,6 +594,34 @@ def resolve_activities(
     )
 
 
+def _is_session_orchestration_completed(state: GraphState) -> bool:
+    return (
+        state.request.session_type in {"study", "review"}
+        and state.session_orchestration is not None
+        and state.session_orchestration.status == "completed"
+        and state.session_orchestration.current_focus_id is None
+    )
+
+
+def _build_session_completion_message(state: GraphState) -> str:
+    objective = (
+        state.session_orchestration.objective
+        if state.session_orchestration is not None
+        else state.project_context.topic
+        if state.project_context is not None
+        else state.request.topic
+    )
+    if state.request.session_type == "review":
+        return (
+            f"这轮复习已经把当前候选池走完了，可以先结束这次复习。"
+            f"围绕「{objective}」的校准先到这里，后面按新的复习安排再回来。"
+        )
+    return (
+        f"这轮学习已经把当前候选池走完了，可以先结束这次学习。"
+        f"围绕「{objective}」的小学习计划先到这里；如果还想继续推进，下一步应开启新一轮学习或转入复习。"
+    )
+
+
 def _build_project_context_observations(project_context) -> list[Observation]:
     observations = [
         Observation(
@@ -2544,13 +2572,17 @@ def load_context_step(
         repository=repository,
         existing_context=existing_thread_context,
     )
-    if focus_unit_id is not None and focus_unit_id != state.request.target_unit_id:
+    if orchestration is not None and focus_unit_id != state.request.target_unit_id:
         state.request = state.request.model_copy(
             update={
                 "target_unit_id": focus_unit_id,
                 "knowledge_point_id": focus_unit_id,
             }
         )
+        if focus_unit_id is None:
+            state.rationale.append(
+                "load_context cleared the active target unit because the current session orchestration is complete."
+            )
     state.session_orchestration = orchestration
     state.orchestration_events = orchestration_events
     state.project_context = build_project_context(state.request, repository=repository)
@@ -3022,6 +3054,15 @@ def compose_response_step(
     user_msg = state.request.messages[-1].content if state.request.messages else project_topic
 
     if state.tool_intent == "none" and state.assistant_message is not None and state.plan is not None:
+        if _is_session_orchestration_completed(state):
+            state.assistant_message = _build_session_completion_message(state)
+            state.activities = []
+            state.activity = None
+            state.knowledge_point_suggestions = []
+            state.rationale.append(
+                "compose_response skipped activity generation because the session orchestration is completed."
+            )
+            return state
         state.activities, activity_source = resolve_activities(
             state.diagnosis,
             state.plan,
@@ -3142,6 +3183,16 @@ def compose_response_step(
                 state.rationale.append(
                     "LLM plan generation looked too pedagogical for project session, using template plan."
                 )
+
+    if _is_session_orchestration_completed(state):
+        state.assistant_message = _build_session_completion_message(state)
+        state.activities = []
+        state.activity = None
+        state.knowledge_point_suggestions = []
+        state.rationale.append(
+            "compose_response skipped activity generation because the session orchestration is completed."
+        )
+        return state
 
     state.activities, activity_source = resolve_activities(
         state.diagnosis,

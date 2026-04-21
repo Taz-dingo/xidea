@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from "react";
+import { Fragment, type ReactElement, type ReactNode } from "react";
 import {
   FileImage,
   FileText,
@@ -17,7 +17,10 @@ import type {
   ProjectItem,
   SessionType,
 } from "@/domain/project-workspace";
-import { getSessionTypeLabel } from "@/domain/project-workspace";
+import {
+  getSessionTypeDescription,
+  getSessionTypeLabel,
+} from "@/domain/project-workspace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -148,6 +151,27 @@ export function SessionTypeBadge({
   );
 }
 
+export function SessionTypeGuide({
+  types,
+}: {
+  types: ReadonlyArray<SessionType>;
+}): ReactElement {
+  return (
+    <div className="space-y-2">
+      {types.map((type) => (
+        <Fragment key={`session-type-guide-${type}`}>
+          <div className="flex items-center gap-2">
+            <SessionTypeBadge compact type={type} />
+          </div>
+          <p className="text-[12px] leading-5 text-[var(--xidea-charcoal)]">
+            {getSessionTypeDescription(type)}
+          </p>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
 export function SessionCard({
   active,
   deleteArmed = false,
@@ -260,14 +284,16 @@ export function MetricTile({
 
 export function AssetListItem({
   asset,
+  expandOnHover = false,
   selected = false,
   onClick,
 }: {
   asset: SourceAsset;
+  expandOnHover?: boolean;
   selected?: boolean;
   onClick?: () => void;
 }): ReactElement {
-  const content = (
+  const compactContent = (
     <>
       <div className="flex items-start justify-between gap-3">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
@@ -278,28 +304,55 @@ export function AssetListItem({
         </span>
       </div>
       <div className="space-y-1">
-        <p className="line-clamp-2 text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
+        <p className="line-clamp-1 text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
           {asset.title}
         </p>
-        <p className="line-clamp-2 text-sm leading-6 text-[var(--xidea-charcoal)]">{asset.topic}</p>
+        <p className="line-clamp-1 text-sm leading-6 text-[var(--xidea-charcoal)]">{asset.topic}</p>
       </div>
     </>
   );
 
+  const expandedContent = (
+    <div className="absolute inset-0 z-10 hidden overflow-hidden rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] p-3 text-left shadow-[0_18px_36px_rgba(20,20,19,0.10)] group-hover:flex group-focus-visible:flex">
+      <div className="flex h-full min-w-0 flex-col gap-3 overflow-hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
+            {getAssetKindIcon(asset.kind)}
+          </div>
+          <span className="shrink-0 rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-2 py-0.5 text-[10px] tracking-[0.08em] text-[var(--xidea-stone)]">
+            {getAssetKindLabel(asset.kind)}
+          </span>
+        </div>
+        <div className="min-w-0 space-y-1 overflow-hidden">
+          <p className="line-clamp-2 break-words text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
+            {asset.title}
+          </p>
+          <p className="line-clamp-4 break-words text-sm leading-6 text-[var(--xidea-charcoal)]">
+            {asset.topic}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
   const className = selected
-    ? "flex h-full min-h-[132px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] p-3 text-left transition-colors"
-    : "flex h-full min-h-[132px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef]";
+    ? "group relative flex h-full min-h-[108px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] p-3 text-left transition-colors"
+    : "group relative flex h-full min-h-[108px] w-full flex-col gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef]";
 
   if (onClick) {
     return (
       <button className={className} onClick={onClick} type="button">
-        {content}
+        {compactContent}
+        {expandOnHover ? expandedContent : null}
       </button>
     );
   }
 
   return (
-    <div className={className}>{content}</div>
+    <div className={className}>
+      {compactContent}
+      {expandOnHover ? expandedContent : null}
+    </div>
   );
 }
 
@@ -307,12 +360,14 @@ export function AssetListGrid({
   assets,
   className = "grid gap-2 sm:grid-cols-2",
   emptyText,
+  expandOnHover = false,
   onAssetClick,
   selectedAssetIds = [],
 }: {
   assets: ReadonlyArray<SourceAsset>;
   className?: string;
   emptyText: string;
+  expandOnHover?: boolean;
   onAssetClick?: (assetId: string) => void;
   selectedAssetIds?: ReadonlyArray<string>;
 }): ReactElement {
@@ -325,6 +380,7 @@ export function AssetListGrid({
       {assets.map((asset) => (
         <AssetListItem
           asset={asset}
+          expandOnHover={expandOnHover}
           key={asset.id}
           onClick={onAssetClick ? () => onAssetClick(asset.id) : undefined}
           selected={selectedAssetIds.includes(asset.id)}

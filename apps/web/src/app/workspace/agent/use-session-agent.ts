@@ -173,10 +173,6 @@ export function useSessionAgent({
     fallbackSessionType === "project" && selectedSourceAssetIds.length > 0
       ? "material-import"
       : "chat-question";
-  const isMaterialsTrayOpen =
-    fallbackSessionType !== "project" || selectedSessionKey === null
-      ? false
-      : selectedSourceAssetIds.length > 0 || data.sessionMaterialTrayOpen[selectedSessionKey] === true;
   const activeSourceAssetsRef = useRef<ReadonlyArray<SourceAsset>>(activeSourceAssets);
   activeSourceAssetsRef.current = activeSourceAssets;
   const pendingSourceAssetsRef = useRef<ReadonlyArray<SourceAsset> | null>(null);
@@ -270,8 +266,11 @@ export function useSessionAgent({
             ? {
                 ...session,
                 knowledgePointId:
-                  snapshot.orchestration.current?.current_focus_id ?? session.knowledgePointId,
-                status: "已更新",
+                  snapshot.orchestration.current === null
+                    ? session.knowledgePointId
+                    : snapshot.orchestration.current.current_focus_id,
+                status:
+                  snapshot.orchestration.current?.status === "completed" ? "已完成" : "已更新",
                 updatedAt: "刚刚",
               }
             : session,
@@ -633,7 +632,6 @@ export function useSessionAgent({
     data,
     error,
     handleCreateSession,
-    isMaterialsTrayOpen,
     latestAssistantMessageId,
     onQueueActivityResult: (result) => {
       pendingActivityResultRef.current = result;
@@ -715,7 +713,6 @@ export function useSessionAgent({
     isAgentRunning,
     isBlankSession,
     isReplayingDeck: replayState !== null,
-    isMaterialsTrayOpen,
     latestAssistantMessageId,
     latestReviewedEvent,
     latestReviewedLabel,

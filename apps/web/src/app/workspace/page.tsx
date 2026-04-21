@@ -213,7 +213,6 @@ export function WorkspacePage(): ReactElement {
                   hasStructuredRuntime={session.hasStructuredRuntime}
                   isAgentRunning={session.isAgentRunning}
                   isBlankSession={session.isBlankSession || data.selectedSession === undefined}
-                  isMaterialsTrayOpen={session.isMaterialsTrayOpen}
                   isReplayingDeck={session.isReplayingDeck}
                   latestAssistantMessageId={session.latestAssistantMessageId}
                   latestReviewedLabel={session.latestReviewedLabel}
@@ -247,7 +246,6 @@ export function WorkspacePage(): ReactElement {
                   onSkipActivity={session.handleSkipActivity}
                   onSubmitActivity={session.handleSubmitActivity}
                   onSubmitPrompt={session.handleSubmitPrompt}
-                  onToggleMaterialsTray={session.handleToggleMaterialsTray}
                   onToggleProjectMaterial={session.handleToggleProjectMaterial}
                   onUploadMaterial={actions.handleUploadProjectMaterialAndAttach}
                   onUnsetSourceAsset={session.handleUnsetSourceAsset}

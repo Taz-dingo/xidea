@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import type { ReactElement } from "react";
-import { X } from "lucide-react";
+import type { CSSProperties, ReactElement } from "react";
+import { ArrowRight, Compass, Flag, Route, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import {
 import { CompactNote, MonitorSection } from "@/components/workspace/monitor";
 import type {
   AgentReviewInspector,
+  AgentSessionOrchestration,
   RuntimeSnapshot,
 } from "@/domain/agent-runtime";
 import type {
@@ -91,6 +92,187 @@ function CompactInlineNote({
   );
 }
 
+function getPlanAccent(status: AgentSessionOrchestration["status"]): string {
+  switch (status) {
+    case "completed":
+      return "已完成";
+    case "adjusted":
+      return "已调整";
+    case "planned":
+      return "进行中";
+  }
+}
+
+function getPlanStatusTone(status: AgentSessionOrchestration["status"]): string {
+  switch (status) {
+    case "completed":
+      return "border-[#bfd6a7] bg-[#f2f8ea] text-[#5c7f39]";
+    case "adjusted":
+      return "border-[#e0c5b9] bg-[#fbefe7] text-[#9d5b43]";
+    case "planned":
+      return "border-[#e6d8b2] bg-[#fbf5df] text-[#99741f]";
+  }
+}
+
+function clampTwoLines(value: string): CSSProperties {
+  return {
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  };
+}
+
+function PlanInfoTile({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactElement;
+  label: string;
+  value: string;
+}): ReactElement {
+  return (
+    <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)]/85 px-3 py-3">
+      <div className="flex items-center gap-2 text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
+        <span className="text-[var(--xidea-selection-text)]">{icon}</span>
+        <span>{label}</span>
+      </div>
+      <p
+        className="mt-2 text-[13px] font-medium leading-5 text-[var(--xidea-near-black)]"
+        style={clampTwoLines(value)}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function LearningPlanBoard({
+  activePlan,
+  onOpenDetail,
+}: {
+  activePlan: AgentSessionOrchestration;
+  onOpenDetail: () => void;
+}): ReactElement {
+  const completedCount = activePlan.steps.filter((step) => step.status === "completed").length;
+  const totalSteps = Math.max(activePlan.steps.length, 1);
+  const activeStep =
+    activePlan.steps.find((step) => step.status === "active") ??
+    activePlan.steps.at(completedCount) ??
+    activePlan.steps[0] ??
+    null;
+  const routeSteps = activePlan.steps.slice(0, 4);
+
+  return (
+    <MonitorSection accent={getPlanAccent(activePlan.status)} title="当前学习计划">
+      <div className="overflow-hidden rounded-[1.15rem] border border-[#e4d7ca] bg-[linear-gradient(180deg,#fffdfa_0%,#f6efe7_100%)]">
+        <div className="space-y-4 px-4 py-4">
+          <div className="flex items-center gap-3">
+            <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-[#e2d2c3] bg-[var(--xidea-white)]">
+              <div className="absolute inset-[7px] rounded-full border border-dashed border-[#dcc7b4]" />
+              <div className="text-center">
+                <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--xidea-stone)]">进度</p>
+                <p className="mt-1 text-xl font-semibold text-[var(--xidea-near-black)]">
+                  {completedCount}/{totalSteps}
+                </p>
+              </div>
+            </div>
+
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${getPlanStatusTone(activePlan.status)}`}
+                >
+                  {getPlanAccent(activePlan.status)}
+                </span>
+              </div>
+              {activeStep ? (
+                <div className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2">
+                  <p className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">当前聚焦</p>
+                  <p className="mt-1 text-[13px] font-medium leading-5 text-[var(--xidea-near-black)]">
+                    {activeStep.title}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <PlanInfoTile icon={<Flag className="h-3.5 w-3.5" />} label="目标" value={activePlan.objective} />
+            <PlanInfoTile
+              icon={<Compass className="h-3.5 w-3.5" />}
+              label="焦点"
+              value={activeStep?.title ?? "等待首次编排"}
+            />
+            <PlanInfoTile
+              icon={<Sparkles className="h-3.5 w-3.5" />}
+              label="状态"
+              value={activePlan.last_change_reason ?? "按当前编排继续推进"}
+            />
+          </div>
+        </div>
+
+        {routeSteps.length > 0 ? (
+          <div className="border-t border-[#eadfd3] bg-[var(--xidea-white)]/70 px-4 py-4">
+            <div className="mb-2 flex items-center gap-2 text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">
+              <Route className="h-3.5 w-3.5 text-[var(--xidea-selection-text)]" />
+              <span>步骤轨道</span>
+            </div>
+            <div className="space-y-2">
+              {routeSteps.map((step, index) => (
+                <div className="space-y-2" key={step.knowledge_point_id}>
+                  <div
+                    className={
+                      step.status === "completed"
+                        ? "rounded-[0.95rem] border border-[#bfd6a7] bg-[#f3f8ea] px-3 py-2"
+                        : step.status === "active"
+                          ? "rounded-[0.95rem] border border-[var(--xidea-selection-border)] bg-[#fcf2ea] px-3 py-2"
+                          : "rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2"
+                    }
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={
+                          step.status === "completed"
+                            ? "h-2.5 w-2.5 rounded-full bg-[#7da25b]"
+                            : step.status === "active"
+                              ? "h-2.5 w-2.5 rounded-full bg-[var(--xidea-terracotta)]"
+                              : "h-2.5 w-2.5 rounded-full bg-[#d8cdc2]"
+                        }
+                      />
+                      <span className="text-[11px] text-[var(--xidea-stone)]">
+                        {step.status === "completed" ? "完成" : step.status === "active" ? "当前" : "待推进"}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[13px] font-medium leading-5 text-[var(--xidea-near-black)]">
+                      {step.title}
+                    </p>
+                  </div>
+                  {index < routeSteps.length - 1 ? (
+                    <div className="flex justify-center">
+                      <ArrowRight className="h-4 w-4 shrink-0 rotate-90 text-[var(--xidea-stone)]/60" />
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <Button
+        className="w-full rounded-[0.95rem] border-[var(--xidea-selection-border)] bg-[var(--xidea-white)] hover:bg-[var(--xidea-selection)]"
+        onClick={onOpenDetail}
+        type="button"
+        variant="outline"
+      >
+        查看详情
+      </Button>
+    </MonitorSection>
+  );
+}
+
 
 export function SessionInspector({
   activeReviewInspector,
@@ -150,41 +332,10 @@ export function SessionInspector({
             </p>
           </MonitorSection>
         ) : activePlan !== null ? (
-          <MonitorSection
-            accent={activePlan.status === "completed" ? "已完成" : activePlan.status === "adjusted" ? "已调整" : "进行中"}
-            title="当前学习计划"
-          >
-            <CompactNote label="目标" value={activePlan.objective} />
-            <CompactNote
-              label="当前焦点"
-              value={activePlan.steps.find((step) => step.status === "active")?.title ?? "已完成"}
-            />
-            <CompactNote label="状态" value={activePlan.last_change_reason ?? "按当前计划继续推进。"} />
-            <div className="space-y-2">
-              {activePlan.steps.slice(0, 3).map((step) => (
-                <div
-                  className="rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2.5"
-                  key={step.knowledge_point_id}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[13px] font-medium text-[var(--xidea-near-black)]">{step.title}</p>
-                    <span className="text-[11px] text-[var(--xidea-stone)]">
-                      {step.status === "active" ? "当前" : step.status === "completed" ? "完成" : "待推进"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[12px] leading-5 text-[var(--xidea-charcoal)]">{step.reason}</p>
-                </div>
-              ))}
-            </div>
-            <Button
-              className="w-full rounded-[0.9rem]"
-              onClick={() => setIsPlanDetailOpen(true)}
-              type="button"
-              variant="outline"
-            >
-              查看详情
-            </Button>
-          </MonitorSection>
+          <LearningPlanBoard
+            activePlan={activePlan}
+            onOpenDetail={() => setIsPlanDetailOpen(true)}
+          />
         ) : (
           <MonitorSection title="当前学习计划">
             <CompactNote label="项目" value={selectedProject.name} />

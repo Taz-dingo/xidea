@@ -1606,6 +1606,69 @@ def test_run_agent_v0_applies_activity_result_writeback_and_preloads_project_sta
     assert result.graph_state.project_learning_profile_writeback is not None
 
 
+def test_run_agent_v0_stops_emitting_new_activities_when_orchestration_is_completed(
+    tmp_path: Path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-last-step",
+                project_id="rag-demo",
+                title="DiT 架构如何打通 LLM 与音视频生成",
+                description="理解 DiT 如何复用 Transformer 训练基础设施。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-1"],
+                created_at=now,
+                updated_at=now,
+            )
+        ]
+    )
+
+    first_request = build_request(
+        target_unit_id="kp-last-step",
+        knowledge_point_id="kp-last-step",
+        topic="DiT 架构如何打通 LLM 与音视频生成",
+        messages=[{"role": "user", "content": "带我学一轮这个知识点"}],
+    )
+    first_result = run_agent_v0(first_request, repository=repository, llm=build_mock_llm())
+    repository.save_run(first_request, first_result)
+
+    followup_request = build_request(
+        target_unit_id="kp-last-step",
+        knowledge_point_id="kp-last-step",
+        topic="DiT 架构如何打通 LLM 与音视频生成",
+        messages=[{"role": "user", "content": "继续吧"}],
+        activity_result={
+            "run_id": "run-final-step",
+            "project_id": "rag-demo",
+            "session_id": "thread-1",
+            "activity_id": "activity-final",
+            "knowledge_point_id": "kp-last-step",
+            "result_type": "exercise",
+            "action": "submit",
+            "answer": "DiT 用 Transformer 替代 U-Net，让音视频生成能复用 LLM 的训练基础设施和规模化经验。",
+            "meta": {"correct": True},
+        },
+    )
+    followup_result = run_agent_v0(
+        followup_request,
+        repository=repository,
+        llm=build_mock_llm(),
+    )
+
+    assert followup_result.graph_state.session_orchestration is not None
+    assert followup_result.graph_state.session_orchestration.status == "completed"
+    assert followup_result.graph_state.request.target_unit_id is None
+    assert followup_result.graph_state.request.knowledge_point_id is None
+    assert followup_result.graph_state.activities == []
+    assert followup_result.graph_state.activity is None
+    assert "可以先结束这次学习" in (followup_result.graph_state.assistant_message or "")
+
+
 # ---------------------------------------------------------------------------
 # A. Multi-turn signal accumulation (rule-based helpers, tested directly)
 # ---------------------------------------------------------------------------

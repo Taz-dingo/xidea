@@ -246,9 +246,55 @@ button:not(:disabled):active {
     box-shadow 180ms ease;
 }
 
+.xidea-hover-panel {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(6px) scale(0.985);
+  transform-origin: top left;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    visibility 180ms ease;
+}
+
+.xidea-hover-expand {
+  max-height: 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transform-origin: top center;
+  transition:
+    max-height 220ms ease,
+    opacity 180ms ease,
+    transform 180ms ease,
+    visibility 180ms ease,
+    margin-top 180ms ease;
+}
+
 .xidea-dot-wave {
   animation: xidea-dot-wave 1s ease-in-out infinite;
   animation-delay: var(--xidea-dot-delay, 0s);
+}
+
+.xidea-inline-dot-wave {
+  animation: xidea-inline-dot-wave 1.1s steps(1, end) infinite;
+  animation-delay: var(--xidea-dot-delay, 0s);
+}
+
+@keyframes xidea-inline-dot-wave {
+  0%,
+  20% {
+    opacity: 0.2;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
 }
 
 .xidea-orb-drift {
@@ -332,12 +378,15 @@ button:not(:disabled):active {
   .xidea-feedback-shake,
   .xidea-feedback-success,
   .xidea-dot-wave,
+  .xidea-inline-dot-wave,
   .xidea-orb-drift,
   .xidea-modal-pop {
     animation: none;
   }
 
   .xidea-card-motion,
+  .xidea-hover-panel,
+  .xidea-hover-expand,
   .xidea-sidebar-reveal {
     transition: none;
   }

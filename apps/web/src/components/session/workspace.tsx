@@ -5,12 +5,13 @@ import { SessionThreadPane } from "@/components/session/thread-pane";
 import { SessionInspector } from "@/components/session/inspector";
 import {
   getSessionDisplayTitle,
+  SessionTypeGuide,
   SessionTypeBadge,
 } from "@/components/workspace/core";
 import { SessionListSection } from "@/components/workspace/session-list";
 import { WorkspaceNavButton } from "@/components/workspace/monitor";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
   AgentAssetSummary,
   AgentMaterialRead,
@@ -28,7 +29,6 @@ import type {
   SessionItem,
   WorkspaceSection,
 } from "@/domain/project-workspace";
-import { getSessionTypeDescription } from "@/domain/project-workspace";
 import type {
   LearningActivityAttempt,
   LearningActivitySubmission,
@@ -57,7 +57,6 @@ export function SessionWorkspace({
   hasStructuredRuntime,
   isAgentRunning,
   isBlankSession,
-  isMaterialsTrayOpen,
   isReplayingDeck,
   latestAssistantMessageId,
   latestReviewedLabel,
@@ -75,7 +74,6 @@ export function SessionWorkspace({
   onSubmitActivity,
   onSubmitPrompt,
   onToggleProjectMaterial,
-  onToggleMaterialsTray,
   onUploadMaterial,
   onUnsetSourceAsset,
   onWorkspaceSectionChange,
@@ -111,7 +109,6 @@ export function SessionWorkspace({
   hasStructuredRuntime: boolean;
   isAgentRunning: boolean;
   isBlankSession: boolean;
-  isMaterialsTrayOpen: boolean;
   isReplayingDeck: boolean;
   latestAssistantMessageId: string | null;
   latestReviewedLabel: string;
@@ -129,7 +126,6 @@ export function SessionWorkspace({
   onSubmitActivity: (submission: LearningActivitySubmission) => void;
   onSubmitPrompt: () => void;
   onToggleProjectMaterial: (assetId: string) => void;
-  onToggleMaterialsTray: () => void;
   onUploadMaterial: (file: File) => Promise<void>;
   onUnsetSourceAsset: (assetId: string) => void;
   onWorkspaceSectionChange: (section: WorkspaceSection) => void;
@@ -148,6 +144,10 @@ export function SessionWorkspace({
   const projectSessions = selectedProjectSessions.filter((session) => session.type === "project");
   const learningSessions = selectedProjectSessions.filter((session) => session.type !== "project");
   const isPendingSession = selectedSession.status === "待开始";
+  const shouldPinSessionViewport =
+    displayMessages.length > 6 ||
+    currentActivity !== null ||
+    isAgentRunning;
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[292px_minmax(0,1fr)_320px]">
@@ -186,8 +186,8 @@ export function SessionWorkspace({
                 研讨
               </Button>
             }
-            description={getSessionTypeDescription("project")}
             emptyText="当前还没有研讨会话。"
+            infoTooltip={<SessionTypeGuide types={["project"]} />}
             onDeleteSession={onDeleteSession}
             onOpenSession={onOpenSession}
             selectedSessionId={selectedSession.id}
@@ -220,8 +220,8 @@ export function SessionWorkspace({
                 </Button>
               </div>
             }
-            description="学习负责推进，复习负责校准。"
             emptyText="当前还没有学习或复习会话。"
+            infoTooltip={<SessionTypeGuide types={["study", "review"]} />}
             onDeleteSession={onDeleteSession}
             onOpenSession={onOpenSession}
             selectedSessionId={selectedSession.id}
@@ -231,10 +231,12 @@ export function SessionWorkspace({
         </CardContent>
       </Card>
 
-      <Card className="xidea-card-motion flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none lg:h-[calc(100svh-7.25rem)]">
+      <Card
+        className={`xidea-card-motion flex min-h-0 flex-col overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] shadow-none lg:overflow-visible lg:max-h-[calc(100svh-6.5rem)]`}
+      >
         <CardHeader className="gap-3 border-b border-[var(--xidea-border)] px-5 pb-4 pt-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <Button
                 aria-label="返回项目工作台"
                 className="mt-0.5 h-9 w-9 shrink-0 rounded-full border-[var(--xidea-border)] p-0 text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-parchment)]"
@@ -244,14 +246,16 @@ export function SessionWorkspace({
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
-              <div className="min-w-0">
-                <CardTitle className="truncate text-sm font-medium text-[var(--xidea-near-black)]">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <CardTitle className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--xidea-near-black)]">
                   {getSessionDisplayTitle(selectedSession.title, selectedSession.type)}
                 </CardTitle>
-                <CardDescription className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--xidea-stone)]">
+                <div className="flex shrink-0 items-center gap-2">
                   <SessionTypeBadge type={selectedSession.type} />
-                  <span>{selectedSession.status}</span>
-                </CardDescription>
+                  <span className="rounded-full border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-2.5 py-1 text-[11px] text-[var(--xidea-stone)]">
+                    {selectedSession.status}
+                  </span>
+                </div>
               </div>
             </div>
             {isPendingSession ? <div className="shrink-0" /> : null}
@@ -267,10 +271,13 @@ export function SessionWorkspace({
         ) : null}
 
         <SessionThreadPane
+          activeAssetSummary={activeAssetSummary}
+          activeMaterialRead={activeMaterialRead}
           activeRuntime={activeRuntime}
           activeSourceAssets={activeSourceAssets}
           activityInputDisabled={activityInputDisabled}
           composerDisabled={composerDisabled}
+          completedActivityDecks={completedActivityDecks}
           currentActivities={currentActivities}
           currentActivity={currentActivity}
           currentActivityKey={currentActivityKey}
@@ -282,15 +289,14 @@ export function SessionWorkspace({
           isReplayingDeck={isReplayingDeck}
           hasStructuredRuntime={hasStructuredRuntime}
           isAgentRunning={isAgentRunning}
-          isMaterialsTrayOpen={isMaterialsTrayOpen}
           latestAssistantMessageId={latestAssistantMessageId}
+          pinViewport={shouldPinSessionViewport}
           onChangeDraftPrompt={onChangeDraftPrompt}
           onOpenKnowledgePoint={onOpenKnowledgePoint}
           onSkipActivity={onSkipActivity}
           onSubmitActivity={onSubmitActivity}
           onSubmitPrompt={onSubmitPrompt}
           sessionCreatedKnowledgePoints={sessionCreatedKnowledgePoints}
-          onToggleMaterialsTray={onToggleMaterialsTray}
           onToggleProjectMaterial={onToggleProjectMaterial}
           onUploadMaterial={onUploadMaterial}
           onUnsetSourceAsset={onUnsetSourceAsset}
@@ -301,20 +307,22 @@ export function SessionWorkspace({
         />
       </Card>
 
-      <SessionInspector
-        activeReviewInspector={activeReviewInspector}
-        activeRuntime={activeRuntime}
-        completedActivityDecks={completedActivityDecks}
-        hasPersistedState={hasPersistedState}
-        hasStructuredRuntime={hasStructuredRuntime}
-        isReplayDisabled={isAgentRunning || hasPendingActivity || isReplayingDeck}
-        latestReviewedLabel={latestReviewedLabel}
-        nextReviewLabel={nextReviewLabel}
-        onReplayDeck={onReplayDeck}
-        selectedProject={selectedProject}
-        selectedSessionStatus={selectedSession.status}
-        selectedSessionType={selectedSession.type}
-      />
+      <div className="min-h-0 lg:max-h-[calc(100svh-5.75rem)] lg:overflow-y-auto lg:pr-1">
+        <SessionInspector
+          activeReviewInspector={activeReviewInspector}
+          activeRuntime={activeRuntime}
+          completedActivityDecks={completedActivityDecks}
+          hasPersistedState={hasPersistedState}
+          hasStructuredRuntime={hasStructuredRuntime}
+          isReplayDisabled={isAgentRunning || hasPendingActivity || isReplayingDeck}
+          latestReviewedLabel={latestReviewedLabel}
+          nextReviewLabel={nextReviewLabel}
+          onReplayDeck={onReplayDeck}
+          selectedProject={selectedProject}
+          selectedSessionStatus={selectedSession.status}
+          selectedSessionType={selectedSession.type}
+        />
+      </div>
     </div>
   );
 }
