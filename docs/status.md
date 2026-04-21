@@ -19,6 +19,14 @@
 
 ### Done
 
+#### 项目材料删除闭环（2026-04-21）
+
+- `apps/web` 已为 Project Workspace 的项目材料补齐删除入口：当前在“项目材料”弹层里可直接对每条材料做双击确认删除，不再需要先进入编辑态
+- 删除会同步更新项目材料池、项目挂接 ids 和前端会话里的材料选择，避免删完后 UI 仍残留已删除材料的脏引用
+- `apps/web` 已把新建 / 编辑 Project 的名称收口成单一“学习主题”字段；当前 `name / topic` 在前端继续同步写入，但用户不再维护两套近义字段
+- `apps/web` 已把知识卡详情页的学习 / 复习入口收成状态感知动作：未学 / 学习中只显示“加入学习”，待复习只显示“加入复习”，并支持直接围绕当前知识点启动 session
+- `apps/web` 已补两处会话稳定性修复：SSE 收到 `done` 时立即结束运行态；`/threads/{id}/messages` 只在选中 session 初次 hydration 时补拉一次，不再被 session 列表的“刚刚 / 运行中 / 已更新”状态抖动反复触发
+
 #### 多卡编排 session v0（2026-04-20）
 
 - `apps/agent` 已把 `study / review session` 从单卡 focus 启动改成多卡 orchestration 语义：当前会基于 session 类型、用户首句、主题邻近和知识卡状态生成 `candidate pool / current plan / current focus`

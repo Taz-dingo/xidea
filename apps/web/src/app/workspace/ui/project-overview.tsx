@@ -1,7 +1,6 @@
 import type { ReactElement, ReactNode } from "react";
 import {
   FilePenLine,
-  Sparkles,
 } from "lucide-react";
 import type { ProjectStats } from "@/domain/project-workspace";
 import { Button } from "@/components/ui/button";
@@ -35,9 +34,8 @@ export function ProjectOverviewPanel({
   projectSessionCount,
   projectStats,
   selectedProjectDescription,
-  selectedProjectName,
-  selectedProjectRules,
   selectedProjectTopic,
+  selectedProjectRules,
   selectedProjectUpdatedAt,
 }: {
   checkpoint?: ReactNode;
@@ -63,9 +61,8 @@ export function ProjectOverviewPanel({
   projectSessionCount: number;
   projectStats: ProjectStats;
   selectedProjectDescription: string;
-  selectedProjectName: string;
-  selectedProjectRules: ReadonlyArray<string>;
   selectedProjectTopic: string;
+  selectedProjectRules: ReadonlyArray<string>;
   selectedProjectUpdatedAt: string;
 }): ReactElement {
   return (
@@ -83,21 +80,15 @@ export function ProjectOverviewPanel({
                 </div>
                 <div className="space-y-3">
                   <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-                    <span className="font-medium text-[var(--xidea-near-black)]">项目标题</span>
+                    <span className="font-medium text-[var(--xidea-near-black)]">学习主题</span>
                     <input
                       className="w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-3 py-2 outline-none focus:border-[var(--xidea-selection-border)]"
                       onChange={(event) =>
-                        onChangeDraft({ ...projectMetaDraft, name: event.target.value })
-                      }
-                      value={projectMetaDraft.name}
-                    />
-                  </label>
-                  <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-                    <span className="font-medium text-[var(--xidea-near-black)]">当前主题</span>
-                    <input
-                      className="w-full rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-ivory)] px-3 py-2 outline-none focus:border-[var(--xidea-selection-border)]"
-                      onChange={(event) =>
-                        onChangeDraft({ ...projectMetaDraft, topic: event.target.value })
+                        onChangeDraft({
+                          ...projectMetaDraft,
+                          name: event.target.value,
+                          topic: event.target.value,
+                        })
                       }
                       value={projectMetaDraft.topic}
                     />
@@ -160,7 +151,7 @@ export function ProjectOverviewPanel({
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-[1.45rem] font-semibold tracking-[0.01em] text-[var(--xidea-near-black)]">
-                      {selectedProjectName}
+                      {selectedProjectTopic}
                     </p>
                     <Button
                       className="h-9 rounded-full border-[var(--xidea-border)] px-3 text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-parchment)]"
@@ -171,11 +162,6 @@ export function ProjectOverviewPanel({
                       <FilePenLine className="h-4 w-4" />
                       编辑
                     </Button>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-[var(--xidea-charcoal)]">
-                    <Sparkles className="h-4 w-4 text-[var(--xidea-selection-text)]" />
-                    <span className="font-medium text-[var(--xidea-near-black)]">当前主题</span>
-                    <span>{selectedProjectTopic}</span>
                   </div>
                   <p className="max-w-3xl text-sm leading-6 text-[var(--xidea-charcoal)]">
                     {selectedProjectDescription}

@@ -121,6 +121,10 @@ export function createAgentChatTransport(input: {
                   }),
                 );
 
+                if (event.event === "done") {
+                  input.onRunStateChange?.(false);
+                }
+
                 if (event.event !== "text-delta") {
                   if (event.event === "knowledge-point-suggestion") {
                     void input.onKnowledgePointSuggestions?.(

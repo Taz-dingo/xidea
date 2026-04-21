@@ -9,6 +9,68 @@ function buildProjectDraftId(): string {
 }
 
 export function useProjectActions(data: WorkspaceData) {
+  function removeProjectMaterialState(
+    projectId: string,
+    materialId: string,
+    options?: {
+      readonly updateProjectMetaDraft?: boolean;
+    },
+  ): void {
+    data.setProjectAssetsByProject((current) => {
+      const currentAssets = current[projectId] ?? [];
+      const nextAssets = currentAssets.filter((asset) => asset.id !== materialId);
+
+      if (nextAssets.length === currentAssets.length) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [projectId]: nextAssets,
+      };
+    });
+    data.setProjectMaterialIdsByProject((current) => {
+      const currentIds = current[projectId] ?? [];
+      const nextIds = currentIds.filter((id) => id !== materialId);
+
+      if (nextIds.length === currentIds.length) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [projectId]: nextIds,
+      };
+    });
+    data.setSessionSourceAssetIds((current) => {
+      let changed = false;
+      const nextState = Object.fromEntries(
+        Object.entries(current).map(([sessionId, assetIds]) => {
+          const nextAssetIds = assetIds.filter((id) => id !== materialId);
+          if (nextAssetIds.length !== assetIds.length) {
+            changed = true;
+          }
+          return [sessionId, nextAssetIds];
+        }),
+      );
+
+      return changed ? nextState : current;
+    });
+
+    if (options?.updateProjectMetaDraft !== true) {
+      return;
+    }
+
+    data.setProjectMetaDraft((current) =>
+      current.materialIds.includes(materialId)
+        ? {
+            ...current,
+            materialIds: current.materialIds.filter((id) => id !== materialId),
+          }
+        : current,
+    );
+  }
+
   function handleStartCreatingProject(): void {
     data.setProjectDraft({
       id: buildProjectDraftId(),
@@ -62,14 +124,14 @@ export function useProjectActions(data: WorkspaceData) {
 
   function handleSaveProject(): void {
     const nextName = data.projectDraft.name.trim();
-    const nextTopic = data.projectDraft.topic.trim();
+    const nextTopic = nextName;
     const nextDescription = data.projectDraft.description.trim();
     const specialRules = data.projectDraft.specialRulesText
       .split("\n")
       .map((rule) => rule.trim())
       .filter((rule) => rule !== "");
 
-    if (nextName === "" || nextTopic === "" || nextDescription === "") {
+    if (nextName === "" || nextDescription === "") {
       return;
     }
 
@@ -125,14 +187,14 @@ export function useProjectActions(data: WorkspaceData) {
 
   function handleSaveProjectMeta(): void {
     const nextName = data.projectMetaDraft.name.trim();
-    const nextTopic = data.projectMetaDraft.topic.trim();
+    const nextTopic = nextName;
     const nextDescription = data.projectMetaDraft.description.trim();
     const nextSpecialRules = data.projectMetaDraft.specialRulesText
       .split("\n")
       .map((rule) => rule.trim())
       .filter((rule) => rule !== "");
 
-    if (nextName === "" || nextTopic === "" || nextDescription === "") {
+    if (nextName === "" || nextDescription === "") {
       return;
     }
 
@@ -255,17 +317,24 @@ export function useProjectActions(data: WorkspaceData) {
       materialId,
     });
 
-    data.setProjectAssetsByProject((current) => {
-      const currentAssets = current[draftProjectId] ?? [];
-      return {
-        ...current,
-        [draftProjectId]: currentAssets.filter((asset) => asset.id !== materialId),
-      };
-    });
+    removeProjectMaterialState(draftProjectId, materialId);
     data.setProjectDraft((current) => ({
       ...current,
       initialMaterialIds: current.initialMaterialIds.filter((id) => id !== materialId),
     }));
+  }
+
+  async function handleDeleteProjectMaterial(materialId: string): Promise<void> {
+    const projectId = data.selectedProject.id;
+
+    await deleteProjectMaterial({
+      projectId,
+      materialId,
+    });
+
+    removeProjectMaterialState(projectId, materialId, {
+      updateProjectMetaDraft: data.isEditingProjectMeta,
+    });
   }
 
   async function handleUploadProjectMaterialAndAttach(file: File): Promise<void> {
@@ -305,6 +374,7 @@ export function useProjectActions(data: WorkspaceData) {
   return {
     handleCancelCreatingProject,
     handleCancelEditingProjectMeta,
+    handleDeleteProjectMaterial,
     handleDeleteProjectDraftMaterial,
     handleOpenProjectMetaEditor,
     handleSaveProject,

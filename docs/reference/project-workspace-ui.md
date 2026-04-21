@@ -496,8 +496,9 @@ Project Workspace 有两个核心状态：
 
 点击 `学习` 后：
 
-- 先进入 pending intent / 准备开始态
-- 用户补一条本轮学习意图后，才真正创建新的 `study session`
+- 直接创建新的 `study session`
+- 自动发出一条 kickoff prompt，把当前知识点作为第一张 card 的 focus
+- 后端可按需要继续把相关知识点编入同一轮 session
 - 创建成功后进入 session 展开态
 - 中间主区切到当前 study session
 
@@ -505,8 +506,9 @@ Project Workspace 有两个核心状态：
 
 点击 `复习` 后：
 
-- 先进入 pending intent / 准备开始态
-- 用户补一条本轮复习意图后，才真正创建新的 `review session`
+- 直接创建新的 `review session`
+- 自动发出一条 kickoff prompt，把当前知识点作为第一张 card 的 focus
+- 后端可按需要继续把相关知识点编入同一轮 session
 - 创建成功后进入 session 展开态
 
 ### New Project Session

@@ -4,6 +4,25 @@ import type {
 } from "@/domain/project-workspace";
 import type { WorkspaceData } from "@/app/workspace/hooks/use-data";
 
+function buildFocusedSessionKickoff(type: SessionType, knowledgePointTitle: string | null): {
+  readonly text: string;
+  readonly sessionSummary: string;
+} {
+  const focusTitle = knowledgePointTitle?.trim() || "当前知识点";
+
+  if (type === "review") {
+    return {
+      text: `围绕「${focusTitle}」开始这一轮复习，先从这个知识点出第一张卡，再按需要带上相关知识点。`,
+      sessionSummary: `围绕「${focusTitle}」开始复习`,
+    };
+  }
+
+  return {
+    text: `围绕「${focusTitle}」开始这一轮学习，先从这个知识点出第一张卡，再按需要带上相关知识点。`,
+    sessionSummary: `围绕「${focusTitle}」开始学习`,
+  };
+}
+
 export function useSessionActions(data: WorkspaceData) {
   function handleCreateSession(
     projectId: string,
@@ -110,6 +129,43 @@ export function useSessionActions(data: WorkspaceData) {
     data.setScreen("workspace");
   }
 
+  function handleQuickStartFocusedSession(
+    projectId: string,
+    type: Exclude<SessionType, "project">,
+    knowledgePointId: string,
+  ): void {
+    const targetProject =
+      data.projects.find((project) => project.id === projectId) ??
+      data.selectedProject ??
+      data.projects[0];
+
+    if (targetProject === undefined) {
+      return;
+    }
+
+    const targetPoint =
+      data.knowledgePoints.find((point) => point.id === knowledgePointId) ?? null;
+
+    const createdSession = handleCreateSession(
+      targetProject.id,
+      type,
+      targetPoint?.id ?? knowledgePointId,
+    );
+
+    if (createdSession === null) {
+      return;
+    }
+
+    const kickoff = buildFocusedSessionKickoff(type, targetPoint?.title ?? null);
+
+    data.setSelectedKnowledgePointId(targetPoint?.id ?? data.selectedKnowledgePointId);
+    data.setPendingInitialPrompt({
+      sessionId: createdSession.id,
+      text: kickoff.text,
+      sessionSummary: kickoff.sessionSummary,
+    });
+  }
+
   return {
     handleCancelPendingSession: () => {
       data.setPendingSessionIntent(null);
@@ -117,6 +173,7 @@ export function useSessionActions(data: WorkspaceData) {
     },
     handleCreateSession,
     handlePrepareSessionStart,
+    handleQuickStartFocusedSession,
     handleTogglePendingMaterial: (_assetId: string) => {},
   };
 }
