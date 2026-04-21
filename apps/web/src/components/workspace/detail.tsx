@@ -78,6 +78,10 @@ export function KnowledgePointDetailScreen({
   showBackButton?: boolean;
 }): ReactElement {
   const [deleteArmed, setDeleteArmed] = useState(false);
+  const showStudyAction =
+    knowledgePoint.status === "active_unlearned" ||
+    knowledgePoint.status === "active_learning";
+  const showReviewAction = knowledgePoint.status === "active_review";
 
   useEffect(() => {
     if (!deleteArmed) {
@@ -213,16 +217,24 @@ export function KnowledgePointDetailScreen({
                 </>
               ) : (
                 <>
-                  <Button
-                    className="h-11 min-w-[110px] rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
-                    onClick={onStartStudy}
-                    type="button"
-                  >
-                    加入学习
-                  </Button>
-                  <Button className="h-11 min-w-[110px] rounded-full" onClick={onStartReview} type="button" variant="outline">
-                    加入复习
-                  </Button>
+                  {showStudyAction ? (
+                    <Button
+                      className="h-11 min-w-[110px] rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                      onClick={onStartStudy}
+                      type="button"
+                    >
+                      加入学习
+                    </Button>
+                  ) : null}
+                  {showReviewAction ? (
+                    <Button
+                      className="h-11 min-w-[110px] rounded-full bg-[var(--xidea-terracotta)] text-[var(--xidea-ivory)] hover:bg-[var(--xidea-terracotta)]/90"
+                      onClick={onStartReview}
+                      type="button"
+                    >
+                      加入复习
+                    </Button>
+                  ) : null}
                   {knowledgePoint.status === "archived" ? (
                     <Button
                       className="h-11 min-w-[110px] rounded-full"

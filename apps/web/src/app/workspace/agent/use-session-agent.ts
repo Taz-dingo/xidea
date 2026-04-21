@@ -513,6 +513,32 @@ export function useSessionAgent({
   useEffect(() => {
     if (
       selectedSessionKey === null ||
+      activityBatchState === null ||
+      !activityBatchState.awaitingAgent ||
+      isAgentRunning
+    ) {
+      return;
+    }
+
+    pendingActivityResultRef.current = null;
+    data.setActivityBatchStateBySession((current) => {
+      if (current[selectedSessionKey] === undefined) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[selectedSessionKey];
+      return next;
+    });
+  }, [
+    activityBatchState,
+    data.setActivityBatchStateBySession,
+    isAgentRunning,
+    selectedSessionKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      selectedSessionKey === null ||
       error === undefined ||
       activityBatchState === null ||
       !activityBatchState.awaitingAgent

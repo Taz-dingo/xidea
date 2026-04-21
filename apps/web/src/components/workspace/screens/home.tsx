@@ -84,11 +84,8 @@ export function HomeScreen({
                         </div>
                         <div className="space-y-1">
                           <h2 className="text-lg font-medium text-[var(--xidea-near-black)]">
-                            {continueProjectSummary.project.name}
-                          </h2>
-                          <p className="text-sm text-[var(--xidea-charcoal)]">
                             {continueProjectSummary.project.topic}
-                          </p>
+                          </h2>
                         </div>
                       </div>
                       <p className="max-w-3xl text-sm leading-6 text-[var(--xidea-charcoal)]">
@@ -171,7 +168,7 @@ export function HomeScreen({
                       <div className="space-y-1">
                         <p className="xidea-kicker text-[var(--xidea-selection-text)]">项目</p>
                         <p className="text-base font-medium text-[var(--xidea-near-black)]">
-                          {project.name}
+                          {project.topic}
                         </p>
                       </div>
                       <span className="text-[12px] text-[var(--xidea-stone)]">{project.updatedAt}</span>
@@ -184,9 +181,6 @@ export function HomeScreen({
                     <MetricTile label="知识点" tone="amber" value={`${stats.total}`} />
                     <MetricTile label="待复习" tone="sky" value={`${stats.dueReview}`} />
                   </div>
-                  <p className="text-sm text-[var(--xidea-charcoal)]">
-                    当前主题：{project.topic}
-                  </p>
                   <Button
                     className="w-full rounded-full border-[var(--xidea-selection-border)] group-hover:bg-[var(--xidea-selection)]"
                     onClick={() => onOpenProject(project.id)}
