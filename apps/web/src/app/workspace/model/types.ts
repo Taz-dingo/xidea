@@ -9,6 +9,7 @@ import type {
 } from "@/domain/project-workspace";
 
 export interface ProjectDraft {
+  readonly id: string;
   readonly name: string;
   readonly topic: string;
   readonly description: string;

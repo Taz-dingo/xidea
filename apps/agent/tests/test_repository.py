@@ -112,6 +112,81 @@ def test_repository_generates_project_session_title_from_material_suggestion(tmp
     assert project_threads[0]["title"].startswith("LLM")
 
 
+def test_repository_persists_session_orchestration_in_thread_context(tmp_path: Path) -> None:
+    repository = SQLiteRepository(tmp_path / "agent.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    repository.save_knowledge_points(
+        [
+            KnowledgePoint(
+                id="kp-retrieval",
+                project_id="rag-demo",
+                title="retrieval 与召回覆盖",
+                description="说明召回覆盖和候选集召回。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-rag"],
+                created_at=now,
+                updated_at=now,
+            ),
+            KnowledgePoint(
+                id="kp-reranking",
+                project_id="rag-demo",
+                title="reranking 与精排判断",
+                description="说明重排的职责边界。",
+                status="active",
+                origin_type="seed",
+                source_material_refs=["asset-rag"],
+                created_at=now,
+                updated_at=now,
+            ),
+        ],
+        states=[
+            KnowledgePointState(
+                knowledge_point_id="kp-retrieval",
+                mastery=0,
+                learning_status="new",
+                review_status="idle",
+                next_review_at=None,
+                archive_suggested=False,
+                updated_at=now,
+            ),
+            KnowledgePointState(
+                knowledge_point_id="kp-reranking",
+                mastery=0,
+                learning_status="new",
+                review_status="idle",
+                next_review_at=None,
+                archive_suggested=False,
+                updated_at=now,
+            ),
+        ],
+    )
+    request = build_request(
+        thread_id="thread-orchestration",
+        target_unit_id=None,
+        knowledge_point_id=None,
+        session_type="study",
+        topic="RAG retrieval design",
+        messages=[
+            {"role": "user", "content": "先带我理清 reranking 和召回的边界"},
+        ],
+    )
+    run_result = run_agent_v0(request, repository=repository, llm=build_mock_llm())
+
+    repository.save_run(request, run_result)
+
+    thread_context = repository.get_thread_context("thread-orchestration")
+
+    assert thread_context is not None
+    assert thread_context["session_orchestration"] is not None
+    assert thread_context["session_orchestration"]["candidate_pool_ids"] == [
+        "kp-reranking",
+        "kp-retrieval",
+    ]
+    assert thread_context["orchestration_events"][0]["kind"] == "plan_created"
+
+
 def test_repository_persists_and_resolves_knowledge_point_suggestion(tmp_path: Path) -> None:
     repository = SQLiteRepository(tmp_path / "agent.db")
     request = build_request(

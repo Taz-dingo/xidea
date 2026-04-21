@@ -11,6 +11,7 @@ import {
 } from "@/domain/agent-runtime";
 import { mergeMessageHistory } from "@/domain/chat-message";
 import { toKnowledgePointItem } from "@/domain/knowledge-point-sync";
+import { buildSessionOrchestrationMessage } from "@/domain/session-orchestration";
 import {
   buildEmptyReviewHeatmap,
   buildReviewHeatmap,
@@ -74,8 +75,6 @@ export function useSessionAgent({
           knowledgePointId: data.pendingSessionIntent.knowledgePointId,
         });
   const selectedSessionKey = data.selectedSession?.id ?? pendingSessionKey;
-  const selectedSessionKnowledgePointId =
-    data.selectedSession?.knowledgePointId ?? data.pendingSessionIntent?.knowledgePointId ?? null;
   const fallbackSessionType =
     data.selectedSession?.type ?? data.pendingSessionIntent?.type ?? "project";
   const sessionSnapshotsRef = useRef(data.sessionSnapshots);
@@ -83,12 +82,18 @@ export function useSessionAgent({
   const activeRuntimeRef = useRef<ReturnType<typeof buildMockRuntimeSnapshot>>(
     buildMockRuntimeSnapshot(data.initialProfile, data.initialUnit, fallbackSessionType),
   );
+  const runtimeFocusKnowledgePointId =
+    data.selectedSession === undefined
+      ? data.pendingSessionIntent?.knowledgePointId ?? null
+      : data.sessionSnapshots[data.selectedSession.id]?.orchestration.current?.current_focus_id ??
+        data.selectedSession.knowledgePointId ??
+        null;
   const selectedKnowledgePoint =
-    selectedSessionKnowledgePointId === null
+    runtimeFocusKnowledgePointId === null
       ? undefined
-      : data.knowledgePoints.find((point) => point.id === selectedSessionKnowledgePointId);
-  const selectedUnit = selectedSessionKnowledgePointId
-    ? learningUnits.find((unit) => unit.id === selectedSessionKnowledgePointId) ??
+      : data.knowledgePoints.find((point) => point.id === runtimeFocusKnowledgePointId);
+  const selectedUnit = runtimeFocusKnowledgePointId
+    ? learningUnits.find((unit) => unit.id === runtimeFocusKnowledgePointId) ??
       (selectedKnowledgePoint ? buildKnowledgePointLearningUnit(selectedKnowledgePoint) : undefined)
     : undefined;
   const runtimeUnit = selectedUnit ?? data.initialUnit;
@@ -190,17 +195,17 @@ export function useSessionAgent({
     entryMode: effectiveEntryMode,
     project: requestProjectContext,
     unit: runtimeUnit,
-    targetUnitId: selectedSessionKnowledgePointId,
+    targetUnitId: runtimeFocusKnowledgePointId,
   });
   requestConfigRef.current = {
     sessionType: transportSessionType,
     sessionTitle: data.selectedSession?.title ?? null,
     sessionSummary: data.selectedSession?.summary ?? null,
-    knowledgePointId: data.selectedSession?.knowledgePointId ?? null,
+    knowledgePointId: runtimeFocusKnowledgePointId,
     entryMode: effectiveEntryMode,
     project: requestProjectContext,
     unit: runtimeUnit,
-    targetUnitId: selectedSessionKnowledgePointId,
+    targetUnitId: runtimeFocusKnowledgePointId,
   };
   const handledSuggestionIdsRef = useRef<Set<string>>(new Set());
   const requestSourceAssetIds = useMemo(
@@ -251,11 +256,38 @@ export function useSessionAgent({
       data.setSessionSnapshots((current) => ({ ...current, [sessionId]: snapshot }));
       data.setSessions((current) =>
         current.map((session) =>
-          session.id === sessionId ? { ...session, status: "已更新", updatedAt: "刚刚" } : session,
+          session.id === sessionId
+            ? {
+                ...session,
+                knowledgePointId:
+                  snapshot.orchestration.current?.current_focus_id ?? session.knowledgePointId,
+                status: "已更新",
+                updatedAt: "刚刚",
+              }
+            : session,
         ),
       );
     },
     [data.setSessionSnapshots, data.setSessions],
+  );
+  const handleTransportOrchestrationEvent = useCallback(
+    (sessionId: string, change: Parameters<typeof buildSessionOrchestrationMessage>[0]["change"]) => {
+      if (change.visibility !== "timeline") {
+        return;
+      }
+      const nextMessage = buildSessionOrchestrationMessage({ sessionId, change });
+      data.setSessionMessagesById((current) => {
+        const currentMessages = current[sessionId] ?? [];
+        if (currentMessages.some((message) => message.id === nextMessage.id)) {
+          return current;
+        }
+        return {
+          ...current,
+          [sessionId]: [...currentMessages, nextMessage],
+        };
+      });
+    },
+    [data.setSessionMessagesById],
   );
   const handleTransportRunStateChange = useCallback(
     (sessionId: string, isRunning: boolean) => {
@@ -284,6 +316,8 @@ export function useSessionAgent({
         getFallbackSnapshot: () =>
           sessionSnapshotsRef.current[transportSessionId] ?? activeRuntimeRef.current,
         onSnapshot: (snapshot) => handleTransportSnapshot(transportSessionId, snapshot),
+        onSessionOrchestration: (change) =>
+          handleTransportOrchestrationEvent(transportSessionId, change),
         onKnowledgePointSuggestions: (
           suggestions: ReadonlyArray<AgentKnowledgePointSuggestion>,
           request: AgentRequest,
@@ -375,9 +409,10 @@ export function useSessionAgent({
       }),
     [
       data.selectedProject.id,
-      data.selectedSession?.knowledgePointId,
+      runtimeFocusKnowledgePointId,
       data.selectedSession?.summary,
       data.selectedSession?.title,
+      handleTransportOrchestrationEvent,
       handleTransportRunStateChange,
       handleTransportSnapshot,
       data.setKnowledgePoints,
@@ -525,7 +560,7 @@ export function useSessionAgent({
     requestSourceAssetIds,
     seedRuntime,
     selectedSessionKey,
-    selectedSessionKnowledgePointId,
+    selectedSessionKnowledgePointId: runtimeFocusKnowledgePointId,
     selectedSessionType: fallbackSessionType,
   });
 
@@ -551,7 +586,7 @@ export function useSessionAgent({
       pendingSourceAssetsRef.current = [...activeSourceAssetsRef.current];
     },
     selectedSessionKey,
-    selectedSessionKnowledgePointId,
+    selectedSessionKnowledgePointId: runtimeFocusKnowledgePointId,
     sendMessage,
   });
 

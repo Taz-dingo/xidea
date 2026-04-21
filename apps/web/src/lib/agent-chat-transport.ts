@@ -3,6 +3,7 @@ import {
   buildAgentRequest,
   type AgentKnowledgePointSuggestion,
   type AgentRequest,
+  type AgentSessionOrchestrationEventRecord,
   normalizePartialAgentStreamResult,
   normalizeAgentStreamResult,
   normalizeAgentRunResult,
@@ -60,6 +61,10 @@ export function createAgentChatTransport(input: {
     suggestions: ReadonlyArray<AgentKnowledgePointSuggestion>,
     request: AgentRequest,
     assistantMessageId: string,
+  ) => void | Promise<void>;
+  readonly onSessionOrchestration?: (
+    change: AgentSessionOrchestrationEventRecord,
+    request: AgentRequest,
   ) => void | Promise<void>;
   readonly onRunStateChange?: (isRunning: boolean) => void;
 }): ChatTransport<UIMessage> {
@@ -123,6 +128,9 @@ export function createAgentChatTransport(input: {
                       request,
                       messageId,
                     );
+                  }
+                  if (event.event === "session-orchestration") {
+                    void input.onSessionOrchestration?.(event.change, request);
                   }
                   return;
                 }
@@ -214,6 +222,17 @@ export function createAgentChatTransport(input: {
                   request,
                   messageId,
                 );
+              }
+              const orchestrationEvents = fallbackResult.events.filter(
+                (
+                  event,
+                ): event is Extract<
+                  (typeof fallbackResult.events)[number],
+                  { event: "session-orchestration" }
+                > => event.event === "session-orchestration",
+              );
+              for (const orchestrationEvent of orchestrationEvents) {
+                void input.onSessionOrchestration?.(orchestrationEvent.change, request);
               }
 
               ensureStarted();

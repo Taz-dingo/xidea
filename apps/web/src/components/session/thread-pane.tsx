@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import type { UIMessage } from "ai";
-import { FileInput, Settings2 } from "lucide-react";
+import { FileInput } from "lucide-react";
 import { LearningActivityStack } from "@/components/learning-activity-stack";
 import { MaterialUploadButton } from "@/components/material-upload-button";
 import { MarkdownContent } from "@/components/markdown-content";
@@ -12,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { getMessageText, sanitizeVisibleAssistantText } from "@/domain/chat-message";
+import { parseSessionOrchestrationMessage } from "@/domain/session-orchestration";
 import {
   ACTIVITY_BATCH_SUMMARY_PREFIX,
   type ActivityResolution,
@@ -54,6 +55,51 @@ function SessionStreamingStatus({
   );
 }
 
+function SessionOrchestrationCard({
+  change,
+}: {
+  change: NonNullable<ReturnType<typeof parseSessionOrchestrationMessage>>;
+}): ReactElement {
+  const nextSteps = change.plan_snapshot.steps.slice(0, 3);
+
+  return (
+    <Card className="w-full max-w-[82%] rounded-[1rem] border-[var(--xidea-selection-border)] bg-[#fff7f1] shadow-none">
+      <CardContent className="space-y-3 px-4 py-4">
+        <div className="space-y-1">
+          <p className="xidea-kicker text-[var(--xidea-selection-text)]">{change.title}</p>
+          <p className="text-sm font-medium leading-6 text-[var(--xidea-near-black)]">
+            {change.plan_snapshot.objective}
+          </p>
+          <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">{change.summary}</p>
+          {change.reason ? (
+            <p className="text-[12px] leading-5 text-[var(--xidea-stone)]">原因：{change.reason}</p>
+          ) : null}
+        </div>
+        <div className="space-y-2">
+          {nextSteps.map((step) => (
+            <div
+              className="rounded-[0.85rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2"
+              key={`${change.kind}-${step.knowledge_point_id}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[13px] font-medium text-[var(--xidea-near-black)]">{step.title}</p>
+                <span className="text-[11px] text-[var(--xidea-stone)]">
+                  {step.status === "active"
+                    ? "当前"
+                    : step.status === "completed"
+                      ? "已完成"
+                      : "待推进"}
+                </span>
+              </div>
+              <p className="mt-1 text-[12px] leading-5 text-[var(--xidea-charcoal)]">{step.reason}</p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function SessionThreadPane({
   activeRuntime,
   activeSourceAssets,
@@ -73,7 +119,6 @@ export function SessionThreadPane({
   latestAssistantMessageId,
   onChangeDraftPrompt,
   onOpenKnowledgePoint,
-  onOpenProjectMetaEditor,
   onSkipActivity,
   onSubmitActivity,
   onSubmitPrompt,
@@ -105,7 +150,6 @@ export function SessionThreadPane({
   latestAssistantMessageId: string | null;
   onChangeDraftPrompt: (value: string) => void;
   onOpenKnowledgePoint: (pointId: string) => void;
-  onOpenProjectMetaEditor: () => void;
   onSkipActivity: (attempts?: ReadonlyArray<LearningActivityAttempt>) => void;
   onSubmitActivity: (submission: LearningActivitySubmission) => void;
   onSubmitPrompt: () => void;
@@ -152,238 +196,254 @@ export function SessionThreadPane({
     !isAgentRunning &&
     !shouldShowStreamingPreview &&
     !shouldShowRunningPlaceholder;
+  const shouldShowSessionTopSection =
+    canManageMaterials ||
+    selectedSourceAssetIds.length > 0 ||
+    sessionCreatedKnowledgePoints.length > 0;
+  const shouldCompactThreadLayout =
+    displayMessages.length === 0 &&
+    !shouldShowStreamingPreview &&
+    !shouldShowRunningPlaceholder &&
+    !(canManageMaterials && isMaterialsTrayOpen);
+  const threadContent = (
+    <div className="space-y-4 pb-4">
+      {canManageMaterials && isMaterialsTrayOpen ? (
+        <section className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
+              <FileInput className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <MaterialUploadButton label="上传新材料" onUpload={onUploadMaterial} />
+          </div>
+          <AssetListGrid
+            assets={selectedProjectMaterials}
+            className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4"
+            emptyText="当前项目还没有材料。"
+            onAssetClick={onToggleProjectMaterial}
+            selectedAssetIds={selectedSourceAssetIds}
+          />
+        </section>
+      ) : null}
+
+      {displayMessages.length === 0 &&
+      !shouldShowStreamingPreview &&
+      !shouldShowRunningPlaceholder ? (
+        <Card className="rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+          <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
+            还没有消息。
+          </CardContent>
+        </Card>
+      ) : (
+        displayMessages.map((message) => {
+          const isAssistant = message.role === "assistant";
+          const orchestrationChange = parseSessionOrchestrationMessage(message);
+          const rawText = getMessageText(message);
+          const isSyntheticBatchMessage =
+            !isAssistant && isSyntheticActivityBatchMessage(rawText);
+          const messageCreatedKnowledgePoints =
+            isAssistant && selectedSessionType === "project"
+              ? sessionCreatedKnowledgePoints.filter(
+                  (point) =>
+                    point.linkedMessageIdsBySession[selectedSessionId] === message.id,
+                )
+              : [];
+          if (isAssistant && rawText === "") {
+            return null;
+          }
+
+          return (
+            <div className="space-y-3" key={message.id}>
+              <div
+                className={
+                  orchestrationChange
+                    ? "flex justify-start"
+                    : isAssistant
+                    ? "flex justify-start"
+                    : isSyntheticBatchMessage
+                      ? "flex justify-center"
+                      : "flex justify-end"
+                }
+              >
+                {orchestrationChange ? (
+                  <SessionOrchestrationCard change={orchestrationChange} />
+                ) : isAssistant ? (
+                  <div className="w-full max-w-[82%] py-0.5">
+                    <MarkdownContent content={rawText} />
+                  </div>
+                ) : isSyntheticBatchMessage ? (
+                  <Card className="w-full max-w-[78%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
+                    <CardContent className="space-y-1.5 px-4 py-3">
+                      <p className="xidea-kicker text-[var(--xidea-stone)]">
+                        学习动作结果
+                      </p>
+                      <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                        {getVisibleSyntheticActivityBatchMessage(rawText)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="w-full max-w-[72%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                    <CardContent className="px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
+                      <div>{rawText}</div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {isAssistant &&
+              message.id === latestAssistantMessageId &&
+              shouldShowActivityStack ? (
+                <div className="w-full max-w-[82%] pl-1">
+                  <LearningActivityStack
+                    activities={currentActivities}
+                    disabled={activityInputDisabled}
+                    key={`${selectedSessionId}-${currentActivityKey ?? currentActivity.id}`}
+                    onSkip={onSkipActivity}
+                    onSubmit={onSubmitActivity}
+                    resolution={currentActivityResolution}
+                  />
+                </div>
+              ) : null}
+
+              {isAssistant && messageCreatedKnowledgePoints.length > 0 ? (
+                <div className="w-full max-w-[82%] pl-1">
+                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
+                    <CardContent className="space-y-3 px-4 py-4">
+                      <div className="space-y-1">
+                        <p className="xidea-kicker text-[var(--xidea-selection-text)]">
+                          这轮生成的知识卡
+                        </p>
+                        <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
+                          点开可以继续查看详情，或从这里进入后续学习和复习。
+                        </p>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {messageCreatedKnowledgePoints.map((point) => (
+                          <KnowledgePointInlineCard
+                            key={`session-created-inline-${point.id}`}
+                            onClick={() => onOpenKnowledgePoint(point.id)}
+                            point={point}
+                          />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : null}
+
+              {isAssistant &&
+              message.id === latestAssistantMessageId &&
+              shouldShowPostReplyStatus ? (
+                <div className="w-full max-w-[82%] pl-1">
+                  <div className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3">
+                    <SessionStreamingStatus label={streamingStatusLabel} />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })
+      )}
+
+      {shouldShowStreamingPreview || shouldShowRunningPlaceholder ? (
+        <div className="space-y-3">
+          <div className="flex justify-start">
+            <div className="w-full max-w-[82%] py-0.5">
+              {shouldShowStreamingPreview ? (
+                <MarkdownContent content={streamingPreviewText} />
+              ) : (
+                <div>
+                  <SessionStreamingStatus label={streamingStatusLabel} />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
-    <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
-      <div className="px-5 pt-5 lg:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            {canManageMaterials ? (
-              <Button
-                className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
-                onClick={onToggleMaterialsTray}
-                type="button"
-                variant="outline"
-              >
-                <FileInput className="h-4 w-4" />
-                {isMaterialsTrayOpen ? "收起材料" : "添加材料"}
-              </Button>
-            ) : null}
-            {selectedSessionType === "project" ? (
-              <Button
-                className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
-                onClick={onOpenProjectMetaEditor}
-                type="button"
-                variant="outline"
-              >
-                <Settings2 className="h-4 w-4" />
-                编辑主题
-              </Button>
-            ) : null}
-            {selectedSourceAssetIds.length > 0 ? (
-              <Badge
-                className="border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] shadow-none"
-                variant="outline"
-              >
-                已附 {selectedSourceAssetIds.length} 份材料
-              </Badge>
-            ) : null}
-          </div>
-
-          {canManageMaterials && selectedSourceAssetIds.length > 0 ? (
-            <div className="flex flex-wrap justify-end gap-2">
-              {activeSourceAssets.slice(0, 3).map((asset) => (
-                <button
-                  className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-1.5 text-[12px] text-[var(--xidea-selection-text)] transition-colors hover:bg-[#f2e6df]"
-                  key={asset.id}
-                  onClick={() => onUnsetSourceAsset(asset.id)}
-                  type="button"
-                >
-                  {asset.title}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-        {selectedSessionType === "project" && sessionCreatedKnowledgePoints.length > 0 ? (
-          <div className="mt-3 space-y-2">
-            <p className="xidea-kicker text-[var(--xidea-selection-text)]">
-              本会话知识卡
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {sessionCreatedKnowledgePoints.map((point) => (
-                <KnowledgePointInlineCard
-                  key={`session-created-top-${point.id}`}
-                  onClick={() => onOpenKnowledgePoint(point.id)}
-                  point={point}
-                />
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      <Separator className="bg-[var(--xidea-border)]" />
-
-      <div className="min-h-0 flex-1 px-5 lg:px-6">
-        <ScrollArea className="h-full pr-3">
-          <div className="space-y-4 pb-4">
-            {canManageMaterials && isMaterialsTrayOpen ? (
-              <section className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f5ede9] text-[var(--xidea-terracotta)]">
+    <CardContent
+      className={`flex min-h-0 flex-col gap-4 p-0 ${shouldCompactThreadLayout ? "" : "flex-1"}`}
+    >
+      {shouldShowSessionTopSection ? (
+        <>
+          <div className="px-5 pt-5 lg:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                {canManageMaterials ? (
+                  <Button
+                    className="rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-charcoal)] hover:border-[var(--xidea-selection-border)] hover:bg-[#f8f6f1]"
+                    onClick={onToggleMaterialsTray}
+                    type="button"
+                    variant="outline"
+                  >
                     <FileInput className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="xidea-kicker text-[var(--xidea-stone)]">材料</p>
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <MaterialUploadButton label="上传新材料" onUpload={onUploadMaterial} />
-                </div>
-                <AssetListGrid
-                  assets={selectedProjectMaterials}
-                  className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4"
-                  emptyText="当前项目还没有材料。"
-                  onAssetClick={onToggleProjectMaterial}
-                  selectedAssetIds={selectedSourceAssetIds}
-                />
-              </section>
-            ) : null}
+                    {isMaterialsTrayOpen ? "收起材料" : "添加材料"}
+                  </Button>
+                ) : null}
+                {selectedSourceAssetIds.length > 0 ? (
+                  <Badge
+                    className="border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] text-[var(--xidea-selection-text)] shadow-none"
+                    variant="outline"
+                  >
+                    已附 {selectedSourceAssetIds.length} 份材料
+                  </Badge>
+                ) : null}
+              </div>
 
-            {displayMessages.length === 0 &&
-            !shouldShowStreamingPreview &&
-            !shouldShowRunningPlaceholder ? (
-              <Card className="rounded-[1.1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                <CardContent className="px-4 py-4 text-sm leading-6 text-[var(--xidea-stone)]">
-                  还没有消息。
-                </CardContent>
-              </Card>
-            ) : (
-              displayMessages.map((message) => {
-                const isAssistant = message.role === "assistant";
-                const rawText = getMessageText(message);
-                const isSyntheticBatchMessage =
-                  !isAssistant && isSyntheticActivityBatchMessage(rawText);
-                const messageCreatedKnowledgePoints =
-                  isAssistant && selectedSessionType === "project"
-                    ? sessionCreatedKnowledgePoints.filter(
-                        (point) =>
-                          point.linkedMessageIdsBySession[selectedSessionId] === message.id,
-                      )
-                    : [];
-                if (isAssistant && rawText === "") {
-                  return null;
-                }
-
-                return (
-                  <div className="space-y-3" key={message.id}>
-                    <div
-                      className={
-                        isAssistant
-                          ? "flex justify-start"
-                          : isSyntheticBatchMessage
-                            ? "flex justify-center"
-                            : "flex justify-end"
-                      }
+              {canManageMaterials && selectedSourceAssetIds.length > 0 ? (
+                <div className="flex flex-wrap justify-end gap-2">
+                  {activeSourceAssets.slice(0, 3).map((asset) => (
+                    <button
+                      className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-3 py-1.5 text-[12px] text-[var(--xidea-selection-text)] transition-colors hover:bg-[#f2e6df]"
+                      key={asset.id}
+                      onClick={() => onUnsetSourceAsset(asset.id)}
+                      type="button"
                     >
-                      {isAssistant ? (
-                        <div className="w-full max-w-[82%] py-0.5">
-                          <MarkdownContent content={rawText} />
-                        </div>
-                      ) : isSyntheticBatchMessage ? (
-                <Card className="w-full max-w-[78%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-parchment)] shadow-none">
-                          <CardContent className="space-y-1.5 px-4 py-3">
-                            <p className="xidea-kicker text-[var(--xidea-stone)]">
-                              学习动作结果
-                            </p>
-                            <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                              {getVisibleSyntheticActivityBatchMessage(rawText)}
-                            </p>
-                          </CardContent>
-                        </Card>
-                      ) : (
-                        <Card className="w-full max-w-[72%] rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                          <CardContent className="px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]">
-                            <div>{rawText}</div>
-                          </CardContent>
-                        </Card>
-                      )}
-                    </div>
-
-                    {isAssistant &&
-                    message.id === latestAssistantMessageId &&
-                    shouldShowActivityStack ? (
-                      <div className="w-full max-w-[82%] pl-1">
-                        <LearningActivityStack
-                          activities={currentActivities}
-                          disabled={activityInputDisabled}
-                          key={`${selectedSessionId}-${currentActivityKey ?? currentActivity.id}`}
-                          onSkip={onSkipActivity}
-                          onSubmit={onSubmitActivity}
-                          resolution={currentActivityResolution}
-                        />
-                      </div>
-                    ) : null}
-
-                    {isAssistant && messageCreatedKnowledgePoints.length > 0 ? (
-                      <div className="w-full max-w-[82%] pl-1">
-                        <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
-                          <CardContent className="space-y-3 px-4 py-4">
-                            <div className="space-y-1">
-                              <p className="xidea-kicker text-[var(--xidea-selection-text)]">
-                                这轮生成的知识卡
-                              </p>
-                              <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
-                                点开可以继续查看详情，或从这里进入后续学习和复习。
-                              </p>
-                            </div>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              {messageCreatedKnowledgePoints.map((point) => (
-                                <KnowledgePointInlineCard
-                                  key={`session-created-inline-${point.id}`}
-                                  onClick={() => onOpenKnowledgePoint(point.id)}
-                                  point={point}
-                                />
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    ) : null}
-
-                    {isAssistant &&
-                    message.id === latestAssistantMessageId &&
-                    shouldShowPostReplyStatus ? (
-                      <div className="w-full max-w-[82%] pl-1">
-                        <div className="rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-4 py-3">
-                          <SessionStreamingStatus label={streamingStatusLabel} />
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
-
-            {shouldShowStreamingPreview || shouldShowRunningPlaceholder ? (
-              <div className="space-y-3">
-                <div className="flex justify-start">
-                  <div className="w-full max-w-[82%] py-0.5">
-                    {shouldShowStreamingPreview ? (
-                      <MarkdownContent content={streamingPreviewText} />
-                    ) : (
-                      <div>
-                        <SessionStreamingStatus label={streamingStatusLabel} />
-                      </div>
-                    )}
-                  </div>
+                      {asset.title}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            {selectedSessionType === "project" && sessionCreatedKnowledgePoints.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                <p className="xidea-kicker text-[var(--xidea-selection-text)]">
+                  本会话知识卡
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {sessionCreatedKnowledgePoints.map((point) => (
+                    <KnowledgePointInlineCard
+                      key={`session-created-top-${point.id}`}
+                      onClick={() => onOpenKnowledgePoint(point.id)}
+                      point={point}
+                    />
+                  ))}
                 </div>
               </div>
             ) : null}
           </div>
-        </ScrollArea>
-      </div>
+
+          <Separator className="bg-[var(--xidea-border)]" />
+        </>
+      ) : null}
+
+      {shouldShowSessionTopSection ? null : <div className="pt-4" />}
+
+      {shouldCompactThreadLayout ? (
+        <div className="px-5 lg:px-6">{threadContent}</div>
+      ) : (
+        <div className="min-h-0 flex-1 px-5 lg:px-6">
+          <ScrollArea className="h-full pr-3">{threadContent}</ScrollArea>
+        </div>
+      )}
 
       <div className="shrink-0 border-t border-[var(--xidea-border)] px-5 py-4 lg:px-6">
         <Card className="rounded-[1.2rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">

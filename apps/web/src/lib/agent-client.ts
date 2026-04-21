@@ -14,6 +14,7 @@ import type {
   AgentThreadContext,
 } from "@/domain/agent-runtime";
 import type { CompletedActivityDeck } from "@/domain/project-session-runtime";
+import type { AgentWorkspaceProjectConsolidation } from "@/domain/agent-workspace";
 import type { SourceAsset } from "@/domain/types";
 
 type RawSourceAsset = SourceAsset & {
@@ -279,6 +280,54 @@ export async function listProjectKnowledgePoints(
   }
 
   return (await response.json()) as ReadonlyArray<AgentKnowledgePointRecord>;
+}
+
+export async function getProjectConsolidation(
+  projectId: string,
+  options?: { signal?: AbortSignal },
+): Promise<AgentWorkspaceProjectConsolidation | null> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    throw new Error("未配置 agent API 地址。开发环境可直接启动本地代理，或设置 VITE_AGENT_API_BASE_URL。");
+  }
+
+  const response = await fetch(`${baseUrl}/projects/${projectId}/consolidation`, {
+    method: "GET",
+    signal: options?.signal,
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Project consolidation 请求失败（${response.status}）。`);
+  }
+
+  return (await response.json()) as AgentWorkspaceProjectConsolidation;
+}
+
+export async function refreshProjectConsolidation(
+  projectId: string,
+  options?: { signal?: AbortSignal },
+): Promise<AgentWorkspaceProjectConsolidation> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    throw new Error("未配置 agent API 地址。开发环境可直接启动本地代理，或设置 VITE_AGENT_API_BASE_URL。");
+  }
+
+  const response = await fetch(`${baseUrl}/projects/${projectId}/consolidation/refresh`, {
+    method: "POST",
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Project consolidation 刷新失败（${response.status}）。`);
+  }
+
+  return (await response.json()) as AgentWorkspaceProjectConsolidation;
 }
 
 export async function getThreadMessages(
@@ -571,4 +620,28 @@ export async function uploadProjectMaterial(input: {
 
   const payload = (await response.json()) as RawSourceAsset;
   return normalizeSourceAsset(payload);
+}
+
+export async function deleteProjectMaterial(input: {
+  readonly projectId: string;
+  readonly materialId: string;
+  readonly signal?: AbortSignal;
+}): Promise<void> {
+  const baseUrl = getAgentBaseUrl();
+  if (baseUrl === null) {
+    throw new Error("未配置 agent API 地址。开发环境可直接启动本地代理，或设置 VITE_AGENT_API_BASE_URL。");
+  }
+
+  const response = await fetch(
+    `${baseUrl}/projects/${input.projectId}/materials/${input.materialId}`,
+    {
+      method: "DELETE",
+      signal: input.signal,
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `删除材料失败（${response.status}）。`);
+  }
 }

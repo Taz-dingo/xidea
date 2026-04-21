@@ -3,6 +3,8 @@ import { ChevronRight, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { BrandLockup } from "@/app/workspace/ui/brand-lockup";
+import { getSessionDisplayTitle } from "@/components/workspace/core";
+import type { SessionType } from "@/domain/project-workspace";
 
 function BreadcrumbButton({
   active = false,
@@ -40,6 +42,8 @@ export function WorkspaceHeader({
   screen,
   searchQuery,
   selectedProjectName,
+  selectedSessionTitle = null,
+  selectedSessionType = null,
 }: {
   onCreateProject: () => void;
   onGoHome: () => void;
@@ -48,7 +52,14 @@ export function WorkspaceHeader({
   screen: "home" | "workspace";
   searchQuery: string;
   selectedProjectName: string;
+  selectedSessionTitle?: string | null;
+  selectedSessionType?: SessionType | null;
 }): ReactElement {
+  const visibleSessionTitle =
+    selectedSessionTitle !== null && selectedSessionType !== null
+      ? getSessionDisplayTitle(selectedSessionTitle, selectedSessionType)
+      : null;
+
   return (
     <Card className="xidea-card-motion rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
       <CardContent className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
@@ -64,7 +75,17 @@ export function WorkspaceHeader({
               {screen === "workspace" ? (
                 <>
                   <ChevronRight className="h-3.5 w-3.5" />
-                  <BreadcrumbButton active label={selectedProjectName} onClick={onGoWorkspace} />
+                  <BreadcrumbButton
+                    active={visibleSessionTitle === null}
+                    label={selectedProjectName}
+                    onClick={onGoWorkspace}
+                  />
+                  {visibleSessionTitle !== null ? (
+                    <>
+                      <ChevronRight className="h-3.5 w-3.5" />
+                      <BreadcrumbButton active label={visibleSessionTitle} />
+                    </>
+                  ) : null}
                 </>
               ) : null}
             </div>

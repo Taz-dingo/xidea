@@ -5,21 +5,29 @@
 ### Current Focus
 
 - demo 主链已经可讲可演示：`上传材料 -> 生成知识点 -> 启动学习/复习 -> 完成牌组 -> 刷新后回看` 这条链已跑通
-- 当前剩余工作已不再是“大块功能缺失”，而是收尾型缺口：主决策时延、session 生命周期细化、创建 Project 时的真实上传、无感 `Consolidation`、少量高信号题卡、演示级 `RSR`、细粒度 writeback 和答辩材料
+- 当前剩余工作已不再是“大块功能缺失”，而是收尾型缺口：主决策时延、session 生命周期细化、少量高信号题卡、演示级 `RSR`、细粒度 writeback 和答辩材料
 
 ### Remaining Gaps
 
 - 学习引擎主路径还要继续收敛到更稳定的“单次主决策 + 少量 tool loop + writeback”，重点清掉残留 `needs_tool=true` 场景和 split path 额外 activity 调用
 - 新知识卡虽然已经能真实落库并带 `description / reason`，但仍缺更厚的“教学化沉淀对象”，`study / review` 对动态知识卡的上下文支撑还不够强
-- `project / study / review` 三类 session 的基础合同已经落地，但状态转换、create/bootstrap 边界和 project chat 默认续写行为还需要继续收口
-- project chat 相关入口基本打通；当前前端只剩“创建 Project 时直接上传本地文件”这条创建流还没补齐
+- `project / study / review` 三类 session 的基础合同已经落地；当前剩余缺口主要变成多卡编排质量、改排规则细化和更细粒度 writeback，而不是 session 是否单卡
 - 题卡主路径仍以选择题为主；当前还没补齐定义澄清、边界辨析、误解纠偏这几类高信号真实题卡
 - `activity_result` 已能回写知识点状态、review state、project memory 和 learning profile；当前剩余缺口是把多张 card 的表现进一步拆成更细粒度的 backend writeback
-- `Consolidation` 的展示位和刷新策略已定稿，但前端主区顶部的无感 checkpoint 还未落地
 - 演示级 `RSR / Review Engine` 还没收成稳定展示；当前仍缺 `why now / next review / due summary` 这一层答辩友好输出
 - 产品 / demo 侧仍需补答辩素材与竞品对比摘要
 
 ### Done
+
+#### 多卡编排 session v0（2026-04-20）
+
+- `apps/agent` 已把 `study / review session` 从单卡 focus 启动改成多卡 orchestration 语义：当前会基于 session 类型、用户首句、主题邻近和知识卡状态生成 `candidate pool / current plan / current focus`
+- `apps/agent` 已在 runtime 主链中预加载 session orchestration，并在首次编排后把 `current_focus` 回写到真实 `target_unit_id / knowledge_point_id`，避免前端继续单卡脑补
+- `apps/agent` 已将 orchestration 持久化进 `thread_context`，包括当前 plan snapshot 和 `plan_created / plan_adjusted / session_completed` 事件历史
+- `apps/web` 已把 runtime snapshot 扩到 `orchestration` 维度，并改成优先跟随后端 `current_focus` 驱动当前学习 session，而不是只看本地选中知识卡
+- `apps/web` 已把 session 右栏重新定义成 `当前学习计划`：展示目标、当前小计划、焦点、状态和最近一次调整原因；完整历史走详情态，不在右栏无限拉长
+- `apps/web` 已在会话流中补专门的编排事件卡：首次编排和关键改排不再只藏在 assistant 回复里，而是以独立系统卡显式出现
+- `apps/agent` 已补 orchestration 构建与持久化测试，当前 `apps/agent/tests/test_session_orchestration.py` 与相关 repository 回归通过；`apps/web` 生产构建通过
 
 #### 真实学习主链与前端主路径收口（2026-04-20）
 
@@ -46,6 +54,12 @@
 - `apps/web` 已修正本轮挂材发送快照：发送时会锁定本轮选中的材料再组装 request，不再出现 UI 显示已挂材、实际请求却没带 `source_asset_ids` 的错位
 - `apps/web` 已将知识卡和相关 session 的联动补成可回读对象：本会话创建或接受的知识卡会回挂到对应回复位置，知识卡详情也能按 `linkedSessionIds` 回读相关会话
 - 已在浏览器实跑验证主 demo 链：`上传材料 -> 研讨生成知识点 -> 项目主页回看知识卡 -> 围绕知识卡启动学习 session -> 完成牌组后刷新并重新打开 session 仍能回看 deck`
+
+#### Project 创建流与 System Checkpoint 收口（2026-04-20）
+
+- `apps/agent` 已为 `Consolidation` 增加持久化 snapshot：当前有独立 `project_consolidations` 表，并提供 `GET /projects/{project_id}/consolidation` 与 `POST /projects/{project_id}/consolidation/refresh`
+- `apps/web` 已将无感 `System Checkpoint` 内嵌进 `Project Workspace` 顶部项目卡底部：进入项目时先展示上一次 project-level 收口结果，再后台刷新，刷新失败时保留旧结果
+- `apps/web` 已补齐“创建 Project 时直接上传本地文件”这条创建流：创建弹层可直接上传本地材料，上传结果会进入新项目材料池，并默认加入初始材料选择
 
 ### Earlier Done
 
@@ -290,7 +304,7 @@
 - agent owner 当前主改 `runtime.py / llm.py / tools.py / activity_results.py / review_engine.py / knowledge_points.py`，负责主决策链路、tool loop、知识点生命周期与 writeback
 - `state.py` 是当前共享热点文件，默认只由 backend owner 主改；agent owner 通过字段清单或小 PR 配合，避免两人同时大改 contract
 - 当前推荐落地顺序已收敛为：先 schema / repository / API，再 runtime / prompt / writeback，最后再接前端 `activity_result`
-- `project materials` 的真实上传当前已覆盖“已有 Project 的材料池 / project session 附着”这条主路径；创建 Project 时直接上传本地文件仍未接入，当前创建流仍是从 demo seed 材料里选初始项
+- `project materials` 的真实上传已覆盖“已有 Project 的材料池 / project session 附着 / 创建 Project 时直接上传”三条主路径
 
 - 收敛 agent 主路径到"预取 project 证据上下文 -> 单次主决策调用 -> tool / session loop -> 状态回写"，优先解决当前回复过慢与首轮等待偏长问题
 - 将当前 operating docs 从"project / thread + activity-first"进一步收敛到"project-centric MVP"叙事
@@ -310,7 +324,7 @@
 - 清理前端里残留的 backend-owned learning semantics，避免 heuristic / fallback 再次回流到 `apps/web`
 - 将前端已出现的学习交互件整理成后端 prompt / contract 需求清单，供学习引擎 owner 对齐实现
 - 收敛 tutor system prompt：明确何时发起 activity、何时只给短引导、何时禁止继续自由讲解
-- 收敛当前 `Consolidation` 的演示路径，固定为 `Project Workspace` 主区顶部的无感 `System Checkpoint`
+- 收敛当前 `Consolidation` 的演示路径，固定为 `Project Workspace` 顶部项目卡底部的无感 `System Checkpoint`
 
 ### Next
 

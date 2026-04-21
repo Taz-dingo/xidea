@@ -1,12 +1,13 @@
 import type { ReactElement } from "react";
-import { sourceAssets } from "@/data/demo";
 import { buildPendingSessionId } from "@/domain/project-workspace";
 import { WorkspaceHeader } from "@/app/workspace/ui/header";
 import { ProjectInsightsStrip } from "@/app/workspace/ui/project-insights";
 import { ProjectOverviewPanel } from "@/app/workspace/ui/project-overview";
+import { SystemCheckpointCard } from "@/app/workspace/ui/system-checkpoint";
 import { useSessionAgent } from "@/app/workspace/agent/use-session-agent";
 import { useWorkspaceActions } from "@/app/workspace/hooks/use-actions";
 import { useWorkspaceData } from "@/app/workspace/hooks/use-data";
+import { useProjectConsolidation } from "@/app/workspace/hooks/data/use-project-consolidation";
 import { useWorkspacePageModel } from "@/app/workspace/hooks/use-page-model";
 import { KnowledgePointDetailScreen } from "@/components/workspace/detail";
 import { SessionWorkspace } from "@/components/session/workspace";
@@ -25,6 +26,11 @@ export function WorkspacePage(): ReactElement {
   const model = useWorkspacePageModel({
     activeRuntime: session.activeRuntime,
     data,
+  });
+  const projectConsolidation = useProjectConsolidation({
+    agentConnectionState: data.agentConnectionState,
+    enabled: data.screen === "workspace",
+    projectId: data.selectedProject.id,
   });
   const pendingWorkspaceSession =
     data.pendingSessionIntent === null
@@ -54,6 +60,7 @@ export function WorkspacePage(): ReactElement {
           status: "待开始",
         };
   const activeWorkspaceSession = data.selectedSession ?? pendingWorkspaceSession;
+  const createProjectAssets = data.projectAssetsByProject[data.projectDraft.id] ?? [];
 
   return (
     <main className="xidea-shell min-h-screen bg-[var(--xidea-parchment)] text-[var(--xidea-near-black)]">
@@ -67,6 +74,8 @@ export function WorkspacePage(): ReactElement {
             screen={data.screen}
             searchQuery={data.searchQuery}
             selectedProjectName={data.selectedProject.name}
+            selectedSessionTitle={activeWorkspaceSession?.title ?? null}
+            selectedSessionType={activeWorkspaceSession?.type ?? null}
           />
 
           {data.screen === "home" ? (
@@ -99,6 +108,13 @@ export function WorkspacePage(): ReactElement {
               {activeWorkspaceSession === null ? (
                 <>
                   <ProjectOverviewPanel
+                    checkpoint={
+                      <SystemCheckpointCard
+                        checkpoint={projectConsolidation.snapshot}
+                        compact
+                        status={projectConsolidation.status}
+                      />
+                    }
                     insights={
                       <ProjectInsightsStrip
                         isEditingProjectMeta={data.isEditingProjectMeta}
@@ -148,6 +164,7 @@ export function WorkspacePage(): ReactElement {
                       data.setPendingSessionIntent(null);
                       data.setSelectedSessionId(sessionId);
                     }}
+                    onDeleteSession={actions.handleDeleteSession}
                     onStartProjectSession={() =>
                       actions.handlePrepareSessionStart(data.selectedProject.id, "project")
                     }
@@ -200,14 +217,9 @@ export function WorkspacePage(): ReactElement {
                   latestReviewedLabel={session.latestReviewedLabel}
                   nextReviewLabel={session.nextReviewLabel}
                   onChangeDraftPrompt={session.handleChangeDraftPrompt}
-                  onDeleteSession={() => {
-                    if (data.selectedSession !== undefined) {
-                      actions.handleDeleteSession();
-                    }
-                  }}
-                  onEditKnowledgePoint={actions.handleOpenKnowledgePointEditor}
+                  onDeleteSession={actions.handleDeleteSession}
+                  onExitSession={actions.handleCloseSession}
                   onOpenKnowledgePoint={actions.handleOpenKnowledgePoint}
-                  onOpenProjectMetaEditor={actions.handleOpenProjectMetaEditor}
                   onOpenSession={(sessionId) => {
                     data.setPendingSessionIntent(null);
                     data.setSelectedSessionId(sessionId);
@@ -238,7 +250,6 @@ export function WorkspacePage(): ReactElement {
                   onUnsetSourceAsset={session.handleUnsetSourceAsset}
                   onWorkspaceSectionChange={actions.handleSessionWorkspaceSectionChange}
                   projectStats={model.projectStats}
-                  relatedKnowledgePoints={model.relatedKnowledgePoints}
                   reviewDisabled={model.reviewTargetPoint === null}
                   requestSourceAssetIds={session.requestSourceAssetIds}
                   sessionCreatedKnowledgePoints={model.sessionCreatedKnowledgePoints}
@@ -247,7 +258,6 @@ export function WorkspacePage(): ReactElement {
                   selectedProjectSessions={data.selectedProjectSessions}
                   selectedSession={activeWorkspaceSession}
                   selectedSourceAssetIds={session.selectedSourceAssetIds}
-                  selectedUnitTitle={session.selectedUnitTitle}
                   activityInputDisabled={session.activityInputDisabled}
                   composerDisabled={session.composerDisabled}
                   studyDisabled={model.studyTargetPoint === null}
@@ -329,11 +339,13 @@ export function WorkspacePage(): ReactElement {
                 onClick={(event) => event.stopPropagation()}
               >
                 <CreateProjectPanel
-                  assets={sourceAssets}
+                  assets={createProjectAssets}
                   draft={data.projectDraft}
                   onCancel={actions.handleCancelCreatingProject}
                   onChange={data.setProjectDraft}
+                  onDeleteMaterial={actions.handleDeleteProjectDraftMaterial}
                   onSave={actions.handleSaveProject}
+                  onUploadMaterial={actions.handleUploadProjectDraftMaterial}
                 />
               </div>
             </div>

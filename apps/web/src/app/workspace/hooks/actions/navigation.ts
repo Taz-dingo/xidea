@@ -44,60 +44,62 @@ export function useNavigationActions(data: WorkspaceData) {
     data.setSelectedSessionId("");
   }
 
-  function handleDeleteSession(): void {
-    const sessionId = data.selectedSession?.id;
-    if (!sessionId) {
+  function handleDeleteSession(sessionId?: string): void {
+    const targetSessionId = sessionId ?? data.selectedSession?.id;
+    if (!targetSessionId) {
       return;
     }
 
-    void deleteThread(sessionId).catch(() => undefined);
-    data.setSessions((current) => current.filter((session) => session.id !== sessionId));
+    void deleteThread(targetSessionId).catch(() => undefined);
+    data.setSessions((current) => current.filter((session) => session.id !== targetSessionId));
     data.setSessionMessagesById((current) => {
       const next = { ...current };
-      delete next[sessionId];
+      delete next[targetSessionId];
       return next;
     });
     data.setSessionSnapshots((current) => {
       const next = { ...current };
-      delete next[sessionId];
+      delete next[targetSessionId];
       return next;
     });
     data.setSessionReviewInspectors((current) => {
       const next = { ...current };
-      delete next[sessionId];
+      delete next[targetSessionId];
       return next;
     });
     data.setSessionSourceAssetIds((current) => {
       const next = { ...current };
-      delete next[sessionId];
+      delete next[targetSessionId];
       return next;
     });
     data.sessionEntryModesSetter((current) => {
       const next = { ...current };
-      delete next[sessionId];
+      delete next[targetSessionId];
       return next;
     });
     data.setRunningSessionIds((current) => {
       const next = { ...current };
-      delete next[sessionId];
+      delete next[targetSessionId];
       return next;
     });
     data.setActivityBatchStateBySession((current) => {
       const next = { ...current };
-      delete next[sessionId];
+      delete next[targetSessionId];
       return next;
     });
     data.setActivityResolutionsBySession((current) => {
       const next = { ...current };
-      delete next[sessionId];
+      delete next[targetSessionId];
       return next;
     });
     data.setCompletedActivityDecksBySession((current) => {
       const next = { ...current };
-      delete next[sessionId];
+      delete next[targetSessionId];
       return next;
     });
-    data.setSelectedSessionId("");
+    if (data.selectedSession?.id === targetSessionId) {
+      data.setSelectedSessionId("");
+    }
   }
 
   return {

@@ -11,19 +11,45 @@
 - `docs/plan.md` 负责回答“接下来做什么”
 - 本文只记录“为什么必须这么定，以及这条结论会约束后续哪些实现或协作”
 
-## 2026-04-20 — `Consolidation` 作为无感 `System Checkpoint` 固定进入 Project 主区，而不是手动工具入口
+## 2026-04-20 — `study / review` 必须是多卡编排 session，而不是单卡 focus 容器
+
+### 决策
+
+- `study / review session` 不再以单个 `knowledgePointId` 作为主语义
+- 点击 `学习 / 复习` 后先进入待开始态；用户首句参与首次编排，首次编排完成后才创建真实 session
+- session 的核心对象改为：
+  - `candidate pool`
+  - `current plan snapshot`
+  - `current focus`
+  - `plan events`
+- 右栏固定展示 `当前学习计划`，会话流只在首次编排和关键改排时显示专门的编排事件卡
+
+### 原因
+
+- 如果继续用单卡 focus 作为 session 主语义，产品心智会持续漂回“当前知识卡详情页”，证明不了“系统会决定你接下来怎么学”
+- 首句参与首次编排，能把用户意图真正纳入学习决策，而不是让 session 先空落库再事后补语义
+- 右栏显示当前 plan、timeline 只显示关键变化，才能同时兼顾“可解释”和“界面不失控”
+
+### 影响
+
+- learning-engine owner 负责产出正式 orchestration object / event，而不是让前端从文本里猜测计划变化
+- frontend owner 只消费 orchestration contract，不能自己脑补“哪些卡应该在这一轮、这次是否算改排”
+- 后续如果要继续增强动态性，应优先在受控 candidate pool 内演进，而不是重新退回全项目自由选卡
+
+## 2026-04-20 — `Consolidation` 作为无感 `System Checkpoint` 固定内嵌进 Project 总览卡，而不是手动工具入口
 
 ### 决策
 
 - `Consolidation` 在比赛版里不做手动触发按钮
 - 进入 `Project` 时，前端先展示数据库里上一版 `Consolidation` 结果，同时后台静默刷新最新结果
-- 展示位固定在 `Project Workspace` 主区顶部、知识点列表上方
+- 展示位固定在 `Project Workspace` 顶部项目总览卡内部，放在项目状态区下方
 - UI 只暴露刷新中 / 成功 / 失败状态，不把它做成普通 `AI summary`
 
 ### 原因
 
 - 手动触发更像工具能力，削弱“系统会持续整理学习状态”的主叙事
 - 首屏先展示旧结果，再后台刷新，既能保证体验稳定，也能保留“系统正在持续更新 project 收口”的真实感
+- 内嵌到项目卡里更符合“这是项目当前状态的一部分”，也能减少与下方知识卡区的重复信息
 - 如果把它做成长文本 summary，很容易退化成泛用总结卡，证明不了编排系统价值
 
 ### 影响

@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import { PenSquare, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { getKnowledgePointAccent } from "@/components/workspace/core";
 import { CompactNote, MonitorSection } from "@/components/workspace/monitor";
 import type {
   AgentAssetSummary,
@@ -17,7 +16,6 @@ import type {
 } from "@/domain/project-session-runtime";
 import {
   getSessionTypeLabel,
-  type KnowledgePointItem,
   type ProjectItem,
 } from "@/domain/project-workspace";
 
@@ -262,15 +260,11 @@ export function SessionInspector({
   isBlankSession,
   latestReviewedLabel,
   nextReviewLabel,
-  onEditKnowledgePoint,
-  onOpenKnowledgePoint,
-  relatedKnowledgePoints,
   requestSourceAssetIds,
   selectedProject,
   selectedSessionStatus,
   selectedSessionType,
   selectedSourceAssetIds,
-  selectedUnitTitle,
 }: {
   activeAssetSummary: AgentAssetSummary | null;
   activeReviewInspector: AgentReviewInspector | null;
@@ -281,105 +275,87 @@ export function SessionInspector({
   isBlankSession: boolean;
   latestReviewedLabel: string;
   nextReviewLabel: string;
-  onEditKnowledgePoint: (pointId: string) => void;
-  onOpenKnowledgePoint: (pointId: string) => void;
-  relatedKnowledgePoints: ReadonlyArray<KnowledgePointItem>;
   requestSourceAssetIds: ReadonlyArray<string>;
   selectedProject: ProjectItem;
   selectedSessionStatus: string;
   selectedSessionType: "project" | "study" | "review";
   selectedSourceAssetIds: ReadonlyArray<string>;
-  selectedUnitTitle: string | null;
 }): ReactElement {
   const [openDeckKey, setOpenDeckKey] = useState<string | null>(null);
+  const [isPlanDetailOpen, setIsPlanDetailOpen] = useState(false);
   const previewDecks = useMemo(
     () => completedActivityDecks.slice(0, 3),
     [completedActivityDecks],
   );
   const openDeck =
     completedActivityDecks.find((deck) => deck.deckKey === openDeckKey) ?? null;
+  const activePlan = activeRuntime.orchestration.current;
+  const timeline = activeRuntime.orchestration.timeline;
 
   return (
     <>
       <div className="space-y-4">
-        {selectedSessionType !== "project" ? (
-          <MonitorSection title="当前知识卡">
-            <div className="space-y-3">
-              {relatedKnowledgePoints.map((point) => (
-                <Card
-                  className="rounded-[1rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none"
-                  key={point.id}
+        {selectedSessionType === "project" ? (
+          <MonitorSection title="本轮上下文">
+            <CompactNote label="项目" value={selectedProject.name} />
+            <CompactNote label="会话" value={selectedSessionStatus} />
+            <CompactNote
+              label="模式"
+              value={
+                hasStructuredRuntime ? activeRuntime.decision.title : "研讨对话"
+              }
+            />
+            <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
+              {hasPersistedState
+                ? activeRuntime.stateSource
+                : "当前还没有回读到真实 learner state，这一栏会在会话有真实交互后变得更具体。"}
+            </p>
+          </MonitorSection>
+        ) : activePlan !== null ? (
+          <MonitorSection
+            accent={activePlan.status === "completed" ? "已完成" : activePlan.status === "adjusted" ? "已调整" : "进行中"}
+            title="当前学习计划"
+          >
+            <CompactNote label="目标" value={activePlan.objective} />
+            <CompactNote
+              label="当前焦点"
+              value={activePlan.steps.find((step) => step.status === "active")?.title ?? "已完成"}
+            />
+            <CompactNote label="状态" value={activePlan.last_change_reason ?? "按当前计划继续推进。"} />
+            <div className="space-y-2">
+              {activePlan.steps.slice(0, 3).map((step) => (
+                <div
+                  className="rounded-[0.9rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] px-3 py-2.5"
+                  key={step.knowledge_point_id}
                 >
-                  <CardContent className="space-y-3 px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-[var(--xidea-near-black)]">
-                        {point.title}
-                      </p>
-                      <Badge
-                        className={`border px-2 py-1 text-[12px] shadow-none ${getKnowledgePointAccent(point.status)}`}
-                        variant="outline"
-                      >
-                        {point.stageLabel}
-                      </Badge>
-                    </div>
-                    <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">
-                      {point.description}
-                    </p>
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[12px] text-[var(--xidea-stone)]">
-                        {point.nextReviewLabel ?? "等待下一次调度"}
-                      </p>
-                      <div className="flex gap-2">
-                        <Button
-                          className="h-8 rounded-full px-3"
-                          onClick={() => onOpenKnowledgePoint(point.id)}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          查看
-                        </Button>
-                        <Button
-                          className="h-8 rounded-full px-3"
-                          onClick={() => onEditKnowledgePoint(point.id)}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          <PenSquare className="h-3.5 w-3.5" />
-                          编辑
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[13px] font-medium text-[var(--xidea-near-black)]">{step.title}</p>
+                    <span className="text-[11px] text-[var(--xidea-stone)]">
+                      {step.status === "active" ? "当前" : step.status === "completed" ? "完成" : "待推进"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[12px] leading-5 text-[var(--xidea-charcoal)]">{step.reason}</p>
+                </div>
               ))}
             </div>
+            <Button
+              className="w-full rounded-[0.9rem]"
+              onClick={() => setIsPlanDetailOpen(true)}
+              type="button"
+              variant="outline"
+            >
+              查看详情
+            </Button>
           </MonitorSection>
-        ) : null}
-
-        <MonitorSection title="本轮上下文">
-          <CompactNote label="项目" value={selectedProject.name} />
-          <CompactNote label="会话" value={selectedSessionStatus} />
-          <CompactNote
-            label="模式"
-            value={
-              hasStructuredRuntime
-                ? activeRuntime.decision.title
-                : selectedSessionType === "project"
-                  ? "研讨对话"
-                  : `${getSessionTypeLabel(selectedSessionType)}编排`
-            }
-          />
-          {selectedSessionType !== "project" ? (
-            <CompactNote label="知识卡" value={selectedUnitTitle ?? "未指定"} />
-          ) : null}
-          <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
-            {hasPersistedState
-              ? activeRuntime.stateSource
-              : "当前还没有回读到真实 learner state，这一栏会在会话有真实交互后变得更具体。"}
-          </p>
-        </MonitorSection>
+        ) : (
+          <MonitorSection title="当前学习计划">
+            <CompactNote label="项目" value={selectedProject.name} />
+            <CompactNote label="会话" value={selectedSessionStatus} />
+            <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
+              等待首次编排返回当前小学习计划。
+            </p>
+          </MonitorSection>
+        )}
 
         {selectedSessionType === "review" ? (
           <MonitorSection title="复习提示">
@@ -441,6 +417,40 @@ export function SessionInspector({
       </div>
 
       <DeckHistoryDialog deck={openDeck} onClose={() => setOpenDeckKey(null)} />
+      {isPlanDetailOpen && activePlan !== null ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 px-4 py-8 backdrop-blur-[2px]">
+          <Card className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-[1.4rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-[0_24px_80px_rgba(20,20,19,0.18)]">
+            <CardContent className="flex max-h-[85vh] flex-col gap-4 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-base font-medium text-[var(--xidea-near-black)]">完整编排记录</p>
+                  <p className="text-sm text-[var(--xidea-stone)]">{activePlan.objective}</p>
+                </div>
+                <Button className="rounded-full" onClick={() => setIsPlanDetailOpen(false)} type="button" variant="outline">
+                  <X className="h-4 w-4" />
+                  关闭
+                </Button>
+              </div>
+              <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
+                {timeline.map((event, index) => (
+                  <Card className="rounded-[1rem] border-[var(--xidea-border)] bg-[#fffaf5] shadow-none" key={`${event.kind}-${event.created_at ?? index}`}>
+                    <CardContent className="space-y-2 px-4 py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-[var(--xidea-near-black)]">{event.title}</p>
+                        <span className="text-[12px] text-[var(--xidea-stone)]">{event.kind}</span>
+                      </div>
+                      <p className="text-[13px] leading-6 text-[var(--xidea-charcoal)]">{event.summary}</p>
+                      {event.reason ? (
+                        <p className="text-[12px] leading-5 text-[var(--xidea-stone)]">原因：{event.reason}</p>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
     </>
   );
 }
