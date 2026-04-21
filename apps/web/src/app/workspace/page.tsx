@@ -73,7 +73,7 @@ export function WorkspacePage(): ReactElement {
             onSearchChange={data.setSearchQuery}
             screen={data.screen}
             searchQuery={data.searchQuery}
-            selectedProjectName={data.selectedProject.name}
+            selectedProjectTopic={data.selectedProject.topic}
             selectedSessionTitle={activeWorkspaceSession?.title ?? null}
             selectedSessionType={activeWorkspaceSession?.type ?? null}
           />
@@ -118,6 +118,7 @@ export function WorkspacePage(): ReactElement {
                     insights={
                       <ProjectInsightsStrip
                         isEditingProjectMeta={data.isEditingProjectMeta}
+                        onDeleteProjectMaterial={actions.handleDeleteProjectMaterial}
                         onToggleProjectMaterial={(assetId) =>
                           data.setProjectMetaDraft((current) => ({
                             ...current,
@@ -145,9 +146,8 @@ export function WorkspacePage(): ReactElement {
                     projectSessionCount={data.selectedProjectSessions.length}
                     projectStats={model.projectStats}
                     selectedProjectDescription={data.selectedProject.description}
-                    selectedProjectName={data.selectedProject.name}
-                    selectedProjectRules={data.selectedProject.specialRules}
                     selectedProjectTopic={data.selectedProject.topic}
+                    selectedProjectRules={data.selectedProject.specialRules}
                     selectedProjectUpdatedAt={data.selectedProject.updatedAt}
                   />
                   <WorkspaceBrowseScreen
@@ -308,20 +308,22 @@ export function WorkspacePage(): ReactElement {
                     actions.handleStartArchiveConfirmation(data.selectedKnowledgePoint!.id)
                   }
                   onStartEditing={actions.handleStartEditingKnowledgePoint}
-                  onStartReview={() =>
-                    actions.handlePrepareSessionStart(
+                  onStartReview={() => {
+                    actions.handleQuickStartFocusedSession(
                       data.selectedProject.id,
                       "review",
                       data.selectedKnowledgePoint!.id,
-                    )
-                  }
-                  onStartStudy={() =>
-                    actions.handlePrepareSessionStart(
+                    );
+                    actions.handleCloseKnowledgePointDialog();
+                  }}
+                  onStartStudy={() => {
+                    actions.handleQuickStartFocusedSession(
                       data.selectedProject.id,
                       "study",
                       data.selectedKnowledgePoint!.id,
-                    )
-                  }
+                    );
+                    actions.handleCloseKnowledgePointDialog();
+                  }}
                   relatedSessions={data.knowledgePointRelatedSessions}
                   reviewHeatmap={model.knowledgePointReviewHeatmap}
                   reviewHistorySummary={model.knowledgePointReviewHistorySummary}

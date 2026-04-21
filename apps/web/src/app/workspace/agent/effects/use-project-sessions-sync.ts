@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { UIMessage } from "ai";
 import type { AgentMessage, AgentProjectThreadRecord } from "@/domain/agent-runtime";
 import { areSameMessageHistory, mergeMessageHistory } from "@/domain/chat-message";
@@ -100,6 +100,17 @@ export function useProjectSessionsSync({
     setSessionMessagesById,
     setSessions,
   } = data;
+  const hydratedMessageSessionIdsRef = useRef<Set<string>>(new Set());
+  const selectedSessionExists = useMemo(
+    () =>
+      selectedSessionKey !== null &&
+      sessions.some((session) => session.id === selectedSessionKey),
+    [selectedSessionKey, sessions],
+  );
+
+  useEffect(() => {
+    hydratedMessageSessionIdsRef.current.clear();
+  }, [projectId]);
 
   useEffect(() => {
     if (agentConnectionState !== "ready" || projectId.trim() === "") {
@@ -148,13 +159,10 @@ export function useProjectSessionsSync({
     if (
       agentConnectionState !== "ready" ||
       projectId.trim() === "" ||
-      selectedSessionKey === null
+      selectedSessionKey === null ||
+      !selectedSessionExists ||
+      hydratedMessageSessionIdsRef.current.has(selectedSessionKey)
     ) {
-      return;
-    }
-
-    const sessionExists = sessions.some((session) => session.id === selectedSessionKey);
-    if (!sessionExists) {
       return;
     }
 
@@ -164,6 +172,7 @@ export function useProjectSessionsSync({
         if (abortController.signal.aborted) {
           return;
         }
+        hydratedMessageSessionIdsRef.current.add(selectedSessionKey);
         const nextMessages = toUiMessages(messages, selectedSessionKey);
         setSessionMessagesById((current) => {
           const currentMessages = current[selectedSessionKey] ?? [];
@@ -184,7 +193,7 @@ export function useProjectSessionsSync({
     agentConnectionState,
     projectId,
     selectedSessionKey,
-    sessions,
+    selectedSessionExists,
     setSessionMessagesById,
   ]);
 }

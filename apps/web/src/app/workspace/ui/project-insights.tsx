@@ -10,6 +10,7 @@ import {
   CalendarRange,
   FileText,
   Layers3,
+  Trash2,
   X,
 } from "lucide-react";
 import type { ProjectStats } from "@/domain/project-workspace";
@@ -251,10 +252,17 @@ function ProjectInsightPreview({
   onClick: () => void;
 }): ReactElement {
   return (
-    <button
+    <div
       className="group flex h-full min-h-[196px] w-full flex-col rounded-[1.15rem] border border-[var(--xidea-border)] bg-[linear-gradient(180deg,#fffdf9_0%,#f7f2eb_100%)] p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--xidea-selection-border)] hover:shadow-[0_18px_36px_rgba(177,112,82,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xidea-selection-border)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--xidea-white)]"
       onClick={onClick}
-      type="button"
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
@@ -266,7 +274,7 @@ function ProjectInsightPreview({
         </span>
       </div>
       <div className="mt-4 min-h-0 flex-1 overflow-hidden">{children}</div>
-    </button>
+    </div>
   );
 }
 
@@ -329,9 +337,39 @@ function ProjectInsightModal({
   );
 }
 
+function MaterialDeleteButton({
+  armed = false,
+  disabled = false,
+  onDelete,
+  title,
+}: {
+  armed?: boolean;
+  disabled?: boolean;
+  onDelete: () => void;
+  title: string;
+}): ReactElement {
+  return (
+    <Button
+      aria-label={armed ? `确认删除材料 ${title}` : `删除材料 ${title}`}
+      className="h-8 w-8 shrink-0 rounded-full border-[var(--xidea-border)] bg-[var(--xidea-white)] p-0 text-[var(--xidea-charcoal)] shadow-none hover:bg-[var(--xidea-parchment)]"
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        onDelete();
+      }}
+      title={armed ? `再点一次删除 ${title}` : `删除材料 ${title}`}
+      type="button"
+      variant="ghost"
+    >
+      <Trash2 className={armed ? "h-4 w-4 text-red-600" : "h-4 w-4"} />
+    </Button>
+  );
+}
+
 type ProjectInsightModalKey = "heatmap" | "materials" | "portrait" | null;
 
 export function ProjectInsightsStrip({
+  onDeleteProjectMaterial,
   isEditingProjectMeta,
   onToggleProjectMaterial,
   onUploadProjectMaterial,
@@ -343,6 +381,7 @@ export function ProjectInsightsStrip({
   projectReviewHeatmapExpanded,
   projectStats,
 }: {
+  onDeleteProjectMaterial: (assetId: string) => Promise<void>;
   isEditingProjectMeta: boolean;
   onToggleProjectMaterial: (assetId: string) => void;
   onUploadProjectMaterial: (file: File) => Promise<void>;
@@ -358,10 +397,43 @@ export function ProjectInsightsStrip({
   projectStats: ProjectStats;
 }): ReactElement {
   const [activeModal, setActiveModal] = useState<ProjectInsightModalKey>(null);
+  const [armedMaterialId, setArmedMaterialId] = useState<string | null>(null);
+  const [deletingMaterialId, setDeletingMaterialId] = useState<string | null>(null);
+  const [materialErrorMessage, setMaterialErrorMessage] = useState<string | null>(null);
   const visibleProjectMaterials = isEditingProjectMeta ? projectAssets : projectMaterials;
   const totalPoints = Math.max(projectStats.total, 1);
   const masteredRatio = (projectStats.total - projectStats.unlearned - projectStats.dueReview) / totalPoints;
   const stablePercent = Math.max(12, Math.round(masteredRatio * 100));
+
+  useEffect(() => {
+    if (activeModal !== "materials") {
+      setArmedMaterialId(null);
+      setMaterialErrorMessage(null);
+    }
+  }, [activeModal]);
+
+  useEffect(() => {
+    if (
+      armedMaterialId !== null &&
+      !visibleProjectMaterials.some((asset) => asset.id === armedMaterialId)
+    ) {
+      setArmedMaterialId(null);
+    }
+  }, [armedMaterialId, visibleProjectMaterials]);
+
+  async function handleDeleteMaterial(assetId: string): Promise<void> {
+    setDeletingMaterialId(assetId);
+    setMaterialErrorMessage(null);
+
+    try {
+      await onDeleteProjectMaterial(assetId);
+      setArmedMaterialId((current) => (current === assetId ? null : current));
+    } catch (error) {
+      setMaterialErrorMessage(error instanceof Error ? error.message : "删除材料失败。");
+    } finally {
+      setDeletingMaterialId(null);
+    }
+  }
 
   return (
     <>
@@ -375,31 +447,36 @@ export function ProjectInsightsStrip({
             }
             title="项目材料"
           >
-            <div className="max-h-[31rem] space-y-2 overflow-y-auto pr-1">
-              {visibleProjectMaterials.length > 0 ? (
-                visibleProjectMaterials.map((asset) => (
-                  <div
-                    className="grid grid-cols-[36px_minmax(0,1fr)] gap-3 rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-2.5"
-                    key={asset.id}
-                  >
-                    <div className="flex h-9 w-9 items-center justify-center rounded-[0.85rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
-                      <FileText className="h-4 w-4" />
+            <div className="space-y-2">
+              <div className="max-h-[31rem] space-y-2 overflow-y-auto pr-1">
+                {visibleProjectMaterials.length > 0 ? (
+                  visibleProjectMaterials.map((asset) => (
+                    <div
+                      className="grid grid-cols-[36px_minmax(0,1fr)_auto] gap-3 rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-2.5"
+                      key={asset.id}
+                    >
+                      <div className="flex h-9 w-9 items-center justify-center rounded-[0.85rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] text-[var(--xidea-selection-text)]">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <p className="line-clamp-1 text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
+                          {asset.title}
+                        </p>
+                        <p className="line-clamp-1 text-sm leading-5 text-[var(--xidea-charcoal)]">
+                          {asset.topic}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0 space-y-1">
-                      <p className="line-clamp-1 text-sm font-medium leading-5 text-[var(--xidea-near-black)]">
-                        {asset.title}
-                      </p>
-                      <p className="line-clamp-1 text-sm leading-5 text-[var(--xidea-charcoal)]">
-                        {asset.topic}
-                      </p>
-                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-[0.95rem] border border-dashed border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-4 text-sm text-[var(--xidea-stone)]">
+                    当前还没有项目材料。
                   </div>
-                ))
-              ) : (
-                <div className="rounded-[0.95rem] border border-dashed border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-4 text-sm text-[var(--xidea-stone)]">
-                  当前还没有项目材料。
-                </div>
-              )}
+                )}
+              </div>
+              {materialErrorMessage ? (
+                <p className="text-[12px] leading-5 text-[#b95e39]">{materialErrorMessage}</p>
+              ) : null}
             </div>
           </ProjectInsightPreview>
         </div>
@@ -511,8 +588,26 @@ export function ProjectInsightsStrip({
                 }
                 maxHeightClassName="max-h-[30rem]"
                 onAssetClick={isEditingProjectMeta ? onToggleProjectMaterial : undefined}
+                renderAssetAction={(asset) => (
+                  <MaterialDeleteButton
+                    armed={armedMaterialId === asset.id}
+                    disabled={deletingMaterialId === asset.id}
+                    onDelete={() => {
+                      if (armedMaterialId === asset.id) {
+                        void handleDeleteMaterial(asset.id);
+                        return;
+                      }
+                      setArmedMaterialId(asset.id);
+                      setMaterialErrorMessage(null);
+                    }}
+                    title={asset.title}
+                  />
+                )}
                 selectedAssetIds={isEditingProjectMeta ? projectMaterialIds : []}
               />
+              {materialErrorMessage ? (
+                <p className="text-[12px] leading-5 text-[#b95e39]">{materialErrorMessage}</p>
+              ) : null}
             </CardContent>
           </Card>
         </ProjectInsightModal>

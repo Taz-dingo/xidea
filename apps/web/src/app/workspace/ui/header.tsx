@@ -41,7 +41,7 @@ export function WorkspaceHeader({
   onSearchChange,
   screen,
   searchQuery,
-  selectedProjectName,
+  selectedProjectTopic,
   selectedSessionTitle = null,
   selectedSessionType = null,
 }: {
@@ -51,7 +51,7 @@ export function WorkspaceHeader({
   onSearchChange: (value: string) => void;
   screen: "home" | "workspace";
   searchQuery: string;
-  selectedProjectName: string;
+  selectedProjectTopic: string;
   selectedSessionTitle?: string | null;
   selectedSessionType?: SessionType | null;
 }): ReactElement {
@@ -77,7 +77,7 @@ export function WorkspaceHeader({
                   <ChevronRight className="h-3.5 w-3.5" />
                   <BreadcrumbButton
                     active={visibleSessionTitle === null}
-                    label={selectedProjectName}
+                    label={selectedProjectTopic}
                     onClick={onGoWorkspace}
                   />
                   {visibleSessionTitle !== null ? (

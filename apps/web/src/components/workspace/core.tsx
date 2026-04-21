@@ -339,12 +339,14 @@ export function AssetCompactList({
   emptyText,
   maxHeightClassName = "max-h-[24rem]",
   onAssetClick,
+  renderAssetAction,
   selectedAssetIds = [],
 }: {
   assets: ReadonlyArray<SourceAsset>;
   emptyText: string;
   maxHeightClassName?: string;
   onAssetClick?: (assetId: string) => void;
+  renderAssetAction?: (asset: SourceAsset) => ReactNode;
   selectedAssetIds?: ReadonlyArray<string>;
 }): ReactElement {
   if (assets.length === 0) {
@@ -357,8 +359,9 @@ export function AssetCompactList({
         {assets.map((asset) => {
           const selected = selectedAssetIds.includes(asset.id);
           const className = selected
-            ? "grid grid-cols-[44px_minmax(0,1fr)] gap-3 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] p-3 text-left transition-colors"
-            : "grid grid-cols-[44px_minmax(0,1fr)] gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3 text-left transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef]";
+            ? "flex items-start gap-3 rounded-[1rem] border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] p-3 transition-colors"
+            : "flex items-start gap-3 rounded-[1rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] p-3 transition-colors hover:border-[var(--xidea-selection-border)] hover:bg-[#faf4ef]";
+          const contentClassName = "grid min-w-0 flex-1 grid-cols-[44px_minmax(0,1fr)] gap-3";
 
           const content = (
             <>
@@ -381,15 +384,31 @@ export function AssetCompactList({
 
           if (onAssetClick) {
             return (
-              <button className={className} key={asset.id} onClick={() => onAssetClick(asset.id)} type="button">
-                {content}
-              </button>
+              <div className={className} key={asset.id}>
+                <button
+                  className={`${contentClassName} text-left`}
+                  onClick={() => onAssetClick(asset.id)}
+                  type="button"
+                >
+                  {content}
+                </button>
+                {renderAssetAction ? (
+                  <div className="flex shrink-0 items-start pt-0.5">
+                    {renderAssetAction(asset)}
+                  </div>
+                ) : null}
+              </div>
             );
           }
 
           return (
             <div className={className} key={asset.id}>
-              {content}
+              <div className={contentClassName}>{content}</div>
+              {renderAssetAction ? (
+                <div className="flex shrink-0 items-start pt-0.5">
+                  {renderAssetAction(asset)}
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -520,7 +539,7 @@ export function MetaPanel({
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
             <p className="xidea-kicker text-[var(--xidea-selection-text)]">项目信息</p>
-            <p className="text-base font-medium text-[var(--xidea-near-black)]">{project.name}</p>
+            <p className="text-base font-medium text-[var(--xidea-near-black)]">{project.topic}</p>
           </div>
           <Button className="rounded-full" onClick={onClose} type="button" variant="outline">
             收起
