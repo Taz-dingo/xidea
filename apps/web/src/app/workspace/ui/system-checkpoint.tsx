@@ -44,7 +44,7 @@ function formatRelativeDateLabel(value: string | null | undefined): string {
 
 function buildSummary(snapshot: AgentWorkspaceProjectConsolidation | null): string {
   if (snapshot === null) {
-    return "系统会在你回到项目时自动整理这轮学习状态，收口待复习项、待处理建议和下一步动作。";
+    return "系统会在你回到主题时自动整理这轮学习状态，收口待复习项、待处理建议和下一步动作。";
   }
 
   const projectMemorySummary = snapshot.project_memory?.summary?.trim();
@@ -62,7 +62,7 @@ function buildSummary(snapshot: AgentWorkspaceProjectConsolidation | null): stri
     return firstRecommendedAction;
   }
 
-  return "系统已经收口当前 project 的学习状态，可以直接据此决定下一步要继续学习、复习还是确认建议项。";
+  return "系统已经收口当前主题的学习状态，可以直接据此决定下一步要继续学习、复习还是确认建议项。";
 }
 
 function getStatusMeta(status: ProjectConsolidationStatus, hasSnapshot: boolean): {
@@ -74,7 +74,7 @@ function getStatusMeta(status: ProjectConsolidationStatus, hasSnapshot: boolean)
     return {
       icon: <CheckCircle2 className="h-4 w-4 text-[#6f8d77]" />,
       label: "已更新",
-      description: "已切到最新 project 收口结果",
+      description: "已切到最新主题收口结果",
     };
   }
 
@@ -82,7 +82,7 @@ function getStatusMeta(status: ProjectConsolidationStatus, hasSnapshot: boolean)
     return {
       icon: <LoaderCircle className="h-4 w-4 animate-spin text-[var(--xidea-selection-text)]" />,
       label: "更新中",
-      description: "正在后台刷新最新 project 收口结果",
+      description: "正在后台刷新最新主题收口结果",
     };
   }
 
@@ -92,7 +92,7 @@ function getStatusMeta(status: ProjectConsolidationStatus, hasSnapshot: boolean)
       label: hasSnapshot ? "显示上一版" : "刷新失败",
       description: hasSnapshot
         ? "最新结果刷新失败，当前先显示上一版收口结果"
-        : "当前还没拿到可展示的 project 收口结果",
+        : "当前还没拿到可展示的主题收口结果",
     };
   }
 
@@ -100,14 +100,14 @@ function getStatusMeta(status: ProjectConsolidationStatus, hasSnapshot: boolean)
     return {
       icon: <LoaderCircle className="h-4 w-4 animate-spin text-[var(--xidea-selection-text)]" />,
       label: "整理中",
-      description: "正在读取并刷新当前 project 收口结果",
+      description: "正在读取并刷新当前主题收口结果",
     };
   }
 
   return {
     icon: <Sparkles className="h-4 w-4 text-[var(--xidea-selection-text)]" />,
     label: "待生成",
-    description: "进入项目后系统会自动整理最新收口结果",
+    description: "进入主题后系统会自动整理最新收口结果",
   };
 }
 

@@ -182,10 +182,10 @@ export function useSessionAgent({
       goal: data.selectedProject.description,
       currentThread:
         data.selectedSession?.summary ??
-        `当前 project 聚焦：${data.selectedProject.topic}`,
-      successSignal: "当前 project 的知识点、学习动作和状态回写能够前后一致。",
+        `当前学习主题聚焦：${data.selectedProject.topic}`,
+      successSignal: "当前学习主题的知识点、学习动作和状态回写能够前后一致。",
       orchestrationWhy:
-        "这是一条项目型学习链路，应该由系统结合 project context、材料和状态决定下一步。",
+        "这是一条主题型学习链路，应该由系统结合主题上下文、材料和状态决定下一步。",
     }),
     [data.selectedProject.description, data.selectedProject.name, data.selectedProject.topic, data.selectedSession?.summary],
   );

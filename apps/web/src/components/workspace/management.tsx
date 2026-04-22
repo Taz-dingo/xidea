@@ -52,7 +52,7 @@ function DraftAssetList({
   if (assets.length === 0) {
     return (
       <div className="rounded-[1rem] border border-dashed border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-4 py-5 text-sm leading-6 text-[var(--xidea-stone)]">
-        还没有材料，先上传这次项目要用的文件。
+        还没有材料，先上传这次主题要用的文件。
       </div>
     );
   }
@@ -80,7 +80,7 @@ function DraftAssetList({
                 {getAssetKindLabel(asset.kind)}
               </span>
               <span className="text-[12px] text-[var(--xidea-selection-text)]">
-                默认加入项目材料
+                默认加入主题材料
               </span>
             </div>
           </div>
@@ -145,7 +145,7 @@ export function CreateProjectPanel({
     <FormShell
       action={
         <Button
-          aria-label="关闭新建项目弹窗"
+          aria-label="关闭新建主题弹窗"
           className="h-10 w-10 rounded-full p-0"
           onClick={onCancel}
           type="button"
@@ -155,7 +155,7 @@ export function CreateProjectPanel({
         </Button>
       }
       description="先写清学习主题、说明和约束，再进入知识点池和会话工作态。"
-      title="新建项目"
+      title="新建主题"
     >
       <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
         <span className="font-medium text-[var(--xidea-near-black)]">学习主题</span>
@@ -174,11 +174,11 @@ export function CreateProjectPanel({
       </label>
 
       <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-        <span className="font-medium text-[var(--xidea-near-black)]">项目说明</span>
+        <span className="font-medium text-[var(--xidea-near-black)]">主题说明</span>
         <Textarea
           className="min-h-24 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
           onChange={(event) => onChange({ ...draft, description: event.target.value })}
-          placeholder="一句话写清这次项目要讲清什么。"
+          placeholder="一句话写清这次主题要讲清什么。"
           value={draft.description}
         />
       </label>
@@ -215,7 +215,7 @@ export function CreateProjectPanel({
           onClick={onSave}
           type="button"
         >
-          创建项目
+          创建主题
         </Button>
         <Button
           className="min-w-[8.5rem] rounded-full px-6"

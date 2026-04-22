@@ -108,7 +108,7 @@ export function KnowledgePointDetailScreen({
                 type="button"
               >
                 <ArrowLeft className="h-4 w-4" />
-                返回项目工作台
+                返回主题工作台
               </button>
             ) : null}
 
@@ -318,7 +318,7 @@ export function KnowledgePointDetailScreen({
             <CardTitle className="text-base font-medium text-[var(--xidea-near-black)]">
               来源材料
             </CardTitle>
-            <CardDescription>当前知识卡关联的项目材料。</CardDescription>
+            <CardDescription>当前知识卡关联的主题材料。</CardDescription>
           </CardHeader>
           <CardContent>
             <AssetListGrid
@@ -338,7 +338,7 @@ export function KnowledgePointDetailScreen({
           <ReviewHeatmap compact weeks={reviewHeatmap} />
         </InspectorCard>
 
-        <InspectorCard description="这个知识卡在项目里是如何被继续推进的。" title="相关会话">
+        <InspectorCard description="这个知识卡在当前学习主题里是如何被继续推进的。" title="相关会话">
           {relatedSessions.length > 0 ? (
             relatedSessions.map((session) => (
               <SessionCard

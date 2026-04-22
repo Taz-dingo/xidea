@@ -695,7 +695,7 @@ export function SessionThreadPane({
                     >
                       <div className="space-y-3 rounded-[1.25rem] border border-[var(--xidea-border)] bg-[var(--xidea-white)] p-3 shadow-[0_20px_40px_rgba(20,20,19,0.10)]">
                         <div className="flex items-center justify-between gap-3">
-                          <p className="xidea-kicker text-[var(--xidea-selection-text)]">项目材料</p>
+                          <p className="xidea-kicker text-[var(--xidea-selection-text)]">主题材料</p>
                           <MaterialUploadButton label="上传新材料" onUpload={onUploadMaterial} />
                         </div>
                         {activeSourceAssets.length > 0 ? (
@@ -718,7 +718,7 @@ export function SessionThreadPane({
                         <AssetListGrid
                           assets={selectedProjectMaterials}
                           className="grid gap-2 sm:grid-cols-2"
-                          emptyText="当前项目还没有材料。"
+                          emptyText="当前主题还没有材料。"
                           expandOnHover
                           onAssetClick={onToggleProjectMaterial}
                           selectedAssetIds={selectedSourceAssetIds}

@@ -73,9 +73,9 @@ export function ProjectOverviewPanel({
             <div className="space-y-4">
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="xidea-kicker text-[var(--xidea-selection-text)]">当前项目</span>
+                  <span className="xidea-kicker text-[var(--xidea-selection-text)]">当前主题</span>
                   <span className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-2.5 py-1 text-[12px] text-[var(--xidea-selection-text)]">
-                    项目研讨与学习编排
+                    主题研讨与学习编排
                   </span>
                 </div>
                 <div className="space-y-3">
@@ -94,7 +94,7 @@ export function ProjectOverviewPanel({
                     />
                   </label>
                   <label className="block space-y-2 text-sm text-[var(--xidea-charcoal)]">
-                    <span className="font-medium text-[var(--xidea-near-black)]">项目说明</span>
+                    <span className="font-medium text-[var(--xidea-near-black)]">主题说明</span>
                     <Textarea
                       className="min-h-28 rounded-[0.95rem] border-[var(--xidea-border)] bg-[var(--xidea-ivory)] text-sm leading-7 text-[var(--xidea-charcoal)] focus-visible:ring-[var(--xidea-selection-border)]"
                       onChange={(event) =>
@@ -144,9 +144,9 @@ export function ProjectOverviewPanel({
               <div className="space-y-5">
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="xidea-kicker text-[var(--xidea-selection-text)]">当前项目</span>
+                    <span className="xidea-kicker text-[var(--xidea-selection-text)]">当前主题</span>
                     <span className="rounded-full border border-[var(--xidea-selection-border)] bg-[var(--xidea-selection)] px-2.5 py-1 text-[12px] text-[var(--xidea-selection-text)]">
-                      项目研讨与学习编排
+                      主题研讨与学习编排
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -170,7 +170,7 @@ export function ProjectOverviewPanel({
 
                 {selectedProjectRules.length > 0 ? (
                   <div className="space-y-2">
-                    <p className="xidea-kicker text-[var(--xidea-stone)]">项目约束</p>
+                    <p className="xidea-kicker text-[var(--xidea-stone)]">主题约束</p>
                     {selectedProjectRules.slice(0, 4).map((rule) => (
                       <div
                         className="rounded-[0.95rem] border border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-2.5 text-sm leading-6 text-[var(--xidea-charcoal)]"
@@ -183,7 +183,7 @@ export function ProjectOverviewPanel({
                 ) : null}
 
                 <div className="space-y-2">
-                  <p className="xidea-kicker text-[var(--xidea-stone)]">项目状态</p>
+                  <p className="xidea-kicker text-[var(--xidea-stone)]">主题状态</p>
                   <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                     <ProjectInfoPill label="知识卡" value={`${projectStats.total} 张`} />
                     <ProjectInfoPill label="待复习" value={`${projectStats.dueReview} 张`} />

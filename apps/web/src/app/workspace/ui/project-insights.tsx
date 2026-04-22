@@ -318,7 +318,7 @@ function ProjectInsightModal({
       >
         <div className="flex items-center justify-between gap-3 border-b border-[var(--xidea-border)] px-5 py-4">
           <div className="space-y-1">
-            <p className="xidea-kicker text-[var(--xidea-selection-text)]">项目洞察</p>
+            <p className="xidea-kicker text-[var(--xidea-selection-text)]">主题洞察</p>
             <p className="text-base font-medium text-[var(--xidea-near-black)]">{title}</p>
           </div>
           <Button
@@ -443,9 +443,9 @@ export function ProjectInsightsStrip({
             icon={<Layers3 className="h-4 w-4" />}
             onClick={() => setActiveModal("materials")}
             summary={
-              isEditingProjectMeta ? "点开管理材料池和挂接状态。" : "项目当前挂接的材料来源。"
+              isEditingProjectMeta ? "点开管理材料池和挂接状态。" : "当前主题挂接的材料来源。"
             }
-            title="项目材料"
+            title="主题材料"
           >
             <div className="space-y-2">
               <div className="max-h-[31rem] space-y-2 overflow-y-auto pr-1">
@@ -470,7 +470,7 @@ export function ProjectInsightsStrip({
                   ))
                 ) : (
                   <div className="rounded-[0.95rem] border border-dashed border-[var(--xidea-border)] bg-[var(--xidea-parchment)] px-3 py-4 text-sm text-[var(--xidea-stone)]">
-                    当前还没有项目材料。
+                    当前还没有主题材料。
                   </div>
                 )}
               </div>
@@ -565,16 +565,16 @@ export function ProjectInsightsStrip({
       ) : null}
 
       {activeModal === "materials" ? (
-        <ProjectInsightModal onClose={() => setActiveModal(null)} title="项目材料">
+        <ProjectInsightModal onClose={() => setActiveModal(null)} title="主题材料">
           <Card className="rounded-[1.35rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
             <CardContent className="space-y-4 p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="xidea-kicker text-[var(--xidea-stone)]">项目材料</p>
+                  <p className="xidea-kicker text-[var(--xidea-stone)]">主题材料</p>
                   <p className="text-sm leading-6 text-[var(--xidea-charcoal)]">
                     {isEditingProjectMeta
                       ? "在这里调整材料池，并决定哪些材料参与研讨。"
-                      : "当前项目挂接的材料来源。"}
+                      : "当前主题挂接的材料来源。"}
                   </p>
                 </div>
                 {isEditingProjectMeta ? (
@@ -584,7 +584,7 @@ export function ProjectInsightsStrip({
               <AssetCompactList
                 assets={visibleProjectMaterials}
                 emptyText={
-                  isEditingProjectMeta ? "当前材料池还是空的，先上传材料。" : "当前还没有项目材料。"
+                  isEditingProjectMeta ? "当前材料池还是空的，先上传材料。" : "当前还没有主题材料。"
                 }
                 maxHeightClassName="max-h-[30rem]"
                 onAssetClick={isEditingProjectMeta ? onToggleProjectMaterial : undefined}

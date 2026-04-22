@@ -283,7 +283,7 @@ export function useProjectActions(data: WorkspaceData) {
       topic:
         data.projectDraft.topic.trim() ||
         data.projectDraft.name.trim() ||
-        "待整理项目材料",
+        "待整理主题材料",
     });
 
     data.setProjectAssetsByProject((current) => {

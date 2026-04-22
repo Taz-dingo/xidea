@@ -238,7 +238,7 @@ export function SessionWorkspace({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <Button
-                aria-label="返回项目工作台"
+                aria-label="返回主题工作台"
                 className="mt-0.5 h-9 w-9 shrink-0 rounded-full border-[var(--xidea-border)] p-0 text-[var(--xidea-charcoal)] hover:bg-[var(--xidea-parchment)]"
                 onClick={onExitSession}
                 type="button"

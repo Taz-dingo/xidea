@@ -317,7 +317,7 @@ export function SessionInspector({
       <div className="space-y-4">
         {selectedSessionType === "project" ? (
           <MonitorSection title="本轮上下文">
-            <CompactNote label="项目" value={selectedProject.name} />
+            <CompactNote label="主题" value={selectedProject.name} />
             <CompactNote label="会话" value={selectedSessionStatus} />
             <CompactNote
               label="模式"
@@ -338,7 +338,7 @@ export function SessionInspector({
           />
         ) : (
           <MonitorSection title="当前学习计划">
-            <CompactNote label="项目" value={selectedProject.name} />
+            <CompactNote label="主题" value={selectedProject.name} />
             <CompactNote label="会话" value={selectedSessionStatus} />
             <p className="text-[13px] leading-6 text-[var(--xidea-stone)]">
               等待首次编排返回当前小学习计划。

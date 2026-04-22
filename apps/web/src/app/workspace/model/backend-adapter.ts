@@ -210,7 +210,7 @@ function mapProjectMaterial(material: AgentWorkspaceProjectMaterial): SourceAsse
     id: material.id,
     title: material.title,
     kind: material.kind,
-    topic: material.summary?.trim() || material.source_uri?.trim() || "Project material",
+    topic: material.summary?.trim() || material.source_uri?.trim() || "主题材料",
   };
 }
 

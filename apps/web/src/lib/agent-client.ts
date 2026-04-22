@@ -258,7 +258,7 @@ export async function listProjectThreads(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(errorText || `Project threads 请求失败（${response.status}）。`);
+    throw new Error(errorText || `主题会话请求失败（${response.status}）。`);
   }
 
   return (await response.json()) as ReadonlyArray<AgentProjectThreadRecord>;
@@ -280,7 +280,7 @@ export async function listProjectKnowledgePoints(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(errorText || `Project knowledge points 请求失败（${response.status}）。`);
+    throw new Error(errorText || `主题知识点请求失败（${response.status}）。`);
   }
 
   return (await response.json()) as ReadonlyArray<AgentKnowledgePointRecord>;
@@ -306,7 +306,7 @@ export async function getProjectConsolidation(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(errorText || `Project consolidation 请求失败（${response.status}）。`);
+    throw new Error(errorText || `主题收口结果请求失败（${response.status}）。`);
   }
 
   return (await response.json()) as AgentWorkspaceProjectConsolidation;
@@ -328,7 +328,7 @@ export async function refreshProjectConsolidation(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(errorText || `Project consolidation 刷新失败（${response.status}）。`);
+    throw new Error(errorText || `主题收口结果刷新失败（${response.status}）。`);
   }
 
   return (await response.json()) as AgentWorkspaceProjectConsolidation;
@@ -612,7 +612,7 @@ export async function listProjectMaterials(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(errorText || `Project materials 请求失败（${response.status}）。`);
+    throw new Error(errorText || `主题材料请求失败（${response.status}）。`);
   }
 
   const payload = (await response.json()) as ReadonlyArray<RawSourceAsset>;

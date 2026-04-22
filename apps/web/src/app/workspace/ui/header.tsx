@@ -69,7 +69,7 @@ export function WorkspaceHeader({
             <div className="flex min-w-0 flex-wrap items-center gap-1 text-[12px] text-[var(--xidea-stone)]">
               <BreadcrumbButton
                 active={screen === "home"}
-                label="全部项目"
+                label="全部主题"
                 onClick={screen === "home" ? undefined : onGoHome}
               />
               {screen === "workspace" ? (
@@ -91,8 +91,8 @@ export function WorkspaceHeader({
             </div>
             <p className="text-sm text-[var(--xidea-stone)]">
               {screen === "home"
-                ? "项目、知识卡与学习会话在这里汇总。"
-                : "项目工作台"}
+                ? "主题、知识卡与学习会话在这里汇总。"
+                : "主题工作台"}
             </p>
           </div>
         </div>
@@ -103,7 +103,7 @@ export function WorkspaceHeader({
             <input
               className="w-full bg-transparent outline-none placeholder:text-[var(--xidea-stone)]"
               onChange={(event) => onSearchChange(event.target.value)}
-              placeholder={screen === "home" ? "搜索项目" : "搜索知识卡"}
+              placeholder={screen === "home" ? "搜索主题" : "搜索知识卡"}
               value={searchQuery}
             />
           </label>
@@ -113,7 +113,7 @@ export function WorkspaceHeader({
             type="button"
           >
             <Plus className="h-4 w-4" />
-            新建项目
+            新建主题
           </Button>
         </div>
       </CardContent>

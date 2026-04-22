@@ -594,7 +594,7 @@ export function MetaPanel({
       <CardContent className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <p className="xidea-kicker text-[var(--xidea-selection-text)]">项目信息</p>
+            <p className="xidea-kicker text-[var(--xidea-selection-text)]">主题信息</p>
             <p className="text-base font-medium text-[var(--xidea-near-black)]">{project.topic}</p>
           </div>
           <Button className="rounded-full" onClick={onClose} type="button" variant="outline">
@@ -628,7 +628,7 @@ export function MetaPanel({
         </div>
 
         <div className="space-y-2">
-          <p className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">项目材料</p>
+          <p className="text-[11px] tracking-[0.08em] text-[var(--xidea-stone)]">主题材料</p>
           <div className="space-y-2">
             {materials.length > 0 ? (
               materials.map((material) => (
@@ -646,7 +646,7 @@ export function MetaPanel({
                 </div>
               ))
             ) : (
-              <p className="text-sm text-[var(--xidea-stone)]">当前还没有项目材料。</p>
+              <p className="text-sm text-[var(--xidea-stone)]">当前还没有主题材料。</p>
             )}
           </div>
         </div>

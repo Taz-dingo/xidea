@@ -535,7 +535,7 @@ const SIGNAL_COPY: Record<AgentSignalKind, { label: string; implication: string 
   },
   "concept-confusion": {
     label: "概念混淆",
-    implication: "要先把边界拉清楚，否则会带着错模型继续推进项目。",
+    implication: "要先把边界拉清楚，否则会带着错模型继续推进主题学习。",
   },
   "memory-weakness": {
     label: "记忆走弱",
@@ -550,8 +550,8 @@ const SIGNAL_COPY: Record<AgentSignalKind, { label: string; implication: string 
     implication: "说明这轮不仅要学新内容，还要考虑是否该安排复盘窗口。",
   },
   "project-relevance": {
-    label: "项目相关性",
-    implication: "系统确认当前问题和真实项目绑定，可以直接按项目学习来编排。",
+    label: "主题相关性",
+    implication: "系统确认当前问题和真实学习主题绑定，可以直接按主题学习来编排。",
   },
 };
 
@@ -559,7 +559,7 @@ const PRIMARY_ISSUE_COPY: Record<AgentPrimaryIssue, string> = {
   "insufficient-understanding": "当前的主要问题是理解框架还没成形。",
   "concept-confusion": "当前最需要先拆开容易混淆的边界。",
   "weak-recall": "当前瓶颈更像记忆可用性下降。",
-  "poor-transfer": "当前已经不只是会不会背，而是能不能用到项目场景。",
+  "poor-transfer": "当前已经不只是会不会背，而是能不能用到主题场景。",
   "missing-context": "系统判断当前仍缺少必要上下文，先补足背景再继续。",
 };
 
@@ -746,7 +746,7 @@ function buildWritebackFromAgent(statePatch: AgentStatePatch | null): ReadonlyAr
   if (items.length === 0) {
     items.push({
       id: "writeback-thread",
-      target: "Project Thread",
+      target: "Theme Thread",
       change: "把这轮判断、动作和结果写回线程，作为下一轮编排的上下文。",
     });
   }
@@ -969,7 +969,7 @@ export function buildEmptyRuntimeSnapshot(
     stateSource: "当前还没有回读到 learner state。",
     signalCards: [],
     decision: {
-      title: isProjectSession ? "等待项目编排" : "等待学习编排",
+      title: isProjectSession ? "等待主题编排" : "等待学习编排",
       reason: "当前还没有真实 agent 判断。",
       objective: "先等待真实上下文、状态和编排结果回读。",
       confidence: null,
