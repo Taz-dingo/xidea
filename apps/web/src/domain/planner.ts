@@ -62,7 +62,7 @@ function buildWriteback(unit: LearningUnit, learner: LearnerState): ReadonlyArra
   const previews: WritebackPreview[] = [
     {
       id: "thread-memory",
-      target: "Project Thread",
+      target: "Theme Thread",
       change: `记录这次围绕「${unit.title}」的学习动作和后续待验证问题。`,
     },
   ];
@@ -85,7 +85,7 @@ function buildWriteback(unit: LearningUnit, learner: LearnerState): ReadonlyArra
     previews.push({
       id: "application-patch",
       target: "LearnerState.mastery",
-      change: "根据情境模拟里的方案解释质量，更新是否具备项目落地能力。",
+      change: "根据情境模拟里的方案解释质量，更新是否具备主题场景落地能力。",
     });
   }
 
@@ -165,7 +165,7 @@ export function buildStudyPlan(unit: LearningUnit, learner: LearnerState): Study
 
   return {
     headline: `围绕「${unit.title}」生成的动态学习路径`,
-    summary: `系统综合理解水平 ${learner.understandingLevel}%、记忆强度 ${learner.memoryStrength}% 和混淆风险 ${learner.confusion}%，决定当前先澄清边界、补理解，还是进入项目情境验证。`,
+    summary: `系统综合理解水平 ${learner.understandingLevel}%、记忆强度 ${learner.memoryStrength}% 和混淆风险 ${learner.confusion}%，决定当前先澄清边界、补理解，还是进入主题情境验证。`,
     decision: buildDecision(steps),
     steps,
     writeback: buildWriteback(unit, learner),

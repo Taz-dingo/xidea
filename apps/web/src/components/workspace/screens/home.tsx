@@ -45,7 +45,7 @@ export function HomeScreen({
           <WorkspaceNavButton
             active={homeSection === "all-projects"}
             count={totalProjects}
-            label="全部项目"
+            label="全部主题"
             onClick={() => onHomeSectionChange("all-projects")}
           />
           <WorkspaceNavButton
@@ -141,7 +141,7 @@ export function HomeScreen({
                         onClick={onContinueProject}
                         type="button"
                       >
-                        进入项目
+                        进入主题
                       </Button>
                       <Button className="rounded-full" onClick={onStartReview} type="button" variant="outline">
                         <RefreshCcw className="h-4 w-4" />
@@ -166,7 +166,7 @@ export function HomeScreen({
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
-                        <p className="xidea-kicker text-[var(--xidea-selection-text)]">项目</p>
+                        <p className="xidea-kicker text-[var(--xidea-selection-text)]">主题</p>
                         <p className="text-base font-medium text-[var(--xidea-near-black)]">
                           {project.topic}
                         </p>
@@ -196,7 +196,7 @@ export function HomeScreen({
         ) : (
           <Card className="rounded-[1.3rem] border-[var(--xidea-border)] bg-[var(--xidea-white)] shadow-none">
             <CardContent className="px-5 py-6 text-sm text-[var(--xidea-stone)]">
-              没找到匹配的项目，可以换个关键词再试。
+              没找到匹配的主题，可以换个关键词再试。
             </CardContent>
           </Card>
         )}

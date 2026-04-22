@@ -86,7 +86,7 @@ export function getSessionTypeLabel(type: SessionType): string {
 export function getSessionTypeDescription(type: SessionType): string {
   switch (type) {
     case "project":
-      return "研讨用于围绕项目目标、材料判断和知识点沉淀持续推进，先把方向讲清楚。";
+      return "研讨用于围绕学习主题、材料判断和知识点沉淀持续推进，先把方向讲清楚。";
     case "review":
       return "复习用于回忆校准和稳定判断，检查是不是真的记住了、会用了。";
     case "study":

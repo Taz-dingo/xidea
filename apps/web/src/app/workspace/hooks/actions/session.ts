@@ -63,7 +63,7 @@ export function useSessionActions(data: WorkspaceData) {
           ? "围绕未学知识点启动一轮学习。"
           : type === "review"
             ? "围绕待复习知识点安排一轮回拉。"
-            : "继续围绕项目目标推进材料与知识点。",
+            : "继续围绕学习主题推进材料与知识点。",
       updatedAt: "刚刚",
       status: "空白",
     };
