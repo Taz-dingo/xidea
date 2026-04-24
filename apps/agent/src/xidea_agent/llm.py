@@ -2276,11 +2276,11 @@ def llm_build_activities(
     except Exception as exc:
         if _is_provider_safety_error(exc):
             logger.warning(
-                "LLM activity generation hit provider safety filter; falling back to template activities."
+                "LLM activity generation hit provider safety filter; returning no LLM activities."
             )
             return None
         logger.warning(
-            "LLM activity generation failed, falling back to template activities. raw preview: %r",
+            "LLM activity generation failed; returning no LLM activities. raw preview: %r",
             raw[:160] if "raw" in locals() else "",
             exc_info=True,
         )

@@ -1005,10 +1005,118 @@ def test_review_session_coerces_non_review_diagnosis_when_confusion_is_not_high(
     result = run_agent_v0(request, llm=build_mock_llm_for_teach())
 
     assert result.graph_state.diagnosis is not None
-    assert result.graph_state.activity is not None
     assert result.graph_state.diagnosis.recommended_action == "review"
     assert result.graph_state.diagnosis.primary_issue == "weak-recall"
+    assert result.graph_state.activity is None
+    assert any(
+        "activities=LLM-unavailable" in rationale
+        for rationale in result.graph_state.rationale
+    )
+
+
+def test_review_session_uses_llm_generated_recall_card_when_main_decision_omits_activities() -> None:
+    plan = {
+        "headline": "围绕重排边界做一次回忆校准",
+        "summary": "先验证记忆里还剩不剩关键判断。",
+        "selected_mode": "guided-qa",
+        "expected_outcome": "能直接说清重排补的是排序相关性。",
+        "steps": [
+            {
+                "id": "recall-reranking-boundary",
+                "title": "回忆重排边界",
+                "mode": "guided-qa",
+                "reason": "复习首轮先看核心边界能不能脱离材料想起来。",
+                "outcome": "确认是否还能区分召回覆盖和候选排序。",
+            },
+        ],
+    }
+    main_decision_response = json.dumps({
+        "signals": [
+            {
+                "kind": "memory-weakness",
+                "score": 0.86,
+                "confidence": 0.84,
+                "summary": "用户要复习已学过的重排边界。",
+            }
+        ],
+        "diagnosis": {
+            "recommended_action": "review",
+            "reason": "当前更需要验证能否主动回忆核心边界。",
+            "confidence": 0.84,
+            "primary_issue": "weak-recall",
+            "needs_tool": False,
+        },
+        "reply": "这轮先校准你对重排边界的记忆，再根据答案决定是否补解释。",
+        "plan": plan,
+    })
+    activity_response = json.dumps({
+        "activities": [
+            {
+                "title": "辨认重排真正补的缺口",
+                "objective": "确认你是否还记得 reranking 和 retrieval 的边界。",
+                "prompt": "下面哪一句最准确说明 reranking 在 RAG 里补的缺口？",
+                "support": "复习首轮要看核心判断是否还能直接被调出来。",
+                "input": {
+                    "type": "choice",
+                    "choices": [
+                        {
+                            "id": "ranking-gap",
+                            "label": "候选文档已经被召回后，它把最能回答当前问题的证据排到前面。",
+                            "detail": "这把重排放在已有候选上的排序相关性问题里。",
+                            "is_correct": True,
+                            "feedback_layers": ["对，重排补的是已有候选里的相关性顺序。"],
+                            "analysis": "准确命中 reranking 的职责边界。",
+                        },
+                        {
+                            "id": "recall-gap",
+                            "label": "它主要负责把向量召回漏掉的正确文档重新找回来。",
+                            "detail": "这是召回覆盖问题，不是重排能解决的问题。",
+                            "is_correct": False,
+                            "feedback_layers": ["如果文档没进候选集，重排没有对象可排。"],
+                            "analysis": "把召回覆盖误认为重排职责。",
+                        },
+                        {
+                            "id": "context-gap",
+                            "label": "它主要负责把更多上下文塞给模型，让模型自己判断。",
+                            "detail": "这把排序相关性偷换成了堆上下文。",
+                            "is_correct": False,
+                            "feedback_layers": ["多上下文不等于把最相关证据排到前面。"],
+                            "analysis": "把排序问题误写成上下文数量问题。",
+                        },
+                    ],
+                },
+            }
+        ]
+    })
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = [
+        SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=main_decision_response))]),
+        SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=activity_response))]),
+    ]
+    llm = LLMClient(client=mock_client, model="gpt-4o-mini")
+
+    result = run_agent_v0(
+        build_request(
+            session_type="review",
+            messages=[{"role": "user", "content": "围绕这个点开始复习，先看看我还记不记得。"}],
+        ),
+        llm=llm,
+    )
+
+    assert result.graph_state.activity is not None
     assert result.graph_state.activity.kind == "recall"
+    assert result.graph_state.activity.title == "辨认重排真正补的缺口"
+    assert "先做一轮回忆校准" not in result.graph_state.activity.title
+    assert "先用一句话说核心边界" not in result.graph_state.activity.prompt
+    assert all(
+        "只要把更多材料" not in choice.label
+        for choice in result.graph_state.activity.input.choices
+    )
+    assert any(
+        "activities=LLM" in rationale
+        for rationale in result.graph_state.rationale
+    )
+    assert mock_client.chat.completions.create.call_count == 2
 
 
 def test_run_agent_v0_reuses_preloaded_unit_detail_when_main_decision_requests_tool() -> None:

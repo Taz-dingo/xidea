@@ -871,6 +871,9 @@ def resolve_activities(
     if llm_activities:
         return llm_activities, "LLM"
 
+    if session_type == "review":
+        return [], "LLM-unavailable"
+
     return (
         build_activities(
             diagnosis,

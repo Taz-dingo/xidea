@@ -26,6 +26,7 @@
 - `apps/web` 已把新建 / 编辑 Project 的名称收口成单一“学习主题”字段；当前 `name / topic` 在前端继续同步写入，但用户不再维护两套近义字段
 - `apps/web` 已把知识卡详情页的学习 / 复习入口收成状态感知动作：未学 / 学习中只显示“加入学习”，待复习只显示“加入复习”，并支持直接围绕当前知识点启动 session
 - `apps/web` 已补两处会话稳定性修复：SSE 收到 `done` 时立即结束运行态；`/threads/{id}/messages` 只在选中 session 初次 hydration 时补拉一次，不再被 session 列表的“刚刚 / 运行中 / 已更新”状态抖动反复触发
+- `apps/agent` 已收掉 review session 首轮的模板回忆卡兜底：当前复习卡优先使用 LLM 实时生成；如果 LLM activity 生成失败，不再回退到固定的“先做一轮回忆校准”模板卡
 
 #### 多卡编排 session v0（2026-04-20）
 
