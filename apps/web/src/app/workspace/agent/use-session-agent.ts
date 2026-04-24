@@ -4,13 +4,10 @@ import { learningUnits } from "@/data/demo";
 import {
   type AgentActivityResult,
   type AgentEntryMode,
-  type AgentKnowledgePointSuggestion,
-  type AgentRequest,
   buildMockRuntimeSnapshot,
   getRequestSourceAssetIds,
 } from "@/domain/agent-runtime";
 import { mergeMessageHistory } from "@/domain/chat-message";
-import { toKnowledgePointItem } from "@/domain/knowledge-point-sync";
 import { buildSessionOrchestrationMessage } from "@/domain/session-orchestration";
 import {
   buildEmptyReviewHeatmap,
@@ -27,11 +24,9 @@ import {
 } from "@/domain/project-session-runtime";
 import { buildPendingSessionId } from "@/domain/project-workspace";
 import type { SourceAsset } from "@/domain/types";
-import {
-  confirmKnowledgePointSuggestion,
-  getAgentBaseUrl,
-} from "@/lib/agent-client";
+import { getAgentBaseUrl } from "@/lib/agent-client";
 import { createAgentChatTransport } from "@/lib/agent-chat-transport";
+import { handleKnowledgePointSuggestions } from "@/app/workspace/agent/knowledge-point-suggestions";
 import { createSessionActions } from "@/app/workspace/agent/session-actions";
 import { useAgentHealth } from "@/app/workspace/agent/effects/use-agent-health";
 import { useProjectKnowledgeSync } from "@/app/workspace/agent/effects/use-project-knowledge-sync";
@@ -318,92 +313,16 @@ export function useSessionAgent({
         onSnapshot: (snapshot) => handleTransportSnapshot(transportSessionId, snapshot),
         onSessionOrchestration: (change) =>
           handleTransportOrchestrationEvent(transportSessionId, change),
-        onKnowledgePointSuggestions: (
-          suggestions: ReadonlyArray<AgentKnowledgePointSuggestion>,
-          request: AgentRequest,
-          assistantMessageId: string,
-        ) => {
-          if (request.session_type !== "project" || request.entry_mode !== "material-import") {
-            return;
-          }
-
-          for (const suggestion of suggestions) {
-            if (suggestion.kind !== "create") {
-              continue;
-            }
-            if (suggestion.status === "accepted" && suggestion.knowledge_point_id !== null) {
-              data.setKnowledgePoints((current) =>
-                current.map((point) =>
-                  point.id !== suggestion.knowledge_point_id
-                    ? point
-                    : {
-                        ...point,
-                        linkedSessionIds: point.linkedSessionIds.includes(suggestion.session_id)
-                          ? point.linkedSessionIds
-                          : [...point.linkedSessionIds, suggestion.session_id],
-                        linkedMessageIdsBySession:
-                          point.linkedMessageIdsBySession[suggestion.session_id] ===
-                          assistantMessageId
-                            ? point.linkedMessageIdsBySession
-                            : {
-                                ...point.linkedMessageIdsBySession,
-                                [suggestion.session_id]: assistantMessageId,
-                              },
-                      },
-                ),
-              );
-              data.setSelectedKnowledgePointId(suggestion.knowledge_point_id);
-              continue;
-            }
-            if (
-              suggestion.status !== "pending" ||
-              handledSuggestionIdsRef.current.has(suggestion.id)
-            ) {
-              continue;
-            }
-            handledSuggestionIdsRef.current.add(suggestion.id);
-            void confirmKnowledgePointSuggestion(request.project_id, suggestion.id)
-              .then((resolution) => {
-                const nextPoint = toKnowledgePointItem(resolution);
-                if (nextPoint === null) {
-                  return;
-                }
-                data.setKnowledgePoints((current) => {
-                  const previousPoint = current.find((point) => point.id === nextPoint.id);
-                  const remainingPoints = current.filter((point) => point.id !== nextPoint.id);
-                  const previousLinkedSessionIds = previousPoint?.linkedSessionIds ?? [];
-                  const nextLinkedSessionIds = previousLinkedSessionIds.includes(
-                    resolution.suggestion.session_id,
-                  )
-                    ? previousLinkedSessionIds
-                    : [
-                        ...previousLinkedSessionIds,
-                        resolution.suggestion.session_id,
-                        ...nextPoint.linkedSessionIds,
-                      ].filter(
-                        (sessionId, index, array) => array.indexOf(sessionId) === index,
-                      );
-                  const nextLinkedMessageIdsBySession = {
-                    ...(previousPoint?.linkedMessageIdsBySession ?? {}),
-                    ...nextPoint.linkedMessageIdsBySession,
-                    [resolution.suggestion.session_id]: assistantMessageId,
-                  };
-                  return [
-                    ...remainingPoints,
-                    {
-                      ...nextPoint,
-                      linkedSessionIds: nextLinkedSessionIds,
-                      linkedMessageIdsBySession: nextLinkedMessageIdsBySession,
-                    },
-                  ];
-                });
-                data.setSelectedKnowledgePointId(nextPoint.id);
-              })
-              .catch(() => {
-                handledSuggestionIdsRef.current.delete(suggestion.id);
-              });
-          }
-        },
+        onKnowledgePointSuggestions: (suggestions, request, assistantMessageId) =>
+          handleKnowledgePointSuggestions({
+            assistantMessageId,
+            handledSuggestionIds: handledSuggestionIdsRef.current,
+            projectId: request.project_id,
+            sessionType: request.session_type,
+            setKnowledgePoints: data.setKnowledgePoints,
+            setSelectedKnowledgePointId: data.setSelectedKnowledgePointId,
+            suggestions,
+          }),
         onRunStateChange: (nextIsRunning) =>
           handleTransportRunStateChange(transportSessionId, nextIsRunning),
       }),
